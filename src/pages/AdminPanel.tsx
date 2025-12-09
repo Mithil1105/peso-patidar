@@ -1,0 +1,1246 @@
+import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { 
+  Users, 
+  Receipt, 
+  CheckCircle, 
+  XCircle, 
+  Clock, 
+  Coins,
+  Eye,
+  UserPlus,
+  Settings,
+  TrendingUp,
+  Filter,
+  Search,
+  Download
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { ExpenseService } from "@/services/ExpenseService";
+import { format } from "date-fns";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Input } from "@/components/ui/input";
+import { MobileExpenseTable } from "@/components/MobileExpenseTable";
+import { formatINR } from "@/lib/format";
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  created_at: string;
+  is_active: boolean;
+  balance?: number | null;
+  reporting_engineer_id?: string | null;
+}
+
+interface Attachment {
+  id: string;
+  filename: string;
+  content_type: string;
+  file_url: string;
+  created_at: string;
+}
+
+interface Expense {
+  id: string;
+  title: string;
+  destination: string;
+  trip_start: string;
+  trip_end: string;
+  status: string;
+  total_amount: number;
+  created_at: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_balance: number;
+  assigned_engineer_id?: string;
+  admin_comment?: string;
+}
+
+export default function AdminPanel() {
+  const { user, userRole } = useAuth();
+  const { toast } = useToast();
+  
+  const [users, setUsers] = useState<User[]>([]);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [adminComment, setAdminComment] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedEngineer, setSelectedEngineer] = useState("");
+  const [engineers, setEngineers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<Array<{action: string; user_name: string; comment?: string; created_at: string}>>([]);
+
+  useEffect(() => {
+    if (userRole === "admin") {
+      fetchData();
+    }
+  }, [userRole]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchUsers(),
+        fetchExpenses(),
+        fetchEngineers()
+      ]);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const normalizeReceiptUrl = (url: string): string => {
+    try {
+      // If it's already a receipts public URL, keep as is
+      if (url.startsWith("http")) {
+        // Try to extract a key from known bucket paths and rebuild with receipts
+        if (url.includes("/storage/v1/object/public/receipts/")) {
+          return url;
+        }
+        const expenseAttachmentsIdx = url.indexOf("/storage/v1/object/public/expense-attachments/");
+        if (expenseAttachmentsIdx !== -1) {
+          const key = url.substring(expenseAttachmentsIdx + "/storage/v1/object/public/expense-attachments/".length);
+          const { data } = supabase.storage.from("receipts").getPublicUrl(key);
+          return data.publicUrl;
+        }
+        // Fallback: return original
+        return url;
+      }
+      // Path-only stored (e.g., "{expenseId}/filename" or "temp/{userId}/filename")
+      const { data } = supabase.storage.from("receipts").getPublicUrl(url);
+      return data.publicUrl;
+    } catch {
+      return url;
+    }
+  };
+
+  const fetchAttachments = async (expenseId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("attachments")
+        .select("id, filename, content_type, file_url, created_at")
+        .eq("expense_id", expenseId)
+        .order("created_at");
+
+      if (error) throw error;
+
+      const normalized = (data || []).map(a => ({
+        ...a,
+        file_url: normalizeReceiptUrl(a.file_url || ""),
+      }));
+
+      setAttachments(normalized);
+    } catch (e) {
+      console.error("Error fetching attachments:", e);
+      setAttachments([]);
+    }
+  };
+
+  const fetchAuditLogs = async (expenseId: string) => {
+    try {
+      const { data: logsData, error: logsError } = await supabase
+        .from("audit_logs")
+        .select("user_id, action, comment, created_at")
+        .eq("expense_id", expenseId)
+        .order("created_at", { ascending: false });
+
+      if (logsError) throw logsError;
+
+      // Fetch user profiles for audit logs
+      const auditLogsWithNames = await Promise.all(
+        (logsData || []).map(async (log) => {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("name")
+            .eq("user_id", log.user_id)
+            .single();
+          
+          return {
+            ...log,
+            user_name: profileData?.name || "Unknown User"
+          };
+        })
+      );
+
+      setAuditLogs(auditLogsWithNames);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      setAuditLogs([]);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedExpense) {
+      fetchAttachments(selectedExpense.id);
+      fetchAuditLogs(selectedExpense.id);
+    } else {
+      setAttachments([]);
+      setAuditLogs([]);
+    }
+  }, [selectedExpense]);
+
+  const fetchUsers = async () => {
+    // First get profiles
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, user_id, name, email, created_at, is_active, balance, reporting_engineer_id")
+      .order("created_at", { ascending: false });
+
+    if (profilesError) throw profilesError;
+
+    // Then get roles for each user
+    const userIds = profiles.map(p => p.user_id);
+    const { data: roles, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("user_id, role")
+      .in("user_id", userIds);
+
+    if (rolesError) throw rolesError;
+
+    // Combine the data
+    const usersWithRoles = profiles.map(profile => {
+      const userRole = roles.find(r => r.user_id === profile.user_id);
+      return {
+        id: profile.user_id,
+        email: profile.email,
+        name: profile.name,
+        role: userRole?.role || "employee",
+        created_at: profile.created_at,
+        is_active: profile.is_active,
+        balance: profile.balance ?? 0,
+        reporting_engineer_id: profile.reporting_engineer_id ?? null
+      };
+    });
+
+    setUsers(usersWithRoles);
+  };
+
+  const fetchExpenses = async () => {
+    // Admin should see:
+    // 1. Expenses verified by engineers (status = "verified" or "approved")
+    // 2. Expenses submitted by engineers directly (status = "submitted" AND assigned_engineer_id IS NULL)
+    // 3. Expenses rejected by this admin (status = "rejected" AND rejected by current admin)
+    
+    // Fetch verified/approved expenses
+    const { data: verifiedExpenses, error: verifiedError } = await supabase
+      .from("expenses")
+      .select("*")
+      .in("status", ["verified", "approved"])
+      .order("created_at", { ascending: false });
+
+    // Fetch engineer-submitted expenses (submitted with no assigned engineer)
+    const { data: engineerExpenses, error: engineerError } = await supabase
+      .from("expenses")
+      .select("*")
+      .eq("status", "submitted")
+      .is("assigned_engineer_id", null)
+      .order("created_at", { ascending: false });
+
+    // Fetch expenses rejected by this admin from audit_logs
+    const { data: rejectedLogs, error: rejectedLogsError } = await supabase
+      .from("audit_logs")
+      .select("expense_id")
+      .eq("user_id", user?.id)
+      .eq("action", "expense_rejected");
+
+    if (verifiedError || engineerError) {
+      throw verifiedError || engineerError;
+    }
+
+    let rejectedExpenses: any[] = [];
+    if (!rejectedLogsError && rejectedLogs && rejectedLogs.length > 0) {
+      const rejectedExpenseIds = rejectedLogs.map(log => log.expense_id);
+      
+      const { data: rejectedData, error: rejectedError } = await supabase
+        .from("expenses")
+        .select("*")
+        .eq("status", "rejected")
+        .in("id", rejectedExpenseIds)
+        .order("created_at", { ascending: false });
+
+      if (!rejectedError && rejectedData) {
+        rejectedExpenses = rejectedData;
+      }
+    }
+
+    // Combine and deduplicate expenses
+    const allExpenses = [...(verifiedExpenses || []), ...(engineerExpenses || []), ...rejectedExpenses];
+    const uniqueExpenses = Array.from(
+      new Map(allExpenses.map(exp => [exp.id, exp])).values()
+    );
+    const expensesData = uniqueExpenses.sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    if (!expensesData || expensesData.length === 0) {
+      setExpenses([]);
+      return;
+    }
+
+    // Get user profiles for the expenses
+    const userIds = [...new Set(expensesData.map(e => e.user_id))];
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("user_id, name, email, balance")
+      .in("user_id", userIds);
+
+    if (profilesError) {
+      throw profilesError;
+    }
+
+    // Combine expenses with profile data
+    const expensesWithProfiles = expensesData.map(expense => {
+      const profile = profiles?.find(p => p.user_id === expense.user_id);
+      return {
+        ...expense,
+        user_name: profile?.name || "Unknown User",
+        user_email: profile?.email || "unknown@example.com",
+        user_balance: profile?.balance ?? 0,
+        total_amount: Number(expense.total_amount)
+      };
+    });
+
+    setExpenses(expensesWithProfiles);
+  };
+
+  const fetchEngineers = async () => {
+    // Get engineers from user_roles
+    const { data: engineerRoles, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "engineer");
+
+    if (rolesError) throw rolesError;
+
+    if (!engineerRoles || engineerRoles.length === 0) {
+      setEngineers([]);
+      return;
+    }
+
+    // Get profiles for engineers
+    const engineerIds = engineerRoles.map(r => r.user_id);
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("user_id, name, email")
+      .in("user_id", engineerIds);
+
+    if (profilesError) throw profilesError;
+
+    setEngineers(profiles.map(profile => ({
+      id: profile.user_id,
+      name: profile.name,
+      email: profile.email
+    })));
+  };
+
+  const approveExpense = async () => {
+    if (!selectedExpense || !user) return;
+
+    try {
+      await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
+      
+      toast({
+        title: "Expense Approved",
+        description: "The expense has been approved successfully",
+      });
+
+      setSelectedExpense(null);
+      setAdminComment("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to approve expense",
+      });
+    }
+  };
+
+
+  const assignToEngineer = async () => {
+    if (!selectedExpense || !selectedEngineer || !user) return;
+
+    try {
+      await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
+      
+      toast({
+        title: "Expense Assigned",
+        description: "The expense has been assigned to a manager for review",
+      });
+
+      setSelectedExpense(null);
+      setSelectedEngineer("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to assign expense",
+      });
+    }
+  };
+
+  const verifyExpense = async () => {
+    if (!selectedExpense || !user) return;
+
+    try {
+      // Automatically update status to "verified"
+      const updateData: any = {
+        status: "verified",
+        updated_at: new Date().toISOString()
+      };
+
+      if (adminComment) {
+        updateData.admin_comment = adminComment;
+      }
+
+      const { error } = await supabase
+        .from("expenses")
+        .update(updateData)
+        .eq("id", selectedExpense.id);
+
+      if (error) throw error;
+
+      // Log the action
+      await supabase
+        .from("audit_logs")
+        .insert({
+          expense_id: selectedExpense.id,
+          user_id: user.id,
+          action: "Status changed to verified",
+          comment: adminComment || null
+        });
+
+      toast({
+        title: "Expense Verified",
+        description: "Expense has been verified successfully",
+      });
+
+      // Close dialog and reset
+      setDialogOpen(false);
+      setSelectedExpense(null);
+      setAdminComment("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to verify expense",
+      });
+    }
+  };
+
+  const rejectExpense = async () => {
+    if (!selectedExpense || !user) return;
+
+    try {
+      setReviewLoading(true);
+
+      await ExpenseService.rejectExpense(selectedExpense.id, user.id, adminComment);
+
+      toast({
+        title: "Expense Rejected",
+        description: "Expense has been rejected successfully",
+      });
+
+      setSelectedExpense(null);
+      setAdminComment("");
+      setAttachments([]);
+      setDialogOpen(false);
+      fetchExpenses();
+    } catch (error: any) {
+      console.error("Error rejecting expense:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to reject expense",
+      });
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const approveExpenseDirect = async () => {
+    if (!selectedExpense || !user) return;
+
+    try {
+      // Use ExpenseService to approve (this handles balance deduction)
+      await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
+      
+      toast({
+        title: "Expense Approved",
+        description: `Expense approved and ${formatINR(selectedExpense.total_amount)} deducted from employee balance.`,
+      });
+
+      // Close dialog and reset
+      setDialogOpen(false);
+      setSelectedExpense(null);
+      setAdminComment("");
+      fetchExpenses();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to approve expense",
+      });
+    }
+  };
+
+  const updateExpenseStatus = async () => {
+    if (!selectedExpense || !selectedStatus || !user) return;
+
+    try {
+      // Use proper service methods for approve/reject
+      if (selectedStatus === "approved") {
+        await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
+        toast({
+          title: "Expense Approved",
+          description: `Expense approved and ₹${selectedExpense.total_amount} deducted from employee balance.`,
+        });
+      } else if (selectedStatus === "submitted" || selectedStatus === "verified") {
+        // Only assign to engineer if one is selected
+        if (selectedEngineer && selectedEngineer !== "none") {
+          await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
+          toast({
+            title: "Expense Assigned",
+            description: "The expense has been assigned to a manager for review",
+          });
+        } else {
+          // Just update the status without assigning to engineer
+          const updateData: any = {
+            status: selectedStatus,
+            updated_at: new Date().toISOString()
+          };
+
+          if (adminComment) {
+            updateData.admin_comment = adminComment;
+          }
+
+          const { error } = await supabase
+            .from("expenses")
+            .update(updateData)
+            .eq("id", selectedExpense.id);
+
+          if (error) throw error;
+
+          // Log the action
+          await supabase
+            .from("audit_logs")
+            .insert({
+              expense_id: selectedExpense.id,
+              user_id: user.id,
+              action: `Status changed to ${selectedStatus}`,
+              comment: adminComment || null
+            });
+
+          toast({
+            title: "Success",
+            description: "Expense status updated successfully",
+          });
+        }
+      } else {
+        // For other status changes, use direct update
+        const updateData: any = {
+          status: selectedStatus,
+          updated_at: new Date().toISOString()
+        };
+
+        if (selectedEngineer && selectedEngineer !== "none") {
+          updateData.assigned_engineer_id = selectedEngineer;
+        } else if (selectedEngineer === "none") {
+          updateData.assigned_engineer_id = null;
+        }
+
+        if (adminComment) {
+          updateData.admin_comment = adminComment;
+        }
+
+        const { error } = await supabase
+          .from("expenses")
+          .update(updateData)
+          .eq("id", selectedExpense.id);
+
+        if (error) throw error;
+
+        // Log the action
+        await supabase
+          .from("audit_logs")
+          .insert({
+            expense_id: selectedExpense.id,
+            user_id: user.id,
+            action: `Status changed to ${selectedStatus}`,
+            comment: adminComment || null
+          });
+
+        toast({
+          title: "Success",
+          description: "Expense status updated successfully",
+        });
+      }
+
+      setDialogOpen(false);
+      setSelectedExpense(null);
+      setAdminComment("");
+      setSelectedStatus("");
+      setSelectedEngineer("");
+      fetchExpenses();
+    } catch (error: any) {
+      console.error("Error updating expense:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update expense",
+      });
+    }
+  };
+
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .upsert({
+          user_id: userId,
+          role: newRole
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "User role updated successfully",
+      });
+
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update user role",
+      });
+    }
+  };
+
+  // Filter and search functions
+  const filteredExpenses = expenses.filter(expense => {
+    const matchesSearch = searchTerm === "" || 
+      expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ((expense as any).transaction_number || '').toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || expense.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  // Helper function to escape CSV values
+  const escapeCSV = (value: any): string => {
+    if (value === null || value === undefined) return "";
+    const str = String(value);
+    // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+    if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const exportExpenses = async () => {
+    try {
+      // Build CSV with all requested fields
+      const csvContent = [
+        ["Date of Transaction", "Category", "Amount", "Petty Cash", "Transaction ID", "Employee Name", "Location"],
+        ...filteredExpenses.map(expense => [
+          format(new Date(expense.trip_start), "yyyy-MM-dd"), // Date of transaction (expense date)
+          escapeCSV((expense as any).category || "N/A"), // Category
+          Number(expense.total_amount).toFixed(2), // Amount
+          "petty cash", // Petty Cash - always "petty cash" for each transaction
+          escapeCSV((expense as any).transaction_number || ''), // Transaction ID
+          escapeCSV(expense.user_name), // Employee name
+          escapeCSV(expense.destination || "Unassigned") // Location of the expense (not employee location)
+        ])
+      ].map(row => row.join(",")).join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `expenses-${format(new Date(), "yyyy-MM-dd")}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error exporting expenses:", error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export expenses. Please try again.",
+      });
+    }
+  };
+
+
+  const getStats = () => {
+    const totalExpenses = expenses.length;
+    const pendingExpenses = expenses.filter(e => ["submitted", "verified"].includes(e.status)).length;
+    const approvedExpenses = expenses.filter(e => e.status === "approved").length;
+    const totalAmount = expenses.reduce((sum, e) => sum + e.total_amount, 0);
+
+    return {
+      totalExpenses,
+      pendingExpenses,
+      approvedExpenses,
+      totalAmount,
+      totalUsers: users.length
+    };
+  };
+
+  const stats = getStats();
+
+  if (userRole !== "admin") {
+    return (
+      <div className="space-y-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
+          <p className="text-muted-foreground">You don't have permission to access this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Mobile-optimized Header Section */}
+      <div className="text-center space-y-3 sm:space-y-4">
+        <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl sm:rounded-2xl shadow-lg">
+          <Settings className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+        </div>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+          Admin Panel
+        </h1>
+        <p className="text-sm sm:text-base lg:text-lg text-gray-600 max-w-2xl mx-auto px-4">
+          Manage users, expenses, and system settings with comprehensive oversight
+        </p>
+      </div>
+
+      {/* Mobile-optimized Stats Cards */}
+      <div className="grid gap-3 sm:gap-4 md:gap-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 sm:space-y-2 min-w-0 flex-1 overflow-hidden">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Users</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 whitespace-nowrap">{stats.totalUsers}</p>
+              </div>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 sm:space-y-2 min-w-0 flex-1 overflow-hidden">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Expenses</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 whitespace-nowrap">{stats.totalExpenses}</p>
+              </div>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                <Receipt className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 sm:space-y-2 min-w-0 flex-1 overflow-hidden">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Pending</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 whitespace-nowrap">{stats.pendingExpenses}</p>
+              </div>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 sm:space-y-2 min-w-0 flex-1 overflow-hidden">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Approved</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 whitespace-nowrap">{stats.approvedExpenses}</p>
+              </div>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 sm:space-y-2 min-w-0 flex-1 overflow-hidden">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Amount</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">{formatINR(stats.totalAmount)}</p>
+              </div>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ml-2">
+                <Coins className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <div className="space-y-4">
+          {/* Search and Filter Controls */}
+          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                  <Filter className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-bold">Search & Filter Expenses</CardTitle>
+                  <CardDescription className="text-blue-100">Find and filter expenses by various criteria</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6">
+              <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+                  <label className="text-xs sm:text-sm font-medium text-gray-700">Search</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search by title, destination, employee, transaction #..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-xs sm:text-sm font-medium text-gray-700">Status Filter</label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm">
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="submitted">Submitted</SelectItem>
+                      <SelectItem value="verified">Verified</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-xs sm:text-sm font-medium text-gray-700">Actions</label>
+                  <Button 
+                    onClick={exportExpenses}
+                    className="w-full h-10 sm:h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    <span className="hidden sm:inline">Export CSV</span>
+                    <span className="sm:hidden">Export</span>
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
+                Showing {filteredExpenses.length} of {expenses.length} expenses
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-lg sm:text-xl font-bold">All Expenses</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Review and manage expense submissions from all users</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6">
+              {loading ? (
+                <div className="min-h-[400px] flex items-center justify-center">
+                  <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="ml-2 text-gray-600">Loading expenses...</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow className="border-gray-200">
+                          <TableHead className="font-semibold min-w-[80px] whitespace-nowrap">Txn #</TableHead>
+                          <TableHead className="font-semibold min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
+                          <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Title</TableHead>
+                          <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Destination</TableHead>
+                          <TableHead className="font-semibold min-w-[90px] whitespace-nowrap">Amount</TableHead>
+                          <TableHead className="font-semibold min-w-[90px] hidden md:table-cell">Balance</TableHead>
+                          <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Status</TableHead>
+                          <TableHead className="font-semibold min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Created</TableHead>
+                          <TableHead className="text-right font-semibold min-w-[120px]">Status / Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredExpenses.map((expense) => (
+                      <TableRow key={expense.id}>
+                        <TableCell className="text-xs sm:text-sm font-mono font-semibold text-blue-600 whitespace-nowrap">
+                          {(expense as any).transaction_number || '-'}
+                        </TableCell>
+                        <TableCell className="text-xs sm:text-sm">
+                          <div>
+                            <div className="font-medium truncate">{expense.user_name}</div>
+                            <div className="text-xs text-muted-foreground truncate sm:hidden">{expense.user_email}</div>
+                            <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
+                            <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
+                            <div className="text-xs text-muted-foreground sm:hidden mt-1">
+                              {format(new Date(expense.created_at), "MMM d, yyyy")}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium text-xs sm:text-sm hidden sm:table-cell">
+                          <div className="line-clamp-2 break-words">{expense.title}</div>
+                        </TableCell>
+                        <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell">{expense.destination}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
+                        <TableCell className="text-xs sm:text-sm hidden md:table-cell">
+                          <div className={`font-medium whitespace-nowrap ${
+                            expense.user_balance >= expense.total_amount 
+                              ? 'text-green-600' 
+                              : 'text-red-600'
+                          }`}>
+                            {formatINR(expense.user_balance)}
+                          </div>
+                          {expense.user_balance < expense.total_amount && (
+                            <div className="text-xs text-red-500 whitespace-nowrap">
+                              Insufficient balance
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <StatusBadge status={expense.status as any} />
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
+                          {format(new Date(expense.created_at), "MMM d, yyyy")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
+                            <div className="sm:hidden mb-2">
+                              <StatusBadge status={expense.status as any} />
+                            </div>
+                          <div className="flex justify-end">
+                              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                  variant={expense.status === "approved" || expense.status === "rejected" ? "secondary" : "default"}
+                                    size="sm"
+                                  className={expense.status === "approved" || expense.status === "rejected"
+                                    ? "h-8 px-2 text-xs font-normal whitespace-nowrap"
+                                    : "h-8 px-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
+                                  }
+                                    onClick={async () => {
+                                      setSelectedExpense(expense);
+                                      setDialogOpen(true);
+                                      // Fetch attachments when opening dialog
+                                      if (expense.id) {
+                                        const { data: attData } = await supabase
+                                          .from("attachments")
+                                          .select("*")
+                                          .eq("expense_id", expense.id)
+                                          .order("created_at", { ascending: false });
+                                        setAttachments(attData || []);
+                                      }
+                                    }}
+                                  >
+                                  {expense.status === "approved" || expense.status === "rejected" ? "View" : "View/Approve"}
+                                  </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
+                              <DialogHeader>
+                                <DialogTitle>Review and manage this expense submission</DialogTitle>
+                              </DialogHeader>
+                              
+                              {selectedExpense && (
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="text-sm font-medium">Employee</label>
+                                      <p className="text-sm">{selectedExpense.user_name}</p>
+                                      <p className="text-xs text-muted-foreground">{selectedExpense.user_email}</p>
+                                    </div>
+                                    <div>
+                                      <label className="text-sm font-medium">Amount</label>
+                                      <p className="text-lg font-semibold">{formatINR(selectedExpense.total_amount)}</p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="text-sm font-medium">Title</label>
+                                    <p className="text-sm">{selectedExpense.title}</p>
+                                  </div>
+
+                                  <div>
+                                    <label className="text-sm font-medium">Destination</label>
+                                    <p className="text-sm">{selectedExpense.destination}</p>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="text-sm font-medium">Trip Start</label>
+                                      <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
+                                    </div>
+                                    <div>
+                                      <label className="text-sm font-medium">Trip End</label>
+                                      <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="text-sm font-medium">Current Status</label>
+                                    <div className="mt-1">
+                                      <StatusBadge status={selectedExpense.status as any} />
+                                    </div>
+                                  </div>
+
+                                  {/* For submitted expenses, show both Verify and Approve buttons */}
+                                  {selectedExpense.status === "submitted" ? (
+                                    <div>
+                                      <label className="text-sm font-medium">Admin Comment (Optional)</label>
+                                      <Textarea
+                                        value={adminComment}
+                                        onChange={(e) => setAdminComment(e.target.value)}
+                                        placeholder="Add a comment about this expense..."
+                                        className="mt-1"
+                                      />
+                                    </div>
+                                  ) : selectedExpense.status === "verified" ? (
+                                    <div>
+                                      <label className="text-sm font-medium">Admin Comment (Optional)</label>
+                                      <Textarea
+                                        value={adminComment}
+                                        onChange={(e) => setAdminComment(e.target.value)}
+                                        placeholder="Add a comment about this expense..."
+                                        className="mt-1"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div>
+                                        <label className="text-sm font-medium">Update Status</label>
+                                        <Select 
+                                          value={selectedStatus} 
+                                          onValueChange={setSelectedStatus}
+                                          disabled={selectedExpense.status === 'approved'}
+                                        >
+                                          <SelectTrigger className="mt-1">
+                                            <SelectValue placeholder="Select new status" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="submitted">Submitted</SelectItem>
+                                            <SelectItem value="verified">Verified</SelectItem>
+                                            <SelectItem value="approved">Approved</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-sm font-medium">Admin Comment</label>
+                                        <Textarea
+                                          value={adminComment}
+                                          onChange={(e) => setAdminComment(e.target.value)}
+                                          placeholder="Add a comment about this expense..."
+                                          className="mt-1"
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {attachments.length > 0 && (
+                                    <div className="space-y-2">
+                                      <label className="text-sm font-medium">Receipts & Attachments</label>
+                                      <div className="space-y-2">
+                                        {attachments.map((a) => (
+                                          <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                            <div className="flex items-center gap-3">
+                                              {a.content_type?.startsWith("image/") ? (
+                                                <img src={a.file_url} alt={a.filename} className="h-14 w-14 object-cover rounded" />
+                                              ) : (
+                                                <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
+                                              )}
+                                              <div>
+                                                <p className="font-medium text-sm">{a.filename}</p>
+                                                <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
+                                              </div>
+                                            </div>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => {
+                                                setImagePreviewUrl(a.file_url);
+                                                setImagePreviewOpen(true);
+                                              }}
+                                            >
+                                              View
+                                            </Button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Expense Timeline */}
+                                  {auditLogs.length > 0 && (
+                                    <div className="space-y-2 border-t pt-4 mt-4">
+                                      <label className="text-sm font-medium">Expense Timeline</label>
+                                      <div className="space-y-3 mt-2">
+                                        {auditLogs.map((log, index) => {
+                                          const isApproved = log.action.toLowerCase().includes('approved');
+                                          const isVerified = log.action.toLowerCase().includes('verified');
+                                          
+                                          return (
+                                            <div key={index} className="flex gap-3">
+                                              <div className="flex flex-col items-center">
+                                                <div className={`w-2 h-2 rounded-full ${isApproved ? 'bg-green-600' : isVerified ? 'bg-blue-600' : 'bg-gray-600'}`}></div>
+                                                {index < auditLogs.length - 1 && (
+                                                  <div className="w-px h-8 bg-gray-300 mt-2"></div>
+                                                )}
+                                              </div>
+                                              <div className="flex-1 space-y-1">
+                                                <p className="text-sm font-medium">{log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</p>
+                                                {log.comment && (
+                                                  <p className="text-xs text-muted-foreground">{log.comment}</p>
+                                                )}
+                                                <div className={`text-sm ${isApproved || isVerified ? 'text-blue-700 font-semibold' : 'text-gray-600'}`}>
+                                                  {isApproved || isVerified ? (
+                                                    <span>
+                                                      <span className="font-bold text-base">Approved by: </span>
+                                                      <span className="font-bold text-base text-blue-800">{log.user_name}</span>
+                                                      <span className="text-gray-500"> • {format(new Date(log.created_at), "MMM d, h:mm a")}</span>
+                                                    </span>
+                                                  ) : (
+                                                    <span>
+                                                      by {log.user_name} • {format(new Date(log.created_at), "MMM d, h:mm a")}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => {
+                                  setDialogOpen(false);
+                                  setSelectedExpense(null);
+                                  setAdminComment("");
+                                  setSelectedStatus("");
+                                }}>
+                                  Cancel
+                                </Button>
+                                {selectedExpense?.status === "rejected" ? (
+                                  // No action buttons for rejected expenses - they are final
+                                  null
+                                ) : selectedExpense?.status === "submitted" ? (
+                                  <>
+                                    <Button 
+                                      variant="destructive" 
+                                      onClick={rejectExpense}
+                                      disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
+                                    >
+                                      Reject
+                                    </Button>
+                                    <Button variant="outline" onClick={verifyExpense}>
+                                      Verify
+                                    </Button>
+                                    <Button onClick={approveExpenseDirect}>
+                                      Approve
+                                    </Button>
+                                  </>
+                                ) : selectedExpense?.status === "verified" ? (
+                                  <>
+                                    <Button 
+                                      variant="destructive" 
+                                      onClick={rejectExpense}
+                                      disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
+                                    >
+                                      Reject
+                                    </Button>
+                                    <Button onClick={approveExpenseDirect}>
+                                      Approve
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button 
+                                    onClick={updateExpenseStatus} 
+                                    disabled={!selectedStatus || selectedExpense?.status === 'approved'}
+                                  >
+                                    Update Status
+                                  </Button>
+                                )}
+                              </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          {/* Image Preview Dialog - outside the table */}
+          <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+            <DialogContent className="max-w-3xl">
+              {imagePreviewUrl && (
+                <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+              )}
+            </DialogContent>
+          </Dialog>
+                </div>
+    </div>
+  );
+}

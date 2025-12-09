@@ -1,3 +1,5 @@
+# peso-patidar
+
 # PesoWise - Petty Cash management app
 
 A comprehensive web application for managing petty cash expenses with role-based access control, approval workflows, and audit logging.
@@ -277,5 +279,6 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/c
  
  #   p e s o w i s e 
  
- #   p e s o - p a t i d a r  
+ #   p e s o - p a t i d a r 
+ 
  
