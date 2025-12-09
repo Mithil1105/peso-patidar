@@ -69,7 +69,7 @@ interface Attachment {
 }
 
 export default function ManagerReview() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const { toast } = useToast();
   
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -90,10 +90,10 @@ export default function ManagerReview() {
   const [auditLogs, setAuditLogs] = useState<Array<{action: string; user_name: string; comment?: string; created_at: string}>>([]);
 
   useEffect(() => {
-    if (userRole === "engineer") {
+    if (userRole === "engineer" && organizationId) {
       fetchEngineerApprovalLimit();
     }
-  }, [userRole, user]);
+  }, [userRole, user, organizationId]);
 
   useEffect(() => {
     if (userRole === "engineer") {
@@ -111,11 +111,14 @@ export default function ManagerReview() {
 
   const fetchEngineerApprovalLimit = async () => {
     try {
+      if (!organizationId) return;
+      
       // @ts-ignore - settings table exists but not in types
       const { data, error } = await (supabase as any)
         .from("settings")
         .select("value")
         .eq("key", "engineer_approval_limit")
+        .eq("organization_id", organizationId)
         .maybeSingle();
 
       if (error) {

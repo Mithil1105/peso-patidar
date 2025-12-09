@@ -40,7 +40,7 @@ interface CreateUserForm {
 }
 
 export default function UserManagement() {
-  const { userRole, user } = useAuth();
+  const { userRole, user, organizationId } = useAuth();
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);
@@ -100,11 +100,14 @@ export default function UserManagement() {
     // Load engineers for assignment dropdown
     const loadEngineers = async () => {
       try {
-        // 1) Get user ids with engineer role
+        // 1) Get user ids with engineer role in this organization
+        if (!organizationId) return;
         const { data: roleRows, error: rolesError } = await supabase
-          .from("user_roles")
+          .from("organization_memberships")
           .select("user_id, role")
-          .eq("role", "engineer");
+          .eq("organization_id", organizationId)
+          .eq("role", "engineer")
+          .eq("is_active", true);
 
         if (rolesError) throw rolesError;
 
@@ -131,12 +134,14 @@ export default function UserManagement() {
 
     loadEngineers();
     
-    // Load locations
+    // Load locations (filtered by organization)
     const loadLocations = async () => {
       try {
+        if (!organizationId) return;
         const { data, error } = await supabase
           .from("locations")
           .select("id, name")
+          .eq("organization_id", organizationId)
           .order("name", { ascending: true });
         if (error) throw error;
         setLocations(data || []);
@@ -172,19 +177,23 @@ export default function UserManagement() {
     const loadUsers = async () => {
       try {
         setListLoading(true);
-        // fetch profiles with reporting_engineer_id, cashier_assigned_engineer_id, cashier_assigned_location_id, and assigned_cashier_id
+        // fetch profiles with reporting_engineer_id, cashier_assigned_engineer_id, cashier_assigned_location_id, and assigned_cashier_id (filtered by organization)
+        if (!organizationId) return;
         const { data: profiles, error: profilesError } = await supabase
           .from("profiles")
-          .select("user_id, name, email, balance, reporting_engineer_id, cashier_assigned_engineer_id, cashier_assigned_location_id, assigned_cashier_id");
+          .select("user_id, name, email, balance, reporting_engineer_id, cashier_assigned_engineer_id, cashier_assigned_location_id, assigned_cashier_id")
+          .eq("organization_id", organizationId);
         if (profilesError) throw profilesError;
 
         const ids = (profiles || []).map(p => p.user_id);
         let rolesById: Record<string, string> = {};
-        if (ids.length > 0) {
+        if (ids.length > 0 && organizationId) {
           const { data: rolesRows, error: rolesErr } = await supabase
-            .from("user_roles")
+            .from("organization_memberships")
             .select("user_id, role")
-            .in("user_id", ids);
+            .eq("organization_id", organizationId)
+            .in("user_id", ids)
+            .eq("is_active", true);
           if (rolesErr) throw rolesErr;
           (rolesRows || []).forEach(r => { rolesById[r.user_id] = r.role; });
         }
@@ -507,51 +516,148 @@ export default function UserManagement() {
       const validated = createUserSchema.parse(formData);
       setLoading(true);
 
-      // Create a temporary client with no session persistence so admin session isn't replaced
-      const tempSupabase = createClient<Database>(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            storage: undefined,
-          },
-        }
-      );
+      // Use Admin API to create user with auto-confirmation
+      // Account is created and activated immediately
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+      
+      let authData: { user: { id: string; email: string } } | null = null;
+      let authError: any = null;
 
-      // Create user using signup (this will send confirmation email)
-      const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-        email: validated.email,
-        password: validated.password,
-        options: {
-          data: {
-            name: validated.name,
+      if (serviceRoleKey) {
+        // Use Admin API with service role key (auto-confirms email)
+        try {
+          const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'Content-Type': 'application/json',
+              'apikey': serviceRoleKey,
+            },
+            body: JSON.stringify({
+              email: validated.email,
+              password: validated.password,
+              email_confirm: true, // Auto-confirm email
+              user_metadata: {
+                name: validated.name,
+                organization_id: organizationId, // Pass organization_id in metadata
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            if (errorData.message?.includes("already registered") || errorData.message?.includes("already exists")) {
+              throw new Error("An account with this email already exists");
+            }
+            throw new Error(errorData.message || `Failed to create user: ${response.statusText}`);
+          }
+
+          const userData = await response.json();
+          authData = { user: { id: userData.id, email: userData.email } };
+        } catch (error: any) {
+          authError = error;
+        }
+      } else {
+        // Fallback to regular signup if service role key not available
+        // Create a temporary client with no session persistence so admin session isn't replaced
+        const tempSupabase = createClient<Database>(
+          supabaseUrl,
+          import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              storage: undefined,
+            },
+          }
+        );
+
+        // Create user using signup (fallback method)
+        const result = await tempSupabase.auth.signUp({
+          email: validated.email,
+          password: validated.password,
+          options: {
+            data: {
+              name: validated.name,
+              organization_id: organizationId,
+            },
+            email_redirect_to: undefined, // Don't redirect
           },
-        },
-      });
+        });
+
+        authData = result.data;
+        authError = result.error;
+      }
 
       if (authError) {
         // Handle specific error cases
-        if (authError.message.includes("already registered")) {
+        if (authError.message?.includes("already registered") || authError.message?.includes("already exists")) {
           throw new Error("An account with this email already exists");
+        }
+        if (authError.message?.includes("Email not confirmed")) {
+          throw new Error("User creation failed. Please ensure VITE_SUPABASE_SERVICE_ROLE_KEY is set in your .env.local file.");
         }
         throw authError;
       }
 
-      if (!authData.user) {
+      if (!authData?.user) {
         throw new Error("Failed to create user");
       }
 
-      // Assign role to the user
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: authData.user.id,
-          role: validated.role,
-        });
+      if (!organizationId) {
+        throw new Error("Organization not found. Please contact support.");
+      }
 
-      if (roleError) throw roleError;
+      // Use assign_user_to_organization function which handles conflicts properly
+      // This will create/update profile and organization membership
+      const { error: assignError } = await supabase.rpc('assign_user_to_organization', {
+        p_user_id: authData.user.id,
+        p_organization_id: organizationId,
+        p_role: validated.role
+      });
+
+      if (assignError) {
+        // If RPC fails, fall back to manual insert with conflict handling
+        // Update profile (trigger may have created it already)
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .upsert({
+            user_id: authData.user.id,
+            name: validated.name,
+            email: validated.email,
+            organization_id: organizationId,
+            is_active: true,
+          }, {
+            onConflict: 'user_id'
+          });
+
+        if (profileError) throw profileError;
+
+        // Create organization membership
+        const { error: membershipError } = await supabase
+          .from("organization_memberships")
+          .upsert({
+            organization_id: organizationId,
+            user_id: authData.user.id,
+            role: validated.role,
+            is_active: true,
+          }, {
+            onConflict: 'organization_id,user_id'
+          });
+
+        if (membershipError) throw membershipError;
+      } else {
+        // If RPC succeeded, update the name if needed (RPC uses name from auth metadata)
+        if (validated.name !== (authData.user.user_metadata?.name || 'New User')) {
+          const { error: nameUpdateError } = await supabase
+            .from("profiles")
+            .update({ name: validated.name })
+            .eq("user_id", authData.user.id);
+          
+          if (nameUpdateError) console.error("Failed to update name:", nameUpdateError);
+        }
+      }
 
       // If creating an employee and an engineer is chosen, link them
       if (validated.role === "employee" && formData.reportingEngineerId && formData.reportingEngineerId !== "none") {
@@ -599,7 +705,9 @@ export default function UserManagement() {
           if (profilesWithLocation && profilesWithLocation.length > 0) {
             const userIds = profilesWithLocation.map(p => p.user_id);
             const { data: cashierRoles, error: rolesError } = await supabase
-              .from("user_roles")
+              .from("organization_memberships")
+              .eq("organization_id", organizationId!)
+              .eq("is_active", true)
               .select("user_id")
               .in("user_id", userIds)
               .eq("role", "cashier");
@@ -668,7 +776,7 @@ export default function UserManagement() {
 
       toast({
         title: "User Created Successfully",
-        description: `${validated.name} has been created as ${validated.role}. They will receive an email to confirm their account.`,
+        description: `${validated.name} has been created as ${validated.role}. Account is active and ready to use.`,
       });
 
       // Reset form
@@ -844,7 +952,9 @@ export default function UserManagement() {
           if (profilesWithLocation && profilesWithLocation.length > 0) {
             const userIds = profilesWithLocation.map(p => p.user_id);
             const { data: cashierRoles, error: rolesError } = await supabase
-              .from("user_roles")
+              .from("organization_memberships")
+              .eq("organization_id", organizationId!)
+              .eq("is_active", true)
               .select("user_id")
               .in("user_id", userIds)
               .eq("role", "cashier");
@@ -906,21 +1016,15 @@ export default function UserManagement() {
         }
       }
 
-      // Update role - delete old role(s) first, then insert new one
-      // This avoids unique constraint violations
-      const { error: deleteOldRolesError } = await supabase
-        .from("user_roles")
-        .delete()
+      // Update role - update existing membership
+      if (!organizationId) throw new Error("Organization not found");
+      const { error: updateRoleError } = await supabase
+        .from("organization_memberships")
+        .update({ role: editFormData.role })
+        .eq("organization_id", organizationId)
         .eq("user_id", userToEdit.user_id);
 
-      if (deleteOldRolesError) throw deleteOldRolesError;
-
-      // Insert new role
-      const { error: insertRoleError } = await supabase
-        .from("user_roles")
-        .insert({ user_id: userToEdit.user_id, role: editFormData.role });
-
-      if (insertRoleError) throw insertRoleError;
+      if (updateRoleError) throw updateRoleError;
 
       // Update engineer locations if role is engineer
       if (editFormData.role === "engineer") {
@@ -989,7 +1093,9 @@ export default function UserManagement() {
           let rolesById: Record<string, string> = {};
           if (ids.length > 0) {
             const { data: rolesRows, error: rolesErr } = await supabase
-              .from("user_roles")
+              .from("organization_memberships")
+              .eq("organization_id", organizationId!)
+              .eq("is_active", true)
               .select("user_id, role")
               .in("user_id", ids);
             if (rolesErr) throw rolesErr;
@@ -1194,10 +1300,12 @@ export default function UserManagement() {
     try {
       setDeleting(true);
 
-      // Delete from user_roles first
+      // Delete organization membership first
+      if (!organizationId) throw new Error("Organization not found");
       const { error: roleError } = await supabase
-        .from("user_roles")
+        .from("organization_memberships")
         .delete()
+        .eq("organization_id", organizationId)
         .eq("user_id", userToDelete.user_id);
 
       if (roleError) throw roleError;
@@ -1235,7 +1343,9 @@ export default function UserManagement() {
           let rolesById: Record<string, string> = {};
           if (ids.length > 0) {
             const { data: rolesRows, error: rolesErr } = await supabase
-              .from("user_roles")
+              .from("organization_memberships")
+              .eq("organization_id", organizationId!)
+              .eq("is_active", true)
               .select("user_id, role")
               .in("user_id", ids);
             if (rolesErr) throw rolesErr;
@@ -2293,11 +2403,11 @@ export default function UserManagement() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>User receives confirmation email</span>
+                      <span>Account is created and activated immediately</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>Account activated after email confirmation</span>
+                      <span>User can sign in right away</span>
                     </div>
                   </div>
                 </div>

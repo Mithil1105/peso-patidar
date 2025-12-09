@@ -19,7 +19,7 @@ interface NotificationSettings {
 }
 
 export default function Settings() {
-  const { userRole, user } = useAuth();
+  const { userRole, user, organizationId } = useAuth();
   const { toast } = useToast();
   
   // Admin settings
@@ -60,9 +60,14 @@ export default function Settings() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
+      if (!organizationId) {
+        setLoading(false);
+        return;
+      }
       const { data: settingsData, error } = await supabase
         .from("settings")
         .select("*")
+        .eq("organization_id", organizationId)
         .in("key", ["engineer_approval_limit", "attachment_required_above_amount"]);
 
       if (error) {
@@ -126,24 +131,35 @@ export default function Settings() {
         return;
       }
 
-      // Upsert both settings
+      if (!organizationId) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Organization not found. Please contact support.",
+        });
+        return;
+      }
+
+      // Upsert both settings with organization_id
       const { error } = await supabase
         .from("settings")
         .upsert([
           {
             key: "engineer_approval_limit",
             value: limitValue.toString(),
+            organization_id: organizationId,
             description: "Maximum amount (in rupees) that engineers can approve directly. Expenses below this limit can be approved by engineers, above this limit must go to admin.",
             updated_at: new Date().toISOString(),
           },
           {
             key: "attachment_required_above_amount",
             value: attachmentLimitValue.toString(),
+            organization_id: organizationId,
             description: "Amount threshold (in rupees) above which bill attachments become mandatory. Expenses at or below this amount do not require attachments.",
             updated_at: new Date().toISOString(),
           }
         ], {
-          onConflict: "key"
+          onConflict: "key,organization_id"
         });
 
       if (error) {
@@ -251,9 +267,14 @@ export default function Settings() {
   const fetchLocations = async () => {
     try {
       setLoadingLocations(true);
+      if (!organizationId) {
+        setLoadingLocations(false);
+        return;
+      }
       const { data, error } = await supabase
         .from("locations")
         .select("id, name")
+        .eq("organization_id", organizationId)
         .order("name", { ascending: true });
 
       if (error) throw error;
@@ -293,12 +314,22 @@ export default function Settings() {
 
     try {
       setSavingLocation(true);
+      if (!organizationId) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Organization not found. Please contact support.",
+        });
+        return;
+      }
+
       if (locationToEdit) {
         // Update existing location
         const { error } = await supabase
           .from("locations")
           .update({ name: locationName.trim(), updated_at: new Date().toISOString() })
-          .eq("id", locationToEdit.id);
+          .eq("id", locationToEdit.id)
+          .eq("organization_id", organizationId);
 
         if (error) throw error;
         toast({
@@ -306,10 +337,13 @@ export default function Settings() {
           description: `Location "${locationName}" has been updated successfully`,
         });
       } else {
-        // Create new location
+        // Create new location with organization_id
         const { error } = await supabase
           .from("locations")
-          .insert({ name: locationName.trim() });
+          .insert({ 
+            name: locationName.trim(),
+            organization_id: organizationId
+          });
 
         if (error) throw error;
         toast({
@@ -343,10 +377,19 @@ export default function Settings() {
 
     try {
       setDeletingLocation(true);
+      if (!organizationId) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Organization not found.",
+        });
+        return;
+      }
       const { error } = await supabase
         .from("locations")
         .delete()
-        .eq("id", locationToDelete.id);
+        .eq("id", locationToDelete.id)
+        .eq("organization_id", organizationId);
 
       if (error) throw error;
       toast({

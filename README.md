@@ -67,8 +67,11 @@ Create a `.env.local` file in the root directory:
 
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+VITE_SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
+
+**Important**: The `VITE_SUPABASE_SERVICE_ROLE_KEY` is required for admins to create users. Accounts are created and activated immediately. You can find your service role key in Supabase Dashboard > Settings > API.
 
 ### 4. Database Setup
 

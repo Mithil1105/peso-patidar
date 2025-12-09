@@ -16,12 +16,15 @@ import { useNotificationManager } from "@/hooks/useNotificationManager";
 import { NotificationPopup } from "@/components/NotificationPopup";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { userProfile, userRole, user, refreshUserProfile } = useAuth();
+  const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization } = useAuth();
   const { toast } = useToast();
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [orgNameDraft, setOrgNameDraft] = useState("");
+  const [editingOrgName, setEditingOrgName] = useState(false);
+  const [savingOrgName, setSavingOrgName] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -56,6 +59,56 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const saveOrgName = async () => {
+    if (!organizationId || !orgNameDraft.trim()) return;
+    
+    try {
+      setSavingOrgName(true);
+      const { error } = await supabase
+        .from("organizations")
+        .update({ name: orgNameDraft.trim() })
+        .eq("id", organizationId);
+      
+      if (error) throw error;
+      
+      // Refresh organization data
+      if (user?.id) {
+        const { data: membership } = await supabase
+          .from("organization_memberships")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .maybeSingle();
+        
+        if (membership?.organization_id) {
+          const { data: orgData } = await supabase
+            .from("organizations")
+            .select("id, name, slug, plan")
+            .eq("id", membership.organization_id)
+            .single();
+          
+          // Update context would require refreshing, but for now just close edit mode
+        }
+      }
+      
+      setEditingOrgName(false);
+      await refreshOrganization();
+      toast({
+        title: "Organization Updated",
+        description: "Organization name has been updated successfully",
+      });
+    } catch (e: any) {
+      console.error("Failed to update organization name", e);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: e.message || "Failed to update organization name",
+      });
+    } finally {
+      setSavingOrgName(false);
+    }
+  };
+
   useEffect(() => {
     if (user && (userRole === 'employee' || userRole === 'engineer' || userRole === 'cashier')) {
       fetchUserBalance();
@@ -65,6 +118,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       return cleanup;
     }
   }, [user, userRole]);
+
+  useEffect(() => {
+    if (organization?.name && !editingOrgName) {
+      setOrgNameDraft(organization.name);
+    }
+  }, [organization?.name, editingOrgName]);
 
   const fetchUserBalance = async () => {
     try {
@@ -152,11 +211,64 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   className="h-5 w-auto sm:h-6 md:h-8 flex-shrink-0 hidden sm:block"
                 />
               <div className="flex-1 min-w-0 overflow-hidden">
-                <h1 className="text-xs sm:text-sm md:text-base font-semibold text-gray-900 truncate">
-                  PesoWise - Powered by Unimisk
-                </h1>
+                {editingOrgName && userRole === 'admin' ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={orgNameDraft}
+                      onChange={(e) => setOrgNameDraft(e.target.value)}
+                      className="h-7 text-xs sm:text-sm md:text-base font-semibold"
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          await saveOrgName();
+                        } else if (e.key === 'Escape') {
+                          setEditingOrgName(false);
+                          setOrgNameDraft(organization?.name || '');
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2"
+                      onClick={saveOrgName}
+                      disabled={savingOrgName || !orgNameDraft.trim()}
+                    >
+                      {savingOrgName ? '...' : '✓'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2"
+                      onClick={() => {
+                        setEditingOrgName(false);
+                        setOrgNameDraft(organization?.name || '');
+                      }}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <h1 
+                      className="text-xs sm:text-sm md:text-base font-semibold text-gray-900 truncate cursor-pointer hover:text-gray-700"
+                      onClick={() => {
+                        if (userRole === 'admin') {
+                          setOrgNameDraft(organization?.name || '');
+                          setEditingOrgName(true);
+                        }
+                      }}
+                      title={userRole === 'admin' ? 'Click to edit organization name' : ''}
+                    >
+                      {organization?.name || 'Organization'}
+                    </h1>
+                    {userRole === 'admin' && (
+                      <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    )}
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 hidden sm:block truncate">
-                    Petty Cash management app
+                  PesoWise - Powered by Unimisk • Petty Cash management app
                 </p>
                 </div>
               </div>

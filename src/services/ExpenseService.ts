@@ -10,6 +10,19 @@ import {
   notifyExpenseVerifiedToAdmin
 } from "./NotificationService";
 
+// Helper function to get user's organization_id
+async function getUserOrganizationId(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("organization_memberships")
+    .select("organization_id")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+  
+  if (error || !data) return null;
+  return data.organization_id;
+}
+
 type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseInsert = Database["public"]["Tables"]["expenses"]["Insert"];
 type ExpenseUpdate = Database["public"]["Tables"]["expenses"]["Update"];
@@ -52,6 +65,12 @@ export class ExpenseService {
     userId: string,
     data: CreateExpenseData
   ): Promise<ExpenseWithLineItems> {
+    // Get user's organization_id
+    const organizationId = await getUserOrganizationId(userId);
+    if (!organizationId) {
+      throw new Error("User is not associated with an organization");
+    }
+
     // No line items in creation flow; use provided amount as total
     const totalAmount = Number(data.amount || 0);
 
@@ -60,6 +79,7 @@ export class ExpenseService {
       .from("expenses")
       .insert({
         user_id: userId,
+        organization_id: organizationId,
         title: data.title,
         destination: data.destination,
         trip_start: data.trip_start,
@@ -81,7 +101,7 @@ export class ExpenseService {
     const lineItems: LineItem[] = [];
 
     // Log the action
-    await this.logAction(expense.id, userId, "expense_created", "Expense created");
+    await this.logAction(expense.id, userId, organizationId, "expense_created", "Expense created");
 
     return {
       ...expense,
@@ -98,17 +118,24 @@ export class ExpenseService {
     userId: string,
     data: UpdateExpenseData
   ): Promise<ExpenseWithLineItems> {
+    // Get user's organization_id
+    const organizationId = await getUserOrganizationId(userId);
+    if (!organizationId) {
+      throw new Error("User is not associated with an organization");
+    }
+
     // Check if user can edit this expense
-    const canEdit = await this.canUserEditExpense(expenseId, userId);
+    const canEdit = await this.canUserEditExpense(expenseId, userId, organizationId);
     if (!canEdit) {
       throw new Error("You don't have permission to edit this expense");
     }
 
-    // Get current expense
+    // Get current expense (filtered by organization)
     const { data: currentExpense, error: fetchError } = await supabase
       .from("expenses")
       .select("*")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (fetchError) throw fetchError;
@@ -142,7 +169,7 @@ export class ExpenseService {
 
     // Log the action
     const action = data.status ? `status_changed_to_${data.status}` : "expense_updated";
-    await this.logAction(expenseId, userId, action, data.admin_comment);
+    await this.logAction(expenseId, userId, organizationId, action, data.admin_comment);
 
     return {
       ...updatedExpense,
@@ -155,24 +182,30 @@ export class ExpenseService {
    * If user is admin, automatically approves and deducts from their balance
    */
   static async submitExpense(expenseId: string, userId: string): Promise<Expense> {
-    // Get current expense first to check ownership
+    // Get user's organization_id
+    const organizationId = await getUserOrganizationId(userId);
+    if (!organizationId) {
+      throw new Error("User is not associated with an organization");
+    }
+
+    // Get current expense first to check ownership (filtered by organization)
     const { data: expense, error: fetchError } = await supabase
       .from("expenses")
       .select("*")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (fetchError) throw fetchError;
 
-    // Check if attachments are required based on amount
-    // @ts-ignore - settings table exists but not in types
-    const { data: attachmentLimitSetting } = await supabase
-      .from("settings")
-      .select("value")
-      .eq("key", "attachment_required_above_amount")
-      .maybeSingle();
+    // Check if attachments are required based on amount (from organization_settings)
+    const { data: orgSettings } = await supabase
+      .from("organization_settings")
+      .select("attachment_required_above_amount")
+      .eq("organization_id", organizationId)
+      .single();
     
-    const attachmentLimit = attachmentLimitSetting ? parseFloat((attachmentLimitSetting as any).value) : 50; // Default ₹50
+    const attachmentLimit = orgSettings?.attachment_required_above_amount || 50;
     const expenseAmount = Number(expense.total_amount);
     const requiresAttachment = expenseAmount > attachmentLimit;
 
@@ -196,7 +229,7 @@ export class ExpenseService {
     }
 
     // Check if user is an admin and this is their own expense - if so, auto-approve and auto-deduct
-    const isAdmin = await this.hasRole(userId, "admin");
+    const isAdmin = await this.hasOrgRole(userId, organizationId, "admin");
     
     if (isAdmin && expense.user_id === userId) {
       // Admin's own expense - auto-approve and auto-deduct (allows negative balance)
@@ -224,7 +257,7 @@ export class ExpenseService {
     // Line items are not required anymore for submission
 
     // Check if user is an engineer
-    const isEngineer = await this.hasRole(userId, "engineer");
+    const isEngineer = await this.hasOrgRole(userId, organizationId, "engineer");
 
     if (isEngineer) {
       // Engineers' expenses go directly to admin (no engineer assignment)
@@ -238,6 +271,7 @@ export class ExpenseService {
         .from("expenses")
         .update(updatePayload)
         .eq("id", expenseId)
+        .eq("organization_id", organizationId)
         .select()
         .single();
 
@@ -245,13 +279,14 @@ export class ExpenseService {
 
       // Log the action
       const logMsg = `Expense submitted by engineer - sent directly to admin`;
-      await this.logAction(expenseId, userId, "expense_submitted", logMsg);
+      await this.logAction(expenseId, userId, organizationId, "expense_submitted", logMsg);
 
-      // Get expense title and employee name
+      // Get expense title and employee name (filtered by organization)
       const { data: expenseData } = await supabase
         .from("expenses")
         .select("title")
         .eq("id", expenseId)
+        .eq("organization_id", organizationId)
         .single();
 
       const { data: employeeProfile } = await supabase
@@ -260,13 +295,15 @@ export class ExpenseService {
         .eq("user_id", userId)
         .single();
 
-      // Get all admin user IDs
-      const { data: adminRoles } = await supabase
-        .from("user_roles")
+      // Get all admin user IDs in this organization
+      const { data: adminMemberships } = await supabase
+        .from("organization_memberships")
         .select("user_id")
-        .eq("role", "admin");
+        .eq("organization_id", organizationId)
+        .eq("role", "admin")
+        .eq("is_active", true);
 
-      const adminUserIds = adminRoles?.map(r => r.user_id) || [];
+      const adminUserIds = adminMemberships?.map(m => m.user_id) || [];
 
       // Notify all admins
       if (expenseData && adminUserIds.length > 0) {
@@ -326,7 +363,7 @@ export class ExpenseService {
     if (profile?.reporting_engineer_id) {
       // Employee has reporting engineer - assign to engineer and notify them
       const logMsg = `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`;
-      await this.logAction(expenseId, userId, "expense_submitted", logMsg);
+      await this.logAction(expenseId, userId, organizationId, "expense_submitted", logMsg);
 
       // Notify assigned engineer
       if (expenseData) {
@@ -340,15 +377,17 @@ export class ExpenseService {
     } else {
       // Employee has no reporting engineer - send directly to admin
       const logMsg = `Expense submitted by employee without assigned engineer - sent directly to admin`;
-      await this.logAction(expenseId, userId, "expense_submitted", logMsg);
+      await this.logAction(expenseId, userId, organizationId, "expense_submitted", logMsg);
 
-      // Get all admin user IDs
-      const { data: adminRoles } = await supabase
-        .from("user_roles")
+      // Get all admin user IDs in this organization
+      const { data: adminMemberships } = await supabase
+        .from("organization_memberships")
         .select("user_id")
-        .eq("role", "admin");
+        .eq("organization_id", organizationId)
+        .eq("role", "admin")
+        .eq("is_active", true);
 
-      const adminUserIds = adminRoles?.map(r => r.user_id) || [];
+      const adminUserIds = adminMemberships?.map(m => m.user_id) || [];
 
       // Notify all admins
       if (expenseData && adminUserIds.length > 0) {
@@ -373,19 +412,25 @@ export class ExpenseService {
     engineerId: string,
     adminId: string
   ): Promise<Expense> {
+    // Get admin's organization_id
+    const organizationId = await getUserOrganizationId(adminId);
+    if (!organizationId) {
+      throw new Error("Admin is not associated with an organization");
+    }
+
     // Check if admin has permission
-    const isAdmin = await this.hasRole(adminId, "admin");
+    const isAdmin = await this.hasOrgRole(adminId, organizationId, "admin");
     if (!isAdmin) {
       throw new Error("Only administrators can assign expenses to engineers");
     }
 
-    // Check if engineer exists and has engineer role
-    const isEngineer = await this.hasRole(engineerId, "engineer");
+    // Check if engineer exists and has engineer role in same organization
+    const isEngineer = await this.hasOrgRole(engineerId, organizationId, "engineer");
     if (!isEngineer) {
-      throw new Error("Assigned user must have engineer role");
+      throw new Error("Assigned user must have engineer role in your organization");
     }
 
-    // Update expense
+    // Update expense (filtered by organization)
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
       .update({
@@ -394,13 +439,14 @@ export class ExpenseService {
         updated_at: new Date().toISOString(),
       })
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .select()
       .single();
 
     if (updateError) throw updateError;
 
     // Log the action
-    await this.logAction(expenseId, adminId, "expense_assigned", `Assigned to engineer ${engineerId}`);
+    await this.logAction(expenseId, adminId, organizationId, "expense_assigned", `Assigned to engineer ${engineerId}`);
 
     return updatedExpense;
   }
@@ -413,17 +459,24 @@ export class ExpenseService {
     engineerId: string,
     comment?: string
   ): Promise<Expense> {
+    // Get engineer's organization_id
+    const organizationId = await getUserOrganizationId(engineerId);
+    if (!organizationId) {
+      throw new Error("Engineer is not associated with an organization");
+    }
+
     // Check if engineer has permission
-    const canReview = await this.canEngineerReviewExpense(expenseId, engineerId);
+    const canReview = await this.canEngineerReviewExpense(expenseId, engineerId, organizationId);
     if (!canReview) {
       throw new Error("You don't have permission to review this expense");
     }
 
-    // Ensure expense is not finalized
+    // Ensure expense is not finalized (filtered by organization)
     const { data: current, error: curErr } = await supabase
       .from("expenses")
       .select("status")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
     if (curErr) throw curErr;
     if (current.status === "approved") {
@@ -433,7 +486,7 @@ export class ExpenseService {
       throw new Error("Only submitted expenses can be verified");
     }
 
-    // Update expense status to verified
+    // Update expense status to verified (filtered by organization)
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
       .update({
@@ -441,19 +494,21 @@ export class ExpenseService {
         updated_at: new Date().toISOString(),
       })
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .select()
       .single();
 
     if (updateError) throw updateError;
 
     // Log the action
-    await this.logAction(expenseId, engineerId, "expense_verified", comment);
+    await this.logAction(expenseId, engineerId, organizationId, "expense_verified", comment);
 
-    // Get expense details and employee info for notification
+    // Get expense details and employee info for notification (filtered by organization)
     const { data: expenseData, error: expenseFetchError } = await supabase
       .from("expenses")
       .select("title, user_id, total_amount")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (!expenseFetchError && expenseData) {
@@ -479,25 +534,26 @@ export class ExpenseService {
         engineerProfile?.name || "Engineer"
       );
 
-      // Check if expense is above threshold - if so, notify admins
-      // @ts-ignore - settings table exists but not in types
-      const { data: limitSetting } = await supabase
-        .from("settings")
-        .select("value")
-        .eq("key", "engineer_approval_limit")
-        .maybeSingle();
+      // Check if expense is above threshold - if so, notify admins (from organization_settings)
+      const { data: orgSettings } = await supabase
+        .from("organization_settings")
+        .select("engineer_approval_limit")
+        .eq("organization_id", organizationId)
+        .single();
       
-      const approvalLimit = limitSetting ? parseFloat((limitSetting as any).value) : 50000;
+      const approvalLimit = orgSettings?.engineer_approval_limit || 50000;
       const expenseAmount = Number(expenseData.total_amount);
       
-      // If expense is at or above threshold, notify all admins
+      // If expense is at or above threshold, notify all admins in organization
       if (expenseAmount >= approvalLimit) {
-        const { data: adminRoles } = await supabase
-          .from("user_roles")
+        const { data: adminMemberships } = await supabase
+          .from("organization_memberships")
           .select("user_id")
-          .eq("role", "admin");
+          .eq("organization_id", organizationId)
+          .eq("role", "admin")
+          .eq("is_active", true);
         
-        const adminUserIds = adminRoles?.map(r => r.user_id) || [];
+        const adminUserIds = adminMemberships?.map(m => m.user_id) || [];
         
         if (adminUserIds.length > 0) {
           await notifyExpenseVerifiedToAdmin(
@@ -523,18 +579,25 @@ export class ExpenseService {
     approverId: string,
     comment?: string
   ): Promise<Expense> {
-    // Check if approver has permission (admin or engineer)
-    const isAdmin = await this.hasRole(approverId, "admin");
-    const isEngineer = await this.hasRole(approverId, "engineer");
+    // Get approver's organization_id
+    const organizationId = await getUserOrganizationId(approverId);
+    if (!organizationId) {
+      throw new Error("Approver is not associated with an organization");
+    }
+
+    // Check if approver has permission (admin or engineer) in this organization
+    const isAdmin = await this.hasOrgRole(approverId, organizationId, "admin");
+    const isEngineer = await this.hasOrgRole(approverId, organizationId, "engineer");
     if (!isAdmin && !isEngineer) {
       throw new Error("Only administrators or engineers can approve expenses");
     }
 
-    // Fetch expense first for amount and user_id
+    // Fetch expense first for amount and user_id (filtered by organization)
     const { data: expense, error: fetchError } = await supabase
       .from('expenses')
       .select('id, user_id, total_amount, title, status')
       .eq('id', expenseId)
+      .eq('organization_id', organizationId)
       .single();
 
     if (fetchError) throw fetchError;
@@ -552,19 +615,18 @@ export class ExpenseService {
     
     // Check engineer approval limit if engineer is trying to approve
     if (isEngineer) {
-      // @ts-ignore - settings table exists but not in types
-      const { data: limitSetting, error: limitError } = await supabase
-        .from("settings")
-        .select("value")
-        .eq("key", "engineer_approval_limit")
-        .maybeSingle();
+      const { data: orgSettings, error: limitError } = await supabase
+        .from("organization_settings")
+        .select("engineer_approval_limit")
+        .eq("organization_id", organizationId)
+        .single();
       
       if (limitError) {
         console.error("Error fetching engineer approval limit:", limitError);
         throw new Error("Unable to verify approval limit. Please contact administrator.");
       }
       
-      const approvalLimit = limitSetting ? parseFloat((limitSetting as any).value) : 50000; // Default to 50000 if not set
+      const approvalLimit = orgSettings?.engineer_approval_limit || 50000; // Default to 50000 if not set
       const expenseAmount = Number(expense.total_amount);
       
       console.log("Manager approval check:", { 
@@ -590,19 +652,20 @@ export class ExpenseService {
     
     // If admin is approving a submitted expense, auto-verify it first
     if (isAdmin && expense.status === "submitted") {
-      // Auto-verify: Update status to verified first
+      // Auto-verify: Update status to verified first (filtered by organization)
       const { error: verifyError } = await supabase
         .from("expenses")
         .update({
           status: "verified",
           updated_at: new Date().toISOString(),
         })
-        .eq("id", expenseId);
+        .eq("id", expenseId)
+        .eq("organization_id", organizationId);
       
       if (verifyError) throw verifyError;
       
       // Log the auto-verification
-      await this.logAction(expenseId, approverId, "expense_verified", "Auto-verified by admin during approval");
+      await this.logAction(expenseId, approverId, organizationId, "expense_verified", "Auto-verified by admin during approval");
       
       // Get admin name for notification
       const { data: adminProfile } = await supabase
@@ -638,7 +701,7 @@ export class ExpenseService {
     // Allow negative balances - expense can be approved even if balance is insufficient
     // The balance will go negative and can be compensated later when balance is added
 
-    // Update expense
+    // Update expense (filtered by organization)
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
       .update({
@@ -647,6 +710,7 @@ export class ExpenseService {
         updated_at: new Date().toISOString(),
       })
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .select()
       .single();
 
@@ -675,7 +739,7 @@ export class ExpenseService {
     // Log the action with balance information (handles negative balances)
     const balanceStatus = newBalance < 0 ? `Negative balance: ${formatINR(Math.abs(newBalance))}` : `Remaining balance: ${formatINR(newBalance)}`;
     const logComment = `${comment || ''} Balance deducted: ${formatINR(expenseAmount)}. ${balanceStatus}`.trim();
-    await this.logAction(expenseId, approverId, "expense_approved", logComment);
+    await this.logAction(expenseId, approverId, organizationId, "expense_approved", logComment);
 
     // Get approver name for notification
     const { data: approverProfile } = await supabase
@@ -684,8 +748,8 @@ export class ExpenseService {
       .eq("user_id", approverId)
       .single();
 
-    // Check if the expense owner is an engineer
-    const expenseOwnerIsEngineer = await this.hasRole(expense.user_id, "engineer");
+    // Check if the expense owner is an engineer in this organization
+    const expenseOwnerIsEngineer = await this.hasOrgRole(expense.user_id, organizationId, "engineer");
 
     if (expenseOwnerIsEngineer) {
       // Notify engineer that their expense was approved
@@ -718,18 +782,25 @@ export class ExpenseService {
     rejectorId: string,
     comment?: string
   ): Promise<Expense> {
-    // Check if rejector has permission (admin or engineer)
-    const isAdmin = await this.hasRole(rejectorId, "admin");
-    const isEngineer = await this.hasRole(rejectorId, "engineer");
+    // Get rejector's organization_id
+    const organizationId = await getUserOrganizationId(rejectorId);
+    if (!organizationId) {
+      throw new Error("Rejector is not associated with an organization");
+    }
+
+    // Check if rejector has permission (admin or engineer) in this organization
+    const isAdmin = await this.hasOrgRole(rejectorId, organizationId, "admin");
+    const isEngineer = await this.hasOrgRole(rejectorId, organizationId, "engineer");
     if (!isAdmin && !isEngineer) {
       throw new Error("Only administrators or engineers can reject expenses");
     }
 
-    // Fetch expense to check status and get user_id
+    // Fetch expense to check status and get user_id (filtered by organization)
     const { data: expense, error: fetchError } = await supabase
       .from("expenses")
       .select("id, user_id, title, status")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (fetchError) throw fetchError;
@@ -744,13 +815,13 @@ export class ExpenseService {
 
     // For engineers, check if they can review this expense
     if (isEngineer) {
-      const canReview = await this.canEngineerReviewExpense(expenseId, rejectorId);
+      const canReview = await this.canEngineerReviewExpense(expenseId, rejectorId, organizationId);
       if (!canReview) {
         throw new Error("You don't have permission to reject this expense");
       }
     }
 
-    // Update expense
+    // Update expense (filtered by organization)
     const { data: updatedExpense, error: updateError } = await supabase
       .from("expenses")
       .update({
@@ -759,13 +830,14 @@ export class ExpenseService {
         updated_at: new Date().toISOString(),
       })
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .select()
       .single();
 
     if (updateError) throw updateError;
 
     // Log the action
-    await this.logAction(expenseId, rejectorId, "expense_rejected", comment);
+    await this.logAction(expenseId, rejectorId, organizationId, "expense_rejected", comment);
 
     // Get rejector name for notification
     const { data: rejectorProfile } = await supabase
@@ -789,19 +861,27 @@ export class ExpenseService {
   /**
    * Get expense with line items
    */
-  static async getExpense(expenseId: string): Promise<ExpenseWithLineItems | null> {
+  static async getExpense(expenseId: string, userId: string): Promise<ExpenseWithLineItems | null> {
+    // Get user's organization_id
+    const organizationId = await getUserOrganizationId(userId);
+    if (!organizationId) return null;
+
+    // Get expense (filtered by organization)
     const { data: expense, error: expenseError } = await supabase
       .from("expenses")
       .select("*")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (expenseError) return null;
 
+    // Get line items (filtered by organization)
     const { data: lineItems, error: lineItemsError } = await supabase
       .from("expense_line_items")
       .select("*")
-      .eq("expense_id", expenseId);
+      .eq("expense_id", expenseId)
+      .eq("organization_id", organizationId);
 
     if (lineItemsError) return null;
 
@@ -814,16 +894,17 @@ export class ExpenseService {
   /**
    * Check if user can edit expense
    */
-  private static async canUserEditExpense(expenseId: string, userId: string): Promise<boolean> {
-    // Check if user is admin
-    const isAdmin = await this.hasRole(userId, "admin");
+  private static async canUserEditExpense(expenseId: string, userId: string, organizationId: string): Promise<boolean> {
+    // Check if user is admin in this organization
+    const isAdmin = await this.hasOrgRole(userId, organizationId, "admin");
     if (isAdmin) return true;
 
-    // Check if user owns the expense
+    // Check if user owns the expense (filtered by organization)
     const { data: expense, error } = await supabase
       .from("expenses")
       .select("user_id, status")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (error) return false;
@@ -834,11 +915,12 @@ export class ExpenseService {
   /**
    * Check if manager can review expense
    */
-  private static async canEngineerReviewExpense(expenseId: string, engineerId: string): Promise<boolean> {
+  private static async canEngineerReviewExpense(expenseId: string, engineerId: string, organizationId: string): Promise<boolean> {
     const { data: expense, error } = await supabase
       .from("expenses")
       .select("assigned_engineer_id")
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .single();
 
     if (error) return false;
@@ -847,19 +929,21 @@ export class ExpenseService {
   }
 
   /**
-   * Check if user has specific role
+   * Check if user has specific role in organization
    */
-  private static async hasRole(userId: string, role: "admin" | "engineer" | "employee"): Promise<boolean> {
+  private static async hasOrgRole(userId: string, organizationId: string, role: "admin" | "engineer" | "employee" | "cashier"): Promise<boolean> {
     // Return false if userId is empty or invalid
     if (!userId || userId.trim() === "") {
       return false;
     }
 
     const { data, error } = await supabase
-      .from("user_roles")
+      .from("organization_memberships")
       .select("role")
       .eq("user_id", userId)
+      .eq("organization_id", organizationId)
       .eq("role", role)
+      .eq("is_active", true)
       .maybeSingle();
 
     if (error) return false;
@@ -873,6 +957,7 @@ export class ExpenseService {
   private static async logAction(
     expenseId: string,
     userId: string,
+    organizationId: string,
     action: string,
     comment?: string
   ): Promise<void> {
@@ -881,6 +966,7 @@ export class ExpenseService {
       .insert({
         expense_id: expenseId,
         user_id: userId,
+        organization_id: organizationId,
         action,
         comment,
       });
