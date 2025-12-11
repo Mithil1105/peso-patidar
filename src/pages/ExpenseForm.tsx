@@ -573,8 +573,31 @@ export default function ExpenseForm() {
                 type="number"
                 step="0.01"
                 min="0"
-                value={expense.amount || ""}
-                onChange={(e) => setExpense({ ...expense, amount: parseFloat(e.target.value) || 0 })}
+                value={expense.amount === 0 ? "" : expense.amount}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Only update if value is valid number or empty
+                  if (value === "" || value === ".") {
+                    setExpense({ ...expense, amount: 0 });
+                  } else {
+                    const numValue = parseFloat(value);
+                    if (!isNaN(numValue) && numValue >= 0) {
+                      setExpense({ ...expense, amount: numValue });
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  // Ensure value is properly formatted on blur
+                  const value = e.target.value;
+                  if (value === "" || value === ".") {
+                    setExpense({ ...expense, amount: 0 });
+                  } else {
+                    const numValue = parseFloat(value);
+                    if (!isNaN(numValue) && numValue >= 0) {
+                      setExpense({ ...expense, amount: numValue });
+                    }
+                  }
+                }}
                 placeholder="0.00"
               />
             </div>

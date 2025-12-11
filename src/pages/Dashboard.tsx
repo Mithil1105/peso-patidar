@@ -386,35 +386,43 @@ export default function Dashboard() {
           );
         }
 
-        // Calculate total balances from expenses data (sum of expenses by role)
+        // Calculate total balances from actual profile balances (not from expenses)
         try {
-          // Get all user roles to map user_id to role (filtered by organization_id)
-          const { data: allRoles, error: rolesError } = await supabase
-            .from("organization_memberships")
-            .select("user_id, role")
-            .eq("organization_id", organizationId)
-            .eq("is_active", true);
+          // Get all profiles with balances, filtered by organization and role
+          const { data: allProfiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("user_id, balance, organization_id")
+            .eq("organization_id", organizationId);
 
-          if (!rolesError && allRoles) {
-            // Create a map of user_id to role
-            const userRoleMap = new Map(allRoles.map(r => [r.user_id, r.role]));
-            
-            // Calculate totals from expenses by role
-            expenses.forEach(expense => {
-              const role = userRoleMap.get(expense.user_id);
-              const amount = Number(expense.total_amount || 0);
+          if (!profilesError && allProfiles) {
+            // Get all user roles to map user_id to role
+            const { data: allRoles, error: rolesError } = await supabase
+              .from("organization_memberships")
+              .select("user_id, role")
+              .eq("organization_id", organizationId)
+              .eq("is_active", true);
+
+            if (!rolesError && allRoles) {
+              // Create a map of user_id to role
+              const userRoleMap = new Map(allRoles.map(r => [r.user_id, r.role]));
               
-              if (role === "employee") {
-                totalEmployeeBalance += amount;
-              } else if (role === "engineer") {
-                totalEngineerBalance += amount;
-              } else if (role === "cashier") {
-                totalCashierBalance += amount;
-              }
-            });
+              // Calculate totals from actual profile balances by role
+              allProfiles.forEach(profile => {
+                const role = userRoleMap.get(profile.user_id);
+                const balance = Number(profile.balance || 0);
+                
+                if (role === "employee") {
+                  totalEmployeeBalance += balance;
+                } else if (role === "engineer") {
+                  totalEngineerBalance += balance;
+                } else if (role === "cashier") {
+                  totalCashierBalance += balance;
+                }
+              });
+            }
           }
         } catch (error) {
-          console.error("Error calculating total balances from expenses:", error);
+          console.error("Error calculating total balances from profiles:", error);
         }
       }
 
@@ -454,7 +462,7 @@ export default function Dashboard() {
 
   const fetchNotifications = async () => {
     try {
-      if (!user?.id) return;
+      if (!user?.id || !organizationId) return;
 
       // Fetch 2 most recent notifications
       const { data: notificationsData, error: notificationsError } = await supabase
@@ -464,6 +472,7 @@ export default function Dashboard() {
           expenses(title)
         `)
         .eq("user_id", user.id)
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(2);
 
