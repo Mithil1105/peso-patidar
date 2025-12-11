@@ -28,7 +28,7 @@ import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import { Badge } from "@/components/ui/badge";
 
 export function AppSidebar() {
-  const { userRole, signOut } = useAuth();
+  const { userRole, signOut, organization } = useAuth();
   const { unreadCount } = useUnreadNotifications();
 
   const employeeItems = [
@@ -83,9 +83,13 @@ export function AppSidebar() {
         <div className="px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2">
             <img 
-              src="/HERO.png" 
-              alt="Hero" 
-              className="h-8 sm:h-10 w-auto flex-shrink-0"
+              src={organization?.logo_url || "/HERO.png"} 
+              alt={organization?.name || "Logo"} 
+              className="h-8 sm:h-10 w-auto flex-shrink-0 object-contain"
+              onError={(e) => {
+                // Fallback to default logo if organization logo fails to load
+                (e.target as HTMLImageElement).src = "/HERO.png";
+              }}
             />
           </div>
         </div>

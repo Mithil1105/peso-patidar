@@ -206,9 +206,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger className="hover:bg-gray-100 rounded-lg p-2 transition-colors flex-shrink-0" />
               <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3">
                 <img 
-                  src="/HERO.png" 
-                  alt="Hero" 
-                  className="h-5 w-auto sm:h-6 md:h-8 flex-shrink-0 hidden sm:block"
+                  src={organization?.logo_url || "/HERO.png"} 
+                  alt={organization?.name || "Logo"} 
+                  className="h-5 w-auto sm:h-6 md:h-8 flex-shrink-0 hidden sm:block object-contain"
+                  onError={(e) => {
+                    // Fallback to default logo if organization logo fails to load
+                    (e.target as HTMLImageElement).src = "/HERO.png";
+                  }}
                 />
               <div className="flex-1 min-w-0 overflow-hidden">
                 {editingOrgName && userRole === 'admin' ? (

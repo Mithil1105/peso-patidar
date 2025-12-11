@@ -16,6 +16,7 @@ interface Organization {
   name: string;
   slug: string;
   plan: string;
+  logo_url?: string | null;
 }
 
 interface AuthContextType {
@@ -135,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Fetch organization details
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
-        .select("id, name, slug, plan")
+        .select("id, name, slug, plan, logo_url")
         .eq("id", membership.organization_id)
         .single();
 

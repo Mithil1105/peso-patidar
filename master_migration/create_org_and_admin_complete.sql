@@ -20,9 +20,9 @@
 DO $$
 DECLARE
   -- ========== EDIT THESE VALUES ==========
-  org_name TEXT := 'Mistry And Shah';
-  org_slug TEXT := 'mistry-and-shah';  -- lowercase, no spaces, URL-friendly
-  admin_email TEXT := 'admin@mistryandshah.com';
+  org_name TEXT := 'Bikes auto Hero';
+  org_slug TEXT := 'bikes-auto-hero';  -- lowercase, no spaces, URL-friendly
+  admin_email TEXT := 'admin@bill.com';
   admin_password TEXT := 'qwertyui';
   admin_name TEXT := 'Admin User';
   -- ========================================

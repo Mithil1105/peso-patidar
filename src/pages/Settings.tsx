@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Save, Bell, Volume2, VolumeX, MapPin, Plus, Edit, Trash2 } from "lucide-react";
+import { Settings as SettingsIcon, Save, Bell, Volume2, VolumeX, MapPin, Plus, Edit, Trash2, Upload, Image as ImageIcon, X } from "lucide-react";
 import { formatINR } from "@/lib/format";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -19,7 +19,7 @@ interface NotificationSettings {
 }
 
 export default function Settings() {
-  const { userRole, user, organizationId } = useAuth();
+  const { userRole, user, organizationId, organization, refreshOrganization } = useAuth();
   const { toast } = useToast();
   
   // Admin settings
@@ -27,6 +27,11 @@ export default function Settings() {
   const [attachmentRequiredAboveAmount, setAttachmentRequiredAboveAmount] = useState<string>("50");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  
+  // Logo upload
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   
   // Notification settings
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
@@ -411,6 +416,121 @@ export default function Settings() {
     }
   };
 
+  const handleLogoUpload = async () => {
+    if (!logoFile || !organizationId || !user) return;
+
+    try {
+      setUploadingLogo(true);
+
+      // Get file extension
+      const fileExt = logoFile.name.split('.').pop();
+      const fileName = `${organizationId}/logo.${fileExt}`;
+
+      // Upload file to storage
+      const { error: uploadError } = await supabase.storage
+        .from('organization-logos')
+        .upload(fileName, logoFile, {
+          cacheControl: '3600',
+          upsert: true // Replace existing logo
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('organization-logos')
+        .getPublicUrl(fileName);
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get logo URL');
+      }
+
+      // Update organization with logo URL
+      const { error: updateError } = await supabase
+        .from('organizations')
+        .update({ logo_url: urlData.publicUrl })
+        .eq('id', organizationId);
+
+      if (updateError) throw updateError;
+
+      // Refresh organization data
+      await refreshOrganization();
+
+      // Clear file selection
+      setLogoFile(null);
+      setLogoPreview(null);
+
+      toast({
+        title: "Logo Updated",
+        description: "Organization logo has been updated successfully",
+      });
+    } catch (error: any) {
+      console.error("Error uploading logo:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to upload logo",
+      });
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    if (!organizationId || !organization?.logo_url) return;
+
+    try {
+      setUploadingLogo(true);
+
+      // Extract file path from URL
+      // URL format: https://[project].supabase.co/storage/v1/object/public/organization-logos/[org-id]/logo.[ext]
+      const urlParts = organization.logo_url.split('/');
+      const publicIndex = urlParts.findIndex(part => part === 'public');
+      if (publicIndex === -1 || publicIndex >= urlParts.length - 1) {
+        throw new Error('Invalid logo URL format');
+      }
+      // Get everything after 'public/' which should be 'organization-logos/[org-id]/logo.[ext]'
+      const pathAfterPublic = urlParts.slice(publicIndex + 1).join('/');
+      // Remove 'organization-logos/' prefix to get just '[org-id]/logo.[ext]'
+      const fileName = pathAfterPublic.replace('organization-logos/', '');
+
+      // Delete file from storage
+      const { error: deleteError } = await supabase.storage
+        .from('organization-logos')
+        .remove([fileName]);
+
+      if (deleteError) {
+        console.warn("Error deleting logo file:", deleteError);
+        // Continue to remove URL from database even if file deletion fails
+      }
+
+      // Remove logo URL from organization
+      const { error: updateError } = await supabase
+        .from('organizations')
+        .update({ logo_url: null })
+        .eq('id', organizationId);
+
+      if (updateError) throw updateError;
+
+      // Refresh organization data
+      await refreshOrganization();
+
+      toast({
+        title: "Logo Removed",
+        description: "Organization logo has been removed",
+      });
+    } catch (error: any) {
+      console.error("Error deleting logo:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to remove logo",
+      });
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -591,6 +711,126 @@ export default function Settings() {
             )}
           </CardContent>
         </Card>
+
+          {/* Organization Logo */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <ImageIcon className="h-5 w-5" />
+                <CardTitle>Organization Logo</CardTitle>
+              </div>
+              <CardDescription>
+                Upload a custom logo for your organization. This will be displayed in the sidebar and throughout the app.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Current Logo Preview */}
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0">
+                  <div className="h-20 w-20 border-2 border-gray-200 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                    {organization?.logo_url ? (
+                      <img 
+                        src={organization.logo_url} 
+                        alt={organization.name || "Logo"} 
+                        className="h-full w-full object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/HERO.png";
+                        }}
+                      />
+                    ) : logoPreview ? (
+                      <img 
+                        src={logoPreview} 
+                        alt="Preview" 
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <ImageIcon className="h-8 w-8 text-gray-400" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-muted-foreground">
+                    {organization?.logo_url 
+                      ? "Current organization logo" 
+                      : "No logo uploaded. Default logo will be used."}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Recommended: Square image, PNG or JPG, max 5MB
+                  </p>
+                </div>
+              </div>
+
+              {/* Logo Upload */}
+              <div className="space-y-2">
+                <Label htmlFor="logo-upload">Upload New Logo</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="logo-upload"
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        // Validate file size (5MB)
+                        if (file.size > 5 * 1024 * 1024) {
+                          toast({
+                            variant: "destructive",
+                            title: "File too large",
+                            description: "Logo must be less than 5MB",
+                          });
+                          return;
+                        }
+                        setLogoFile(file);
+                        // Create preview
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setLogoPreview(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="max-w-xs"
+                    disabled={uploadingLogo}
+                  />
+                  {logoFile && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setLogoFile(null);
+                        setLogoPreview(null);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Upload/Remove Buttons */}
+              <div className="flex gap-2">
+                {logoFile && (
+                  <Button 
+                    onClick={handleLogoUpload} 
+                    disabled={uploadingLogo || !logoFile}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingLogo ? "Uploading..." : "Upload Logo"}
+                  </Button>
+                )}
+                {organization?.logo_url && !logoFile && (
+                  <Button 
+                    variant="destructive"
+                    onClick={handleLogoDelete}
+                    disabled={uploadingLogo}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove Logo
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Location Management */}
           <Card>
