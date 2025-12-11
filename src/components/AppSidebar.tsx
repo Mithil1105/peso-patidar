@@ -83,6 +83,7 @@ export function AppSidebar() {
         <div className="px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center gap-2">
             <img 
+              key={organization?.logo_url || 'default'}
               src={organization?.logo_url || "/HERO.png"} 
               alt={organization?.name || "Logo"} 
               className="h-8 sm:h-10 w-auto flex-shrink-0 object-contain"

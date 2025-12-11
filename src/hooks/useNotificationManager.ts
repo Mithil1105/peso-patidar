@@ -20,7 +20,7 @@ interface NotificationSettings {
 }
 
 export function useNotificationManager() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const navigate = useNavigate();
   const [activeNotifications, setActiveNotifications] = useState<Notification[]>([]);
   const [settings, setSettings] = useState<NotificationSettings>({
@@ -57,10 +57,13 @@ export function useNotificationManager() {
     // This will check for new notifications every 10 seconds as a backup
     const pollInterval = setInterval(async () => {
       try {
+        if (!organizationId) return;
+        
         const { data: newNotifications, error } = await supabase
           .from("notifications")
           .select("id, type, title, message, expense_id, created_at")
           .eq("user_id", user.id)
+          .eq("organization_id", organizationId)
           .eq("read", false)
           .order("created_at", { ascending: false })
           .limit(5);
@@ -83,7 +86,7 @@ export function useNotificationManager() {
       cleanup();
       clearInterval(pollInterval);
     };
-  }, [user?.id, settings]);
+  }, [user?.id, organizationId, settings]);
 
   const loadSettings = () => {
     try {
@@ -190,7 +193,7 @@ export function useNotificationManager() {
           event: 'INSERT', 
           schema: 'public', 
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id} AND organization_id=eq.${organizationId}`
         }, 
         (payload) => {
           console.log('✅ New notification received via realtime:', payload);
@@ -231,7 +234,7 @@ export function useNotificationManager() {
           event: 'UPDATE',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id} AND organization_id=eq.${organizationId}`
         },
         (payload) => {
           console.log('Notification updated:', payload);

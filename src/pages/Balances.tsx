@@ -23,7 +23,7 @@ interface ProfileRow {
 }
 
 export default function Balances() {
-  const { userRole, user } = useAuth();
+  const { userRole, user, organizationId } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ProfileRow[]>([]);
@@ -141,14 +141,16 @@ export default function Balances() {
       const userIds = (profilesData || []).map(p => p.user_id);
       console.log("User IDs to fetch roles for:", userIds.length);
       
-      // Fetch all roles for these users
+      // Fetch all roles for these users from organization_memberships
       let rolesByUserId: Record<string, string[]> = {};
-      if (userIds.length > 0) {
-        // Supabase .in() has a limit, so we might need to batch if there are many users
-        // But first try the direct query
+      if (userIds.length > 0 && organizationId) {
+        // Fetch roles from organization_memberships table
         const { data: rolesData, error: rolesError } = await supabase
-          .from("user_roles")
-          .select("user_id, role");
+          .from("organization_memberships")
+          .select("user_id, role")
+          .eq("organization_id", organizationId)
+          .eq("is_active", true)
+          .in("user_id", userIds);
         
         if (rolesError) {
           console.error("Error fetching roles:", rolesError);
@@ -157,15 +159,12 @@ export default function Balances() {
         } else {
           console.log("Fetched all roles from database:", rolesData?.length || 0, rolesData);
           
-          // Filter to only roles for users we care about, and group by user_id
+          // Group roles by user_id
           (rolesData || []).forEach((r: any) => {
-            // Only process roles for users in our list
-            if (userIds.includes(r.user_id)) {
-              if (!rolesByUserId[r.user_id]) {
-                rolesByUserId[r.user_id] = [];
-              }
-              rolesByUserId[r.user_id].push(r.role);
+            if (!rolesByUserId[r.user_id]) {
+              rolesByUserId[r.user_id] = [];
             }
+            rolesByUserId[r.user_id].push(r.role);
           });
           
           console.log("Roles filtered and grouped by user:", rolesByUserId);
@@ -183,17 +182,22 @@ export default function Balances() {
       // Combine data and select highest priority role
       let combinedData = (profilesData || []).map((r: any) => {
         const userRoles = rolesByUserId[r.user_id] || [];
-        let highestPriorityRole = 'employee';
+        let highestPriorityRole = 'employee'; // Default fallback
         let highestPriority = 0;
         
         // Find the role with highest priority
-        userRoles.forEach((role: string) => {
-          const priority = rolePriority[role] || 0;
-          if (priority > highestPriority) {
-            highestPriority = priority;
-            highestPriorityRole = role;
-          }
-        });
+        if (userRoles.length > 0) {
+          userRoles.forEach((role: string) => {
+            const priority = rolePriority[role] || 0;
+            if (priority > highestPriority) {
+              highestPriority = priority;
+              highestPriorityRole = role;
+            }
+          });
+        } else {
+          // If no role found, log a warning but keep default
+          console.warn(`No role found for user ${r.name} (${r.user_id}) in organization ${organizationId}`);
+        }
         
         console.log(`User ${r.name} (${r.user_id}): roles=${JSON.stringify(userRoles)}, selected=${highestPriorityRole}`);
         

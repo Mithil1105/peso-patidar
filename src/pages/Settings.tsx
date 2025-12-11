@@ -422,21 +422,65 @@ export default function Settings() {
     try {
       setUploadingLogo(true);
 
+      // First, delete any existing logo files for this organization
+      if (organization?.logo_url) {
+        try {
+          const urlParts = organization.logo_url.split('/');
+          const publicIndex = urlParts.findIndex(part => part === 'public');
+          if (publicIndex !== -1 && publicIndex < urlParts.length - 1) {
+            const pathAfterPublic = urlParts.slice(publicIndex + 1).join('/');
+            const fileName = pathAfterPublic.replace('organization-logos/', '');
+            
+            // Delete old file
+            await supabase.storage
+              .from('organization-logos')
+              .remove([fileName]);
+          }
+        } catch (deleteError) {
+          console.warn("Error deleting old logo:", deleteError);
+          // Continue with upload even if deletion fails
+        }
+      }
+
+      // Also try to delete any existing logo files with different extensions
+      try {
+        const { data: existingFiles } = await supabase.storage
+          .from('organization-logos')
+          .list(organizationId);
+        
+        if (existingFiles && existingFiles.length > 0) {
+          const filesToDelete = existingFiles
+            .filter(file => file.name.startsWith('logo.'))
+            .map(file => `${organizationId}/${file.name}`);
+          
+          if (filesToDelete.length > 0) {
+            await supabase.storage
+              .from('organization-logos')
+              .remove(filesToDelete);
+          }
+        }
+      } catch (listError) {
+        console.warn("Error listing existing files:", listError);
+        // Continue with upload
+      }
+
       // Get file extension
       const fileExt = logoFile.name.split('.').pop();
-      const fileName = `${organizationId}/logo.${fileExt}`;
+      // Add timestamp to filename to ensure uniqueness and prevent caching
+      const timestamp = Date.now();
+      const fileName = `${organizationId}/logo_${timestamp}.${fileExt}`;
 
       // Upload file to storage
       const { error: uploadError } = await supabase.storage
         .from('organization-logos')
         .upload(fileName, logoFile, {
-          cacheControl: '3600',
-          upsert: true // Replace existing logo
+          cacheControl: '0', // No cache
+          upsert: false // Don't overwrite, use unique filename
         });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
+      // Get public URL with cache-busting query parameter
       const { data: urlData } = supabase.storage
         .from('organization-logos')
         .getPublicUrl(fileName);
@@ -445,10 +489,13 @@ export default function Settings() {
         throw new Error('Failed to get logo URL');
       }
 
+      // Add cache-busting query parameter
+      const logoUrlWithCacheBust = `${urlData.publicUrl}?t=${timestamp}`;
+
       // Update organization with logo URL
       const { error: updateError } = await supabase
         .from('organizations')
-        .update({ logo_url: urlData.publicUrl })
+        .update({ logo_url: logoUrlWithCacheBust })
         .eq('id', organizationId);
 
       if (updateError) throw updateError;
@@ -462,7 +509,7 @@ export default function Settings() {
 
       toast({
         title: "Logo Updated",
-        description: "Organization logo has been updated successfully",
+        description: "Organization logo has been updated successfully. Please refresh the page if you don't see the new logo.",
       });
     } catch (error: any) {
       console.error("Error uploading logo:", error);
@@ -482,9 +529,12 @@ export default function Settings() {
     try {
       setUploadingLogo(true);
 
+      // Remove query parameters from URL if present
+      const logoUrl = organization.logo_url.split('?')[0];
+
       // Extract file path from URL
       // URL format: https://[project].supabase.co/storage/v1/object/public/organization-logos/[org-id]/logo.[ext]
-      const urlParts = organization.logo_url.split('/');
+      const urlParts = logoUrl.split('/');
       const publicIndex = urlParts.findIndex(part => part === 'public');
       if (publicIndex === -1 || publicIndex >= urlParts.length - 1) {
         throw new Error('Invalid logo URL format');
@@ -502,6 +552,27 @@ export default function Settings() {
       if (deleteError) {
         console.warn("Error deleting logo file:", deleteError);
         // Continue to remove URL from database even if file deletion fails
+      }
+
+      // Also try to delete any other logo files for this organization
+      try {
+        const { data: existingFiles } = await supabase.storage
+          .from('organization-logos')
+          .list(organizationId);
+        
+        if (existingFiles && existingFiles.length > 0) {
+          const filesToDelete = existingFiles
+            .filter(file => file.name.startsWith('logo'))
+            .map(file => `${organizationId}/${file.name}`);
+          
+          if (filesToDelete.length > 0) {
+            await supabase.storage
+              .from('organization-logos')
+              .remove(filesToDelete);
+          }
+        }
+      } catch (listError) {
+        console.warn("Error listing files for cleanup:", listError);
       }
 
       // Remove logo URL from organization
@@ -728,20 +799,22 @@ export default function Settings() {
               <div className="flex items-center gap-4">
                 <div className="flex-shrink-0">
                   <div className="h-20 w-20 border-2 border-gray-200 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
-                    {organization?.logo_url ? (
+                    {logoPreview ? (
                       <img 
-                        src={organization.logo_url} 
+                        key="preview"
+                        src={logoPreview} 
+                        alt="Preview" 
+                        className="h-full w-full object-contain"
+                      />
+                    ) : organization?.logo_url ? (
+                      <img 
+                        key={organization.logo_url}
+                        src={organization.logo_url}
                         alt={organization.name || "Logo"} 
                         className="h-full w-full object-contain"
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = "/HERO.png";
                         }}
-                      />
-                    ) : logoPreview ? (
-                      <img 
-                        src={logoPreview} 
-                        alt="Preview" 
-                        className="h-full w-full object-contain"
                       />
                     ) : (
                       <ImageIcon className="h-8 w-8 text-gray-400" />

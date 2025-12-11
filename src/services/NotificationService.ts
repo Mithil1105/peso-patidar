@@ -14,6 +14,31 @@ interface CreateNotificationParams {
   title: string;
   message: string;
   expenseId?: string;
+  organizationId?: string; // Optional - will be fetched if not provided
+}
+
+/**
+ * Get organization_id for a user
+ */
+async function getUserOrganizationId(userId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("organization_memberships")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching user organization:", error);
+      return null;
+    }
+
+    return data?.organization_id || null;
+  } catch (error) {
+    console.error("Error fetching user organization:", error);
+    return null;
+  }
 }
 
 /**
@@ -21,11 +46,23 @@ interface CreateNotificationParams {
  */
 export async function createNotification(params: CreateNotificationParams): Promise<void> {
   try {
+    // Get organization_id if not provided
+    let organizationId = params.organizationId;
+    if (!organizationId) {
+      organizationId = await getUserOrganizationId(params.userId);
+    }
+
+    if (!organizationId) {
+      console.error("Cannot create notification: user has no organization");
+      return;
+    }
+
     // @ts-ignore - notifications table exists but not in types
     const { error } = await (supabase as any)
       .from("notifications")
       .insert({
         user_id: params.userId,
+        organization_id: organizationId,
         type: params.type,
         title: params.title,
         message: params.message,

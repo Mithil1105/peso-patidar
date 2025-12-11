@@ -3,11 +3,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
 export function useUnreadNotifications() {
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchUnreadCount = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !organizationId) return;
 
     try {
       // Use a direct count query - more reliable
@@ -15,6 +15,7 @@ export function useUnreadNotifications() {
         .from("notifications")
         .select("id")
         .eq("user_id", user.id)
+        .eq("organization_id", organizationId)
         .eq("read", false);
 
       if (error) throw error;
@@ -23,10 +24,10 @@ export function useUnreadNotifications() {
       console.error("Error fetching unread count:", error);
       setUnreadCount(0);
     }
-  }, [user?.id]);
+  }, [user?.id, organizationId]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !organizationId) return;
 
     fetchUnreadCount();
 
@@ -37,7 +38,7 @@ export function useUnreadNotifications() {
           event: 'INSERT', 
           schema: 'public', 
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id} AND organization_id=eq.${organizationId}`
         }, 
         (payload) => {
           console.log('Unread notification inserted:', payload);
@@ -53,7 +54,7 @@ export function useUnreadNotifications() {
           event: 'UPDATE',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id} AND organization_id=eq.${organizationId}`
         },
         (payload) => {
           const oldNotif = payload.old as any;
@@ -78,7 +79,7 @@ export function useUnreadNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, fetchUnreadCount]);
+  }, [user?.id, organizationId, fetchUnreadCount]);
 
   return { unreadCount, refreshCount: fetchUnreadCount };
 }

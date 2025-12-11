@@ -31,7 +31,7 @@ interface Notification {
 }
 
 export default function Notifications() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -52,6 +52,10 @@ export default function Notifications() {
     try {
       setLoading(true);
       
+      if (!organizationId) {
+        throw new Error("Organization not found");
+      }
+
       // Fetch notifications from notifications table
       const { data: notificationsData, error: notificationsError } = await supabase
         .from("notifications")
@@ -60,6 +64,7 @@ export default function Notifications() {
           expenses(title)
         `)
         .eq("user_id", user?.id)
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(100);
 
@@ -120,7 +125,7 @@ export default function Notifications() {
           event: 'UPDATE',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id} AND organization_id=eq.${organizationId}`
         },
         () => {
           fetchNotifications();

@@ -69,7 +69,7 @@ BEGIN
   )
   VALUES (
     new_org_id,
-    50000,
+    500,
     50,
     'INR',
     'Asia/Kolkata'
@@ -116,6 +116,13 @@ BEGIN
 
     RAISE NOTICE '✓ Profile created/updated';
 
+    -- Delete any existing organization membership for this user
+    -- (since user_id has a unique constraint - one org per user)
+    DELETE FROM public.organization_memberships
+    WHERE user_id = auth_user_id;
+
+    RAISE NOTICE '✓ Removed any existing organization membership';
+
     -- Create organization membership
     INSERT INTO public.organization_memberships (
       organization_id,
@@ -128,10 +135,7 @@ BEGIN
       auth_user_id,
       'admin',
       true
-    )
-    ON CONFLICT (organization_id, user_id) DO UPDATE SET
-      role = 'admin',
-      is_active = true;
+    );
 
     RAISE NOTICE '✓ Organization membership created with admin role';
     setup_complete := true;
