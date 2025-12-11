@@ -43,7 +43,7 @@ const expenseSchema = z.object({
 // Line items schema removed
 
 export default function ExpenseForm() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -74,12 +74,29 @@ export default function ExpenseForm() {
     const init = async () => {
       try {
         setLoadingCategories(true);
-        const { data: catData } = await supabase
+        if (!organizationId) return;
+        
+        // Try with 'active' first, then 'is_active' (filtered by organization_id)
+        let { data: catData, error: catError } = await supabase
           .from('expense_categories')
           .select('name, active')
+          .eq('organization_id', organizationId)
           .eq('active', true)
           .order('name');
-        if (catData) setCategories(catData.map((c: any) => c.name));
+        
+        if (catError && (catError as any).code === '42703') {
+          // Fallback to 'is_active'
+          const res2 = await supabase
+            .from('expense_categories')
+            .select('name, is_active')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true)
+            .order('name');
+          catData = res2.data;
+          catError = res2.error;
+        }
+        
+        if (catData) setCategories(catData.map((c: any) => c.name || c));
 
         if (user?.id) {
           const { data: role } = await supabase
@@ -113,7 +130,7 @@ export default function ExpenseForm() {
       fetchExpense();
       setIsEditing(true);
     }
-  }, [id]);
+  }, [id, organizationId]);
 
   // Update attachment requirement based on amount
   useEffect(() => {
@@ -174,16 +191,20 @@ export default function ExpenseForm() {
   const handleAddCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
+    if (!organizationId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Organization not found' });
+      return;
+    }
     try {
-      // Try inserting with 'active' first
+      // Try inserting with 'active' first (must include organization_id)
       let { error } = await supabase
         .from('expense_categories')
-        .insert({ name, active: true, created_by: user?.id || null });
+        .insert({ name, active: true, organization_id: organizationId, created_by: user?.id || null });
       if (error && (error as any).code === '42703') {
         // Fallback to 'is_active'
         const res2 = await supabase
           .from('expense_categories')
-          .insert({ name, is_active: true, created_by: user?.id || null });
+          .insert({ name, is_active: true, organization_id: organizationId, created_by: user?.id || null });
         error = res2.error as any;
       }
       if (error) throw error;
@@ -228,6 +249,11 @@ export default function ExpenseForm() {
         console.error('User not authenticated');
         return;
       }
+      
+      if (!organizationId) {
+        console.error('Organization not found');
+        throw new Error('Organization not found');
+      }
 
       // Get all temp files for this user
       const { data: tempFiles, error: listError } = await supabase.storage
@@ -264,15 +290,21 @@ export default function ExpenseForm() {
           .from('receipts')
           .getPublicUrl(newPath);
 
-        await supabase
+        const { error: attachmentInsertError } = await supabase
           .from('attachments')
           .insert({
             expense_id: expenseId,
+            organization_id: organizationId,
             file_url: urlData?.publicUrl || '',
             filename: file.name || 'unknown',
             content_type: file.metadata?.mimetype || 'image/jpeg',
             uploaded_by: user.id
           });
+        
+        if (attachmentInsertError) {
+          console.error('Error creating attachment record:', attachmentInsertError);
+          throw attachmentInsertError;
+        }
 
         // Delete temp file
         await supabase.storage
@@ -353,6 +385,7 @@ export default function ExpenseForm() {
         await ExpenseService.updateExpense(id, user.id, expenseData);
         
         // Move any temp files to the expense folder (for newly uploaded files during edit)
+        // This must succeed before submission
         await moveTempFilesToExpense(id);
         
         // Submit the expense (this will handle status change to submitted)
@@ -363,7 +396,17 @@ export default function ExpenseForm() {
         setCurrentExpenseId(newExpense.id);
         
         // Move temp files to the new expense folder
-        await moveTempFilesToExpense(newExpense.id);
+        // This must succeed before submission - if it fails, the expense creation will be rolled back
+        try {
+          await moveTempFilesToExpense(newExpense.id);
+        } catch (attachmentError: any) {
+          // If attachment creation fails, delete the expense and throw error
+          await supabase
+            .from('expenses')
+            .delete()
+            .eq('id', newExpense.id);
+          throw new Error(`Failed to create attachments: ${attachmentError.message || 'Unknown error'}`);
+        }
         
         // Submit the expense
         await ExpenseService.submitExpense(newExpense.id, user.id);

@@ -22,7 +22,7 @@ interface Category {
 }
 
 export default function CategoryManagement() {
-  const { userRole, user } = useAuth();
+  const { userRole, user, organizationId } = useAuth();
   const { toast } = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,16 +44,20 @@ export default function CategoryManagement() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      // Try with 'active' first, then 'is_active'
+      if (!organizationId) return;
+      
+      // Try with 'active' first, then 'is_active' (filtered by organization_id)
       let { data, error } = await (supabase as any)
         .from("expense_categories")
         .select("id, name, active, created_at, created_by")
+        .eq("organization_id", organizationId)
         .order("name", { ascending: true });
 
       if (error && (error as any).code === '42703') {
         const res2 = await (supabase as any)
           .from("expense_categories")
           .select("id, name, is_active, created_at, created_by")
+          .eq("organization_id", organizationId)
           .order("name", { ascending: true });
         data = res2.data as any;
         error = res2.error as any;
@@ -139,12 +143,17 @@ export default function CategoryManagement() {
           description: `${categoryName} has been updated successfully`,
         });
       } else {
-        // Create new category
+        // Create new category (must include organization_id)
+        if (!organizationId) {
+          throw new Error("Organization not found");
+        }
+        
         let { error } = await (supabase as any)
           .from("expense_categories")
           .insert({
             name: categoryName.trim(),
             active: categoryActive,
+            organization_id: organizationId,
             created_by: user?.id || null,
           });
 
@@ -154,6 +163,7 @@ export default function CategoryManagement() {
             .insert({
               name: categoryName.trim(),
               is_active: categoryActive,
+              organization_id: organizationId,
               created_by: user?.id || null,
             });
           error = res2.error as any;

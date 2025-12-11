@@ -154,9 +154,11 @@ export default function UserManagement() {
     // Load engineer-location assignments
     const loadEngineerLocations = async () => {
       try {
+        if (!organizationId) return;
         const { data, error } = await supabase
           .from("engineer_locations")
-          .select("engineer_id, location_id");
+          .select("engineer_id, location_id")
+          .eq("organization_id", organizationId);
         if (error) throw error;
         
         const assignments: Record<string, string> = {};
@@ -439,21 +441,25 @@ export default function UserManagement() {
     setDrawerOpen(true);
     setExpensesLoading(true);
     try {
+      if (!organizationId) return;
+      
       const { data, error } = await supabase
         .from("expenses")
         .select("id, title, total_amount, status, created_at, updated_at")
+        .eq("organization_id", organizationId)
         .eq("user_id", u.user_id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       const list = data || [];
       setExpenses(list);
 
-      // Fetch audit logs for these expenses to build history and deductions
+      // Fetch audit logs for these expenses to build history and deductions (filtered by organization_id)
       const expenseIds = list.map((e: any) => e.id);
       if (expenseIds.length > 0) {
         const { data: logs, error: logsErr } = await supabase
           .from("audit_logs")
           .select("expense_id, user_id, action, comment, created_at")
+          .eq("organization_id", organizationId)
           .in("expense_id", expenseIds)
           .order("created_at", { ascending: false });
         if (logsErr) throw logsErr;
@@ -560,31 +566,31 @@ export default function UserManagement() {
         }
       } else {
         // Fallback to regular signup if service role key not available
-        // Create a temporary client with no session persistence so admin session isn't replaced
-        const tempSupabase = createClient<Database>(
+      // Create a temporary client with no session persistence so admin session isn't replaced
+      const tempSupabase = createClient<Database>(
           supabaseUrl,
-          import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          {
-            auth: {
-              persistSession: false,
-              autoRefreshToken: false,
-              storage: undefined,
-            },
-          }
-        );
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            storage: undefined,
+          },
+        }
+      );
 
         // Create user using signup (fallback method)
         const result = await tempSupabase.auth.signUp({
-          email: validated.email,
-          password: validated.password,
-          options: {
-            data: {
-              name: validated.name,
+        email: validated.email,
+        password: validated.password,
+        options: {
+          data: {
+            name: validated.name,
               organization_id: organizationId,
-            },
-            email_redirect_to: undefined, // Don't redirect
           },
-        });
+            email_redirect_to: undefined, // Don't redirect
+        },
+      });
 
         authData = result.data;
         authError = result.error;
@@ -639,12 +645,12 @@ export default function UserManagement() {
           .from("organization_memberships")
           .upsert({
             organization_id: organizationId,
-            user_id: authData.user.id,
-            role: validated.role,
+          user_id: authData.user.id,
+          role: validated.role,
             is_active: true,
           }, {
             onConflict: 'organization_id,user_id'
-          });
+        });
 
         if (membershipError) throw membershipError;
       } else {
@@ -764,11 +770,28 @@ export default function UserManagement() {
 
       // If creating an engineer and a location is selected, assign it
       if (validated.role === "engineer" && formData.locationId && formData.locationId !== "none") {
+        if (!organizationId) {
+          throw new Error("Organization not found");
+        }
+        
+        // Verify location belongs to organization
+        const { data: locationData, error: locationFetchError } = await supabase
+          .from("locations")
+          .select("organization_id")
+          .eq("id", formData.locationId)
+          .eq("organization_id", organizationId)
+          .single();
+        
+        if (locationFetchError || !locationData) {
+          throw new Error("Location not found or does not belong to your organization");
+        }
+        
         const { error: locationError } = await supabase
           .from("engineer_locations")
           .insert({
             engineer_id: authData.user.id,
             location_id: formData.locationId,
+            organization_id: organizationId,
           });
 
         if (locationError) throw locationError;
@@ -793,18 +816,21 @@ export default function UserManagement() {
       setShowPassword(false);
       
       // Reload engineer locations
-      const { data: elData, error: elError } = await supabase
-        .from("engineer_locations")
-        .select("engineer_id, location_id");
-      if (!elError && elData) {
-        const assignments: Record<string, string> = {};
-        elData.forEach((el: any) => {
-          // Only store the first location for each engineer (one location per engineer)
-          if (!assignments[el.engineer_id]) {
-            assignments[el.engineer_id] = el.location_id;
-          }
-        });
-        setEngineerLocations(assignments);
+      if (organizationId) {
+        const { data: elData, error: elError } = await supabase
+          .from("engineer_locations")
+          .select("engineer_id, location_id")
+          .eq("organization_id", organizationId);
+        if (!elError && elData) {
+          const assignments: Record<string, string> = {};
+          elData.forEach((el: any) => {
+            // Only store the first location for each engineer (one location per engineer)
+            if (!assignments[el.engineer_id]) {
+              assignments[el.engineer_id] = el.location_id;
+            }
+          });
+          setEngineerLocations(assignments);
+        }
       }
 
     } catch (error: any) {
@@ -857,11 +883,12 @@ export default function UserManagement() {
         
         // Fetch location for engineer (only one location allowed)
         let locationId: string = "none";
-        if (u.role === "engineer") {
+        if (u.role === "engineer" && organizationId) {
           const { data: locationData } = await supabase
             .from("engineer_locations")
             .select("location_id")
             .eq("engineer_id", u.user_id)
+            .eq("organization_id", organizationId)
             .limit(1)
             .maybeSingle();
           locationId = locationData?.location_id || "none";
@@ -1038,11 +1065,28 @@ export default function UserManagement() {
 
         // Insert new location assignment (only one location allowed)
         if (editFormData.locationId && editFormData.locationId !== "none") {
+          if (!organizationId) {
+            throw new Error("Organization not found");
+          }
+          
+          // Get location's organization_id to ensure it matches
+          const { data: locationData, error: locationFetchError } = await supabase
+            .from("locations")
+            .select("organization_id")
+            .eq("id", editFormData.locationId)
+            .eq("organization_id", organizationId)
+            .single();
+          
+          if (locationFetchError || !locationData) {
+            throw new Error("Location not found or does not belong to your organization");
+          }
+          
           const { error: locationError } = await supabase
             .from("engineer_locations")
             .insert({
               engineer_id: userToEdit.user_id,
               location_id: editFormData.locationId,
+              organization_id: organizationId,
             });
 
           if (locationError) throw locationError;
@@ -1066,18 +1110,21 @@ export default function UserManagement() {
       setUserToEdit(null);
       
       // Reload engineer locations
-      const { data: elData, error: elError } = await supabase
-        .from("engineer_locations")
-        .select("engineer_id, location_id");
-      if (!elError && elData) {
-        const assignments: Record<string, string> = {};
-        elData.forEach((el: any) => {
-          // Only store the first location for each engineer (one location per engineer)
-          if (!assignments[el.engineer_id]) {
-            assignments[el.engineer_id] = el.location_id;
-          }
-        });
-        setEngineerLocations(assignments);
+      if (organizationId) {
+        const { data: elData, error: elError } = await supabase
+          .from("engineer_locations")
+          .select("engineer_id, location_id")
+          .eq("organization_id", organizationId);
+        if (!elError && elData) {
+          const assignments: Record<string, string> = {};
+          elData.forEach((el: any) => {
+            // Only store the first location for each engineer (one location per engineer)
+            if (!assignments[el.engineer_id]) {
+              assignments[el.engineer_id] = el.location_id;
+            }
+          });
+          setEngineerLocations(assignments);
+        }
       }
       
       // Reload users list

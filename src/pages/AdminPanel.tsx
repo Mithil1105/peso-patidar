@@ -75,7 +75,7 @@ interface Expense {
 }
 
 export default function AdminPanel() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const { toast } = useToast();
   
   const [users, setUsers] = useState<User[]>([]);
@@ -96,12 +96,40 @@ export default function AdminPanel() {
   const [auditLogs, setAuditLogs] = useState<Array<{action: string; user_name: string; comment?: string; created_at: string}>>([]);
 
   useEffect(() => {
-    if (userRole === "admin") {
+    console.log("🔄 [AdminPanel] useEffect triggered");
+    console.log("🔄 [AdminPanel] userRole:", userRole);
+    console.log("🔄 [AdminPanel] organizationId:", organizationId);
+    console.log("🔄 [AdminPanel] user:", user?.id);
+    
+    if (userRole === "admin" && organizationId) {
+      console.log("✅ [AdminPanel] Conditions met, calling fetchData");
       fetchData();
+    } else {
+      console.warn("⚠️ [AdminPanel] Conditions not met - userRole:", userRole, "organizationId:", organizationId);
     }
-  }, [userRole]);
+  }, [userRole, organizationId, user?.id]);
+
+  // Log expenses state changes
+  useEffect(() => {
+    console.log("📊 [AdminPanel] Expenses state changed:");
+    console.log("  - expenses.length:", expenses.length);
+    console.log("  - expenses:", expenses);
+    console.log("  - filteredExpenses.length:", expenses.filter(e => {
+      const matchesSearch = searchTerm === "" || 
+        e.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ((e as any).transaction_number || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || e.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    }).length);
+  }, [expenses, searchTerm, statusFilter]);
 
   const fetchData = async () => {
+    console.log("🚀 [AdminPanel] fetchData called");
+    console.log("🚀 [AdminPanel] Current organizationId:", organizationId);
+    console.log("🚀 [AdminPanel] Current user:", user?.id);
     try {
       setLoading(true);
       await Promise.all([
@@ -109,53 +137,91 @@ export default function AdminPanel() {
         fetchExpenses(),
         fetchEngineers()
       ]);
+      console.log("✅ [AdminPanel] All data fetched successfully");
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error("❌ [AdminPanel] Error fetching data:", error);
     } finally {
       setLoading(false);
+      console.log("🏁 [AdminPanel] fetchData completed, loading set to false");
     }
   };
 
   const normalizeReceiptUrl = (url: string): string => {
+    console.log("🔍 [AdminPanel] normalizeReceiptUrl called with:", url);
     try {
       // If it's already a receipts public URL, keep as is
       if (url.startsWith("http")) {
+        console.log("  - URL starts with http");
         // Try to extract a key from known bucket paths and rebuild with receipts
         if (url.includes("/storage/v1/object/public/receipts/")) {
+          console.log("  - Already a receipts URL, returning as-is");
           return url;
         }
         const expenseAttachmentsIdx = url.indexOf("/storage/v1/object/public/expense-attachments/");
         if (expenseAttachmentsIdx !== -1) {
           const key = url.substring(expenseAttachmentsIdx + "/storage/v1/object/public/expense-attachments/".length);
+          console.log("  - Found expense-attachments URL, extracting key:", key);
           const { data } = supabase.storage.from("receipts").getPublicUrl(key);
+          console.log("  - Generated receipts URL:", data.publicUrl);
           return data.publicUrl;
         }
-        // Fallback: return original
+        // Check for signed URL pattern
+        if (url.includes("/storage/v1/object/sign/")) {
+          console.log("  - Found signed URL, extracting path...");
+          // Extract the path from signed URL
+          try {
+            const urlObj = new URL(url);
+            const pathMatch = urlObj.pathname.match(/\/storage\/v1\/object\/sign\/receipts\/(.+)/);
+            if (pathMatch) {
+              const key = decodeURIComponent(pathMatch[1].split('?')[0]);
+              console.log("  - Extracted key from signed URL:", key);
+              const { data } = supabase.storage.from("receipts").getPublicUrl(key);
+              console.log("  - Generated public URL:", data.publicUrl);
+              return data.publicUrl;
+            }
+          } catch (e) {
+            console.error("  - Error parsing signed URL:", e);
+          }
+        }
+        console.log("  - Fallback: returning original URL");
         return url;
       }
       // Path-only stored (e.g., "{expenseId}/filename" or "temp/{userId}/filename")
+      console.log("  - Path-only URL, generating public URL");
       const { data } = supabase.storage.from("receipts").getPublicUrl(url);
+      console.log("  - Generated public URL:", data.publicUrl);
       return data.publicUrl;
-    } catch {
+    } catch (error) {
+      console.error("❌ [AdminPanel] Error normalizing URL:", error);
       return url;
     }
   };
 
   const fetchAttachments = async (expenseId: string) => {
     try {
+      if (!organizationId) return;
+      
       const { data, error } = await supabase
         .from("attachments")
         .select("id, filename, content_type, file_url, created_at")
         .eq("expense_id", expenseId)
+        .eq("organization_id", organizationId)
         .order("created_at");
 
       if (error) throw error;
 
-      const normalized = (data || []).map(a => ({
-        ...a,
-        file_url: normalizeReceiptUrl(a.file_url || ""),
-      }));
+      const normalized = (data || []).map(a => {
+        const normalizedUrl = normalizeReceiptUrl(a.file_url || "");
+        console.log("🔍 [AdminPanel] Normalizing attachment URL:");
+        console.log("  - Original:", a.file_url);
+        console.log("  - Normalized:", normalizedUrl);
+        return {
+          ...a,
+          file_url: normalizedUrl,
+        };
+      });
 
+      console.log("✅ [AdminPanel] Normalized attachments:", normalized);
       setAttachments(normalized);
     } catch (e) {
       console.error("Error fetching attachments:", e);
@@ -165,10 +231,13 @@ export default function AdminPanel() {
 
   const fetchAuditLogs = async (expenseId: string) => {
     try {
+      if (!organizationId) return;
+      
       const { data: logsData, error: logsError } = await supabase
         .from("audit_logs")
         .select("user_id, action, comment, created_at")
         .eq("expense_id", expenseId)
+        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
 
       if (logsError) throw logsError;
@@ -207,10 +276,13 @@ export default function AdminPanel() {
   }, [selectedExpense]);
 
   const fetchUsers = async () => {
-    // First get profiles
+    if (!organizationId) return;
+    
+    // First get profiles (filtered by organization_id)
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("id, user_id, name, email, created_at, is_active, balance, reporting_engineer_id")
+      .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
 
     if (profilesError) throw profilesError;
@@ -243,112 +315,133 @@ export default function AdminPanel() {
   };
 
   const fetchExpenses = async () => {
-    // Admin should see:
-    // 1. Expenses verified by engineers (status = "verified" or "approved")
-    // 2. Expenses submitted by engineers directly (status = "submitted" AND assigned_engineer_id IS NULL)
-    // 3. Expenses rejected by this admin (status = "rejected" AND rejected by current admin)
+    console.log("🔍 [AdminPanel] fetchExpenses called");
+    console.log("🔍 [AdminPanel] organizationId:", organizationId);
+    console.log("🔍 [AdminPanel] user:", user?.id);
     
-    // Fetch verified/approved expenses
-    const { data: verifiedExpenses, error: verifiedError } = await supabase
+    if (!organizationId) {
+      console.error("❌ [AdminPanel] No organizationId, returning early");
+      return;
+    }
+    
+    // Admin should see ALL expenses in their organization
+    // First, let's check if there are ANY expenses at all (without org filter for debugging)
+    console.log("🔍 [AdminPanel] Checking total expenses in database (no filter)...");
+    const { data: allExpensesNoFilter, error: noFilterError } = await supabase
       .from("expenses")
-      .select("*")
-      .in("status", ["verified", "approved"])
-      .order("created_at", { ascending: false });
-
-    // Fetch engineer-submitted expenses (submitted with no assigned engineer)
-    const { data: engineerExpenses, error: engineerError } = await supabase
-      .from("expenses")
-      .select("*")
-      .eq("status", "submitted")
-      .is("assigned_engineer_id", null)
-      .order("created_at", { ascending: false });
-
-    // Fetch expenses rejected by this admin from audit_logs
-    const { data: rejectedLogs, error: rejectedLogsError } = await supabase
-      .from("audit_logs")
-      .select("expense_id")
-      .eq("user_id", user?.id)
-      .eq("action", "expense_rejected");
-
-    if (verifiedError || engineerError) {
-      throw verifiedError || engineerError;
+      .select("id, title, organization_id, user_id, status, created_at")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    
+    console.log("🔍 [AdminPanel] All expenses (no filter):", allExpensesNoFilter);
+    console.log("🔍 [AdminPanel] All expenses count:", allExpensesNoFilter?.length || 0);
+    if (allExpensesNoFilter && allExpensesNoFilter.length > 0) {
+      console.log("🔍 [AdminPanel] Sample expense organization_ids:", allExpensesNoFilter.map(e => ({ id: e.id, org_id: e.organization_id })));
     }
 
-    let rejectedExpenses: any[] = [];
-    if (!rejectedLogsError && rejectedLogs && rejectedLogs.length > 0) {
-      const rejectedExpenseIds = rejectedLogs.map(log => log.expense_id);
-      
-      const { data: rejectedData, error: rejectedError } = await supabase
-        .from("expenses")
-        .select("*")
-        .eq("status", "rejected")
-        .in("id", rejectedExpenseIds)
-        .order("created_at", { ascending: false });
+    // Now fetch expenses filtered by organization_id
+    console.log("🔍 [AdminPanel] Fetching expenses for organization:", organizationId);
+    const { data: allExpenses, error: expensesError } = await supabase
+      .from("expenses")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false });
 
-      if (!rejectedError && rejectedData) {
-        rejectedExpenses = rejectedData;
-      }
+    console.log("🔍 [AdminPanel] Expenses query result (with org filter):");
+    console.log("  - Data:", allExpenses);
+    console.log("  - Error:", expensesError);
+    console.log("  - Count:", allExpenses?.length || 0);
+    
+    // Also try without RLS to see if that's the issue
+    console.log("🔍 [AdminPanel] Checking RLS - trying to fetch with service role...");
+    if (expensesError) {
+      console.error("❌ [AdminPanel] RLS Error details:", {
+        message: expensesError.message,
+        details: expensesError.details,
+        hint: expensesError.hint,
+        code: expensesError.code
+      });
     }
 
-    // Combine and deduplicate expenses
-    const allExpenses = [...(verifiedExpenses || []), ...(engineerExpenses || []), ...rejectedExpenses];
-    const uniqueExpenses = Array.from(
-      new Map(allExpenses.map(exp => [exp.id, exp])).values()
-    );
-    const expensesData = uniqueExpenses.sort((a, b) => 
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    if (expensesError) {
+      console.error("❌ [AdminPanel] Error fetching expenses:", expensesError);
+      throw expensesError;
+    }
+
+    const expensesData = allExpenses || [];
+    console.log("✅ [AdminPanel] Expenses data to process:", expensesData.length);
+    console.log("✅ [AdminPanel] Raw expenses:", expensesData);
 
     if (!expensesData || expensesData.length === 0) {
+      console.warn("⚠️ [AdminPanel] No expenses found, setting empty array");
       setExpenses([]);
       return;
     }
 
     // Get user profiles for the expenses
     const userIds = [...new Set(expensesData.map(e => e.user_id))];
+    console.log("🔍 [AdminPanel] Fetching profiles for user IDs:", userIds);
+    
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("user_id, name, email, balance")
+      .eq("organization_id", organizationId)
       .in("user_id", userIds);
 
+    console.log("🔍 [AdminPanel] Profiles query result:");
+    console.log("  - Data:", profiles);
+    console.log("  - Error:", profilesError);
+    console.log("  - Count:", profiles?.length || 0);
+
     if (profilesError) {
+      console.error("❌ [AdminPanel] Error fetching profiles:", profilesError);
       throw profilesError;
     }
 
     // Combine expenses with profile data
+    console.log("🔍 [AdminPanel] Combining expenses with profiles...");
     const expensesWithProfiles = expensesData.map(expense => {
       const profile = profiles?.find(p => p.user_id === expense.user_id);
-      return {
+      const combined = {
         ...expense,
         user_name: profile?.name || "Unknown User",
         user_email: profile?.email || "unknown@example.com",
         user_balance: profile?.balance ?? 0,
         total_amount: Number(expense.total_amount)
       };
+      console.log("  - Combined expense:", combined.id, "with user:", combined.user_name);
+      return combined;
     });
 
+    console.log("✅ [AdminPanel] Final expenses with profiles:", expensesWithProfiles.length);
+    console.log("✅ [AdminPanel] Final expenses array:", expensesWithProfiles);
     setExpenses(expensesWithProfiles);
   };
 
   const fetchEngineers = async () => {
-    // Get engineers from user_roles
-    const { data: engineerRoles, error: rolesError } = await supabase
-      .from("user_roles")
+    if (!organizationId) return;
+    
+    // Get engineers from organization_memberships (filtered by organization_id)
+    const { data: engineerMemberships, error: membershipsError } = await supabase
+      .from("organization_memberships")
       .select("user_id")
-      .eq("role", "engineer");
+      .eq("organization_id", organizationId)
+      .eq("role", "engineer")
+      .eq("is_active", true);
 
-    if (rolesError) throw rolesError;
+    if (membershipsError) throw membershipsError;
 
-    if (!engineerRoles || engineerRoles.length === 0) {
+    if (!engineerMemberships || engineerMemberships.length === 0) {
       setEngineers([]);
       return;
     }
 
-    // Get profiles for engineers
-    const engineerIds = engineerRoles.map(r => r.user_id);
+    // Get profiles for engineers (filtered by organization_id)
+    const engineerIds = engineerMemberships.map(m => m.user_id);
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("user_id, name, email")
+      .eq("organization_id", organizationId)
       .in("user_id", engineerIds);
 
     if (profilesError) throw profilesError;
@@ -650,6 +743,7 @@ export default function AdminPanel() {
 
   // Filter and search functions
   const filteredExpenses = expenses.filter(expense => {
+    console.log("🔍 [AdminPanel] Filtering expense:", expense.id, expense.title);
     const matchesSearch = searchTerm === "" || 
       expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1098,7 +1192,18 @@ export default function AdminPanel() {
                                           <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
                                             <div className="flex items-center gap-3">
                                               {a.content_type?.startsWith("image/") ? (
-                                                <img src={a.file_url} alt={a.filename} className="h-14 w-14 object-cover rounded" />
+                                                <img 
+                                                  src={a.file_url} 
+                                                  alt={a.filename} 
+                                                  className="h-14 w-14 object-cover rounded"
+                                                  onError={(e) => {
+                                                    console.error("❌ [AdminPanel] Image failed to load:", a.file_url);
+                                                    console.error("❌ [AdminPanel] Error event:", e);
+                                                  }}
+                                                  onLoad={() => {
+                                                    console.log("✅ [AdminPanel] Image loaded successfully:", a.file_url);
+                                                  }}
+                                                />
                                               ) : (
                                                 <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
                                               )}
@@ -1111,6 +1216,7 @@ export default function AdminPanel() {
                                               variant="outline"
                                               size="sm"
                                               onClick={() => {
+                                                console.log("🖼️ [AdminPanel] Setting image preview URL:", a.file_url);
                                                 setImagePreviewUrl(a.file_url);
                                                 setImagePreviewOpen(true);
                                               }}
@@ -1236,7 +1342,18 @@ export default function AdminPanel() {
           <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
             <DialogContent className="max-w-3xl">
               {imagePreviewUrl && (
-                <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+                <img 
+                  src={imagePreviewUrl} 
+                  alt="Attachment preview" 
+                  className="w-full h-auto rounded"
+                  onError={(e) => {
+                    console.error("❌ [AdminPanel] Preview image failed to load:", imagePreviewUrl);
+                    console.error("❌ [AdminPanel] Error event:", e);
+                  }}
+                  onLoad={() => {
+                    console.log("✅ [AdminPanel] Preview image loaded successfully:", imagePreviewUrl);
+                  }}
+                />
               )}
             </DialogContent>
           </Dialog>

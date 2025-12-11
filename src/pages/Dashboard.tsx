@@ -39,7 +39,7 @@ interface Notification {
 }
 
 export default function Dashboard() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     totalExpenses: 0,
     pendingAmount: 0,
@@ -279,12 +279,15 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      // For admins, fetch ALL expenses. For others, fetch only their expenses
+      if (!organizationId) return;
+      
+      // For admins, fetch ALL expenses in their organization. For others, fetch only their expenses
       let expenses: any[] = [];
       if (userRole === "admin") {
         const { data: allExpenses, error: expensesError } = await supabase
           .from("expenses")
-          .select("*");
+          .select("*")
+          .eq("organization_id", organizationId);
         
         if (expensesError) throw expensesError;
         expenses = allExpenses || [];
@@ -292,16 +295,18 @@ export default function Dashboard() {
         const { data: userExpenses, error: expensesError } = await supabase
           .from("expenses")
           .select("*")
+          .eq("organization_id", organizationId)
           .eq("user_id", user?.id);
         
         if (expensesError) throw expensesError;
         expenses = userExpenses || [];
       }
 
-      // Fetch user profile for balance
+      // Fetch user profile for balance (filtered by organization_id)
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("balance")
+        .eq("organization_id", organizationId)
         .eq("user_id", user?.id)
         .single();
 
@@ -316,6 +321,7 @@ export default function Dashboard() {
         const { data: assignedExpenses, error: assignedError } = await supabase
           .from("expenses")
           .select("*")
+          .eq("organization_id", organizationId)
           .eq("assigned_engineer_id", user.id)
           .eq("status", "submitted"); // Only "submitted" status counts as pending review
 
@@ -343,17 +349,19 @@ export default function Dashboard() {
       let totalCashierBalance = 0;
       
       if (userRole === "admin") {
-        // Fetch expenses that need admin approval:
+        // Fetch expenses that need admin approval (filtered by organization_id):
         // 1. Verified expenses (need admin approval)
         const { data: verifiedExpenses, error: verifiedError } = await supabase
           .from("expenses")
           .select("*")
+          .eq("organization_id", organizationId)
           .eq("status", "verified");
 
         // 2. Submitted expenses with no assigned engineer (go directly to admin)
         const { data: submittedExpenses, error: submittedError } = await supabase
           .from("expenses")
           .select("*")
+          .eq("organization_id", organizationId)
           .eq("status", "submitted")
           .is("assigned_engineer_id", null);
 
@@ -380,10 +388,12 @@ export default function Dashboard() {
 
         // Calculate total balances from expenses data (sum of expenses by role)
         try {
-          // Get all user roles to map user_id to role
+          // Get all user roles to map user_id to role (filtered by organization_id)
           const { data: allRoles, error: rolesError } = await supabase
-            .from("user_roles")
-            .select("user_id, role");
+            .from("organization_memberships")
+            .select("user_id, role")
+            .eq("organization_id", organizationId)
+            .eq("is_active", true);
 
           if (!rolesError && allRoles) {
             // Create a map of user_id to role

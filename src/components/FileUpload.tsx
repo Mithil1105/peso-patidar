@@ -44,7 +44,7 @@ export function FileUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, organizationId } = useAuth();
   const isMobile = useIsMobile();
 
 
@@ -124,10 +124,15 @@ export function FileUpload({
       // Save attachment record to database (only if expenseId is not "new")
       let attachmentData = null;
       if (expenseId !== "new" && expenseId) {
+        if (!organizationId) {
+          throw new Error("Organization not found");
+        }
+        
         const { data, error: attachmentError } = await supabase
           .from('attachments')
           .insert({
             expense_id: expenseId,
+            organization_id: organizationId,
             line_item_id: lineItemId,
             file_url: urlData.publicUrl,
             filename: file.name,
