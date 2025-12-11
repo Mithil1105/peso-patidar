@@ -113,11 +113,10 @@ export default function ManagerReview() {
     try {
       if (!organizationId) return;
       
-      // @ts-ignore - settings table exists but not in types
-      const { data, error } = await (supabase as any)
-        .from("settings")
-        .select("value")
-        .eq("key", "engineer_approval_limit")
+      // Read from organization_settings table (not settings table)
+      const { data, error } = await supabase
+        .from("organization_settings")
+        .select("engineer_approval_limit")
         .eq("organization_id", organizationId)
         .maybeSingle();
 
@@ -134,10 +133,10 @@ export default function ManagerReview() {
         return;
       }
 
-      if (data) {
-        const limitValue = parseFloat((data as any).value);
+      if (data && data.engineer_approval_limit !== null && data.engineer_approval_limit !== undefined) {
+        const limitValue = Number(data.engineer_approval_limit);
         if (isNaN(limitValue)) {
-          console.error("Invalid limit value:", (data as any).value);
+          console.error("Invalid limit value:", data.engineer_approval_limit);
           setEngineerApprovalLimit(50000);
         } else {
           setEngineerApprovalLimit(limitValue);
@@ -157,6 +156,8 @@ export default function ManagerReview() {
     try {
       setLoading(true);
       
+      if (!organizationId) return;
+      
       // Calculate date filter based on time period
       let dateFilter: Date | null = null;
       if (timePeriod === "week") {
@@ -167,10 +168,11 @@ export default function ManagerReview() {
         dateFilter = subYears(new Date(), 1);
       }
 
-      // First, get all employees currently assigned to this engineer
+      // First, get all employees currently assigned to this engineer (filtered by organization_id)
       const { data: employeeProfiles, error: employeesError } = await supabase
         .from("profiles")
         .select("user_id")
+        .eq("organization_id", organizationId)
         .eq("reporting_engineer_id", user?.id);
 
       if (employeesError) throw employeesError;
@@ -183,11 +185,12 @@ export default function ManagerReview() {
         return;
       }
 
-      // Get ALL expenses from employees currently assigned to this engineer
+      // Get ALL expenses from employees currently assigned to this engineer (filtered by organization_id)
       // This includes historical expenses even if they were reviewed/approved by a different engineer
       let query = supabase
         .from("expenses")
         .select("*")
+        .eq("organization_id", organizationId)
         .in("user_id", employeeIds)
         .in("status", ["submitted", "verified", "approved", "rejected"]);
 
@@ -207,11 +210,12 @@ export default function ManagerReview() {
         return;
       }
 
-      // Fetch related profiles separately and merge client-side
+      // Fetch related profiles separately and merge client-side (filtered by organization_id)
       const userIds = [...new Set(expenses.map(e => e.user_id))];
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, name, email")
+        .eq("organization_id", organizationId)
         .in("user_id", userIds);
 
       if (profilesError) throw profilesError;

@@ -210,16 +210,19 @@ export class ExpenseService {
     const requiresAttachment = expenseAmount > attachmentLimit;
 
     if (requiresAttachment) {
-      // Check if expense has attachments
+      // Check if expense has attachments (filtered by organization_id)
       const { data: attachments, error: attachmentsError } = await supabase
         .from("attachments")
         .select("id")
         .eq("expense_id", expenseId)
+        .eq("organization_id", organizationId)
         .limit(1);
 
       if (attachmentsError) {
         console.error("Error checking attachments:", attachmentsError);
-        // Don't block submission if we can't check attachments, but log it
+        throw new Error(
+          `Failed to verify attachments. Please try again or contact support.`
+        );
       } else if (!attachments || attachments.length === 0) {
         throw new Error(
           `Bill photos are required for expenses above ₹${attachmentLimit}. ` +
@@ -245,7 +248,7 @@ export class ExpenseService {
     }
 
     // Check if user can submit this expense
-    const canEdit = await this.canUserEditExpense(expenseId, userId);
+    const canEdit = await this.canUserEditExpense(expenseId, userId, organizationId);
     if (!canEdit) {
       throw new Error("You don't have permission to submit this expense");
     }
@@ -894,11 +897,20 @@ export class ExpenseService {
   /**
    * Check if user can edit expense
    */
-  private static async canUserEditExpense(expenseId: string, userId: string, organizationId: string): Promise<boolean> {
+  private static async canUserEditExpense(expenseId: string, userId: string, organizationId?: string): Promise<boolean> {
+    // Get organization_id if not provided
+    if (!organizationId) {
+      organizationId = await getUserOrganizationId(userId);
+      if (!organizationId) return false;
+    }
+
     // Check if user is admin in this organization
     const isAdmin = await this.hasOrgRole(userId, organizationId, "admin");
     if (isAdmin) return true;
 
+    // Check if user is engineer (manager) - they can submit their own expenses
+    const isEngineer = await this.hasOrgRole(userId, organizationId, "engineer");
+    
     // Check if user owns the expense (filtered by organization)
     const { data: expense, error } = await supabase
       .from("expenses")
@@ -909,7 +921,11 @@ export class ExpenseService {
 
     if (error) return false;
 
-    return expense.user_id === userId && expense.status === "submitted";
+    // Users can edit/submit their own expenses if:
+    // 1. They own it AND status is "submitted" (for editing)
+    // 2. They own it AND status is "draft" or "submitted" (for submitting)
+    // 3. They are engineer/admin (already checked above)
+    return expense.user_id === userId && (expense.status === "submitted" || expense.status === "draft");
   }
 
   /**
