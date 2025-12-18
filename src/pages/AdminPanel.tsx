@@ -671,7 +671,7 @@ export default function AdminPanel() {
           description: `Expense approved and ₹${selectedExpense.total_amount} deducted from employee balance.`,
         });
       } else if (selectedStatus === "submitted" || selectedStatus === "verified") {
-        // Only assign to engineer if one is selected
+        // Only assign to manager if one is selected
         if (selectedEngineer && selectedEngineer !== "none") {
           await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
           toast({
@@ -679,7 +679,7 @@ export default function AdminPanel() {
             description: "The expense has been assigned to a manager for review",
           });
         } else {
-          // Just update the status without assigning to engineer
+          // Just update the status without assigning to manager
           const updateData: any = {
             status: selectedStatus,
             updated_at: new Date().toISOString()

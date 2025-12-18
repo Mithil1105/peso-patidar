@@ -344,7 +344,7 @@ export class ExpenseService {
         await notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
-          employeeProfile?.name || "Engineer",
+          employeeProfile?.name || "Manager",
           null, // No engineer assigned
           adminUserIds
         );
@@ -462,13 +462,13 @@ export class ExpenseService {
     // Check if admin has permission
     const isAdmin = await this.hasOrgRole(adminId, organizationId, "admin");
     if (!isAdmin) {
-      throw new Error("Only administrators can assign expenses to engineers");
+      throw new Error("Only administrators can assign expenses to managers");
     }
 
     // Check if engineer exists and has engineer role in same organization
     const isEngineer = await this.hasOrgRole(engineerId, organizationId, "engineer");
     if (!isEngineer) {
-      throw new Error("Assigned user must have engineer role in your organization");
+      throw new Error("Assigned user must have manager role in your organization");
     }
 
     // Update expense (filtered by organization)
@@ -503,7 +503,7 @@ export class ExpenseService {
     // Get engineer's organization_id
     const organizationId = await getUserOrganizationId(engineerId);
     if (!organizationId) {
-      throw new Error("Engineer is not associated with an organization");
+      throw new Error("Manager is not associated with an organization");
     }
 
     // Check if engineer has permission
@@ -630,7 +630,7 @@ export class ExpenseService {
     const isAdmin = await this.hasOrgRole(approverId, organizationId, "admin");
     const isEngineer = await this.hasOrgRole(approverId, organizationId, "engineer");
     if (!isAdmin && !isEngineer) {
-      throw new Error("Only administrators or engineers can approve expenses");
+      throw new Error("Only administrators or managers can approve expenses");
     }
 
     // Fetch expense first for amount and user_id (filtered by organization)
@@ -651,7 +651,7 @@ export class ExpenseService {
     // Engineers can approve submitted expenses (below limit)
     // Admins can approve both submitted and verified expenses (auto-verifies submitted expenses)
     if (isEngineer && expense.status !== "submitted") {
-      throw new Error("Engineers can only approve submitted expenses");
+      throw new Error("Managers can only approve submitted expenses");
     }
     
     // Check engineer approval limit if engineer is trying to approve
@@ -798,7 +798,7 @@ export class ExpenseService {
         expenseId,
         expense.title,
         expense.user_id,
-        approverProfile?.name || (isAdmin ? "Admin" : "Engineer"),
+        approverProfile?.name || (isAdmin ? "Admin" : "Manager"),
         expenseAmount
       );
     } else {
@@ -807,7 +807,7 @@ export class ExpenseService {
         expenseId,
         expense.title,
         expense.user_id,
-        approverProfile?.name || (isAdmin ? "Admin" : "Engineer"),
+        approverProfile?.name || (isAdmin ? "Admin" : "Manager"),
         expenseAmount
       );
     }
@@ -833,7 +833,7 @@ export class ExpenseService {
     const isAdmin = await this.hasOrgRole(rejectorId, organizationId, "admin");
     const isEngineer = await this.hasOrgRole(rejectorId, organizationId, "engineer");
     if (!isAdmin && !isEngineer) {
-      throw new Error("Only administrators or engineers can reject expenses");
+      throw new Error("Only administrators or managers can reject expenses");
     }
 
     // Fetch expense to check status and get user_id (filtered by organization)
