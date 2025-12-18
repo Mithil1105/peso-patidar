@@ -22,6 +22,7 @@ import CategoryManagement from "./pages/CategoryManagement";
 import Settings from "./pages/Settings";
 import NotificationSettings from "./pages/NotificationSettings";
 import CashierTransactions from "./pages/CashierTransactions";
+import CashTransferHistory from "./pages/CashTransferHistory";
 
 const queryClient = new QueryClient();
 
@@ -180,6 +181,16 @@ const App = () => (
                 <ProtectedRoute allowedRoles={["cashier"]}>
                   <Layout>
                     <CashierTransactions />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cash-transfer-history"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "cashier"]}>
+                  <Layout>
+                    <CashTransferHistory />
                   </Layout>
                 </ProtectedRoute>
               }

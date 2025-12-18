@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Search, Filter, Download, ArrowLeft, MoreVertical, Eye, Edit, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -38,6 +39,7 @@ interface Expense {
   status: string;
   total_amount: number;
   created_at: string;
+  isResubmitted?: boolean;
 }
 
 export default function Expenses() {
@@ -116,7 +118,28 @@ export default function Expenses() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setExpenses(data || []);
+      
+      // Check which expenses have been resubmitted by checking audit logs
+      const expenseIds = (data || []).map(e => e.id);
+      if (expenseIds.length > 0) {
+        const { data: resubmitLogs } = await supabase
+          .from("audit_logs")
+          .select("expense_id")
+          .in("expense_id", expenseIds)
+          .eq("action", "expense_resubmitted");
+        
+        const resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
+        
+        // Mark expenses as resubmitted
+        const expensesWithResubmit = (data || []).map(expense => ({
+          ...expense,
+          isResubmitted: resubmittedIds.has(expense.id)
+        }));
+        
+        setExpenses(expensesWithResubmit);
+      } else {
+        setExpenses(data || []);
+      }
     } catch (error) {
       console.error("Error fetching expenses:", error);
     } finally {
@@ -665,7 +688,13 @@ export default function Expenses() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <StatusBadge status={expense.status as any} />
+                      {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          Resubmitted
+                        </Badge>
+                      ) : (
+                        <StatusBadge status={expense.status as any} />
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm hidden sm:table-cell">
                       {format(new Date(expense.created_at), "MMM d, yyyy")}
@@ -673,7 +702,13 @@ export default function Expenses() {
                     <TableCell className="text-right">
                       <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
                         <div className="sm:hidden">
-                          <StatusBadge status={expense.status as any} />
+                          {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                              Resubmitted
+                            </Badge>
+                          ) : (
+                            <StatusBadge status={expense.status as any} />
+                          )}
                         </div>
                       <div className="flex justify-end">
                         <DropdownMenu>
@@ -688,22 +723,24 @@ export default function Expenses() {
                               <Eye className="mr-2 h-4 w-4" />
                               View
                             </DropdownMenuItem>
-                            {expense.status === "submitted" && (
+                            {(expense.status === "submitted" || expense.status === "rejected") && (
                               <>
                                 <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
                                   <Edit className="mr-2 h-4 w-4" />
-                                  Edit
+                                  {expense.status === "rejected" ? "Edit & Resubmit" : "Edit"}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setExpenseToDelete(expense);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {expense.status === "submitted" && (
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      setExpenseToDelete(expense);
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                )}
                               </>
                             )}
                           </DropdownMenuContent>

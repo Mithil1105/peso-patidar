@@ -81,6 +81,7 @@ export default function ManagerReview() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [previewContentType, setPreviewContentType] = useState<string | null>(null);
   const [engineerApprovalLimit, setEngineerApprovalLimit] = useState<number>(50000);
   const [timePeriod, setTimePeriod] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -220,13 +221,28 @@ export default function ManagerReview() {
 
       if (profilesError) throw profilesError;
 
+      // Check which expenses have been resubmitted
+      const expenseIds = expenses.map(e => e.id);
+      let resubmittedIds = new Set<string>();
+      if (expenseIds.length > 0) {
+        const { data: resubmitLogs } = await supabase
+          .from("audit_logs")
+          .select("expense_id")
+          .in("expense_id", expenseIds)
+          .eq("action", "expense_resubmitted")
+          .eq("organization_id", organizationId);
+        
+        resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
+      }
+
       const merged = expenses.map(expense => {
         const profile = profiles?.find(p => p.user_id === expense.user_id);
         return {
           ...expense,
           user_name: profile?.name || "Unknown User",
           user_email: profile?.email || "unknown@example.com",
-          total_amount: Number(expense.total_amount)
+          total_amount: Number(expense.total_amount),
+          isResubmitted: resubmittedIds.has(expense.id)
         } as any;
       });
 
@@ -731,7 +747,13 @@ export default function ManagerReview() {
                     <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell">{expense.destination}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <StatusBadge status={expense.status as any} />
+                      {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          Resubmitted
+                        </Badge>
+                      ) : (
+                        <StatusBadge status={expense.status as any} />
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
                       {format(new Date(expense.created_at), "MMM d, yyyy")}
@@ -914,6 +936,7 @@ export default function ManagerReview() {
                                             size="sm"
                                             onClick={() => {
                                               setImagePreviewUrl(attachment.file_url);
+                                              setPreviewContentType(attachment.content_type);
                                               setImagePreviewOpen(true);
                                             }}
                                           >
@@ -1042,11 +1065,22 @@ export default function ManagerReview() {
         </CardContent>
       </Card>
       
-      {/* Image Preview Dialog */}
+      {/* Image/PDF Preview Dialog */}
       <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           {imagePreviewUrl && (
-            <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+            previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
+              <div className="w-full" style={{ height: '80vh' }}>
+                <iframe 
+                  src={imagePreviewUrl} 
+                  className="w-full h-full rounded border" 
+                  title="PDF Preview"
+                  style={{ minHeight: '600px' }}
+                />
+              </div>
+            ) : (
+              <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+            )
           )}
         </DialogContent>
       </Dialog>

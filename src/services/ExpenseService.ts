@@ -126,7 +126,26 @@ export class ExpenseService {
 
     // Check if user can edit this expense
     const canEdit = await this.canUserEditExpense(expenseId, userId, organizationId);
+    console.log('🔍 [ExpenseService] Can edit check:', {
+      expenseId,
+      userId,
+      organizationId,
+      canEdit
+    });
     if (!canEdit) {
+      // Get expense details for better error message
+      const { data: expenseCheck } = await supabase
+        .from("expenses")
+        .select("user_id, status, organization_id")
+        .eq("id", expenseId)
+        .single();
+      console.error('❌ [ExpenseService] Cannot edit expense:', {
+        expenseUserId: expenseCheck?.user_id,
+        expenseStatus: expenseCheck?.status,
+        expenseOrgId: expenseCheck?.organization_id,
+        currentUserId: userId,
+        currentOrgId: organizationId
+      });
       throw new Error("You don't have permission to edit this expense");
     }
 
@@ -140,9 +159,9 @@ export class ExpenseService {
 
     if (fetchError) throw fetchError;
 
-    // Check if expense can be edited (only submitted expenses can be edited, not verified or approved)
-    if (currentExpense.status !== "submitted" && !data.status) {
-      throw new Error("Only submitted expenses can be edited. Verified or approved expenses cannot be modified.");
+    // Check if expense can be edited (submitted or rejected expenses can be edited, not verified or approved)
+    if (currentExpense.status !== "submitted" && currentExpense.status !== "rejected" && currentExpense.status !== "draft" && !data.status) {
+      throw new Error("Only draft, submitted, or rejected expenses can be edited. Verified or approved expenses cannot be modified.");
     }
 
     const totalAmount = typeof data.amount === 'number' ? data.amount : currentExpense.total_amount;
@@ -159,6 +178,7 @@ export class ExpenseService {
       .from("expenses")
       .update(updateData)
       .eq("id", expenseId)
+      .eq("organization_id", organizationId)
       .select()
       .single();
 
@@ -253,8 +273,10 @@ export class ExpenseService {
       throw new Error("You don't have permission to submit this expense");
     }
 
-    if (expense.status !== "submitted") {
-      throw new Error("Only submitted expenses can be re-submitted");
+    // Allow resubmitting rejected expenses
+    const isResubmission = expense.status === "rejected";
+    if (expense.status !== "submitted" && expense.status !== "rejected" && expense.status !== "draft") {
+      throw new Error("Only draft, submitted, or rejected expenses can be submitted");
     }
 
     // Line items are not required anymore for submission
@@ -281,8 +303,11 @@ export class ExpenseService {
       if (updateError) throw updateError;
 
       // Log the action
-      const logMsg = `Expense submitted by engineer - sent directly to admin`;
-      await this.logAction(expenseId, userId, organizationId, "expense_submitted", logMsg);
+      const actionType = isResubmission ? "expense_resubmitted" : "expense_submitted";
+      const logMsg = isResubmission
+        ? `Expense resubmitted after rejection by engineer - sent directly to admin`
+        : `Expense submitted by engineer - sent directly to admin`;
+      await this.logAction(expenseId, userId, organizationId, actionType, logMsg);
 
       // Get expense title and employee name (filtered by organization)
       const { data: expenseData } = await supabase
@@ -363,10 +388,15 @@ export class ExpenseService {
       .eq("user_id", userId)
       .single();
 
+    // Log resubmission if this was a rejected expense
+    const actionType = isResubmission ? "expense_resubmitted" : "expense_submitted";
+    
     if (profile?.reporting_engineer_id) {
       // Employee has reporting engineer - assign to engineer and notify them
-      const logMsg = `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`;
-      await this.logAction(expenseId, userId, organizationId, "expense_submitted", logMsg);
+      const logMsg = isResubmission 
+        ? `Expense resubmitted after rejection and auto-assigned to engineer ${profile.reporting_engineer_id}`
+        : `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`;
+      await this.logAction(expenseId, userId, organizationId, actionType, logMsg);
 
       // Notify assigned engineer
       if (expenseData) {
@@ -379,8 +409,10 @@ export class ExpenseService {
       }
     } else {
       // Employee has no reporting engineer - send directly to admin
-      const logMsg = `Expense submitted by employee without assigned engineer - sent directly to admin`;
-      await this.logAction(expenseId, userId, organizationId, "expense_submitted", logMsg);
+      const logMsg = isResubmission
+        ? `Expense resubmitted after rejection by employee without assigned engineer - sent directly to admin`
+        : `Expense submitted by employee without assigned engineer - sent directly to admin`;
+      await this.logAction(expenseId, userId, organizationId, actionType, logMsg);
 
       // Get all admin user IDs in this organization
       const { data: adminMemberships } = await supabase
@@ -914,18 +946,39 @@ export class ExpenseService {
     // Check if user owns the expense (filtered by organization)
     const { data: expense, error } = await supabase
       .from("expenses")
-      .select("user_id, status")
+      .select("user_id, status, organization_id")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
       .single();
 
-    if (error) return false;
+    if (error) {
+      console.error('❌ [ExpenseService] Error fetching expense for edit check:', error);
+      return false;
+    }
+
+    if (!expense) {
+      console.error('❌ [ExpenseService] Expense not found:', expenseId);
+      return false;
+    }
+
+    console.log('🔍 [ExpenseService] Expense ownership check:', {
+      expenseUserId: expense.user_id,
+      currentUserId: userId,
+      expenseStatus: expense.status,
+      expenseOrgId: expense.organization_id,
+      currentOrgId: organizationId,
+      isOwner: expense.user_id === userId,
+      allowedStatuses: ['submitted', 'draft', 'rejected'],
+      statusMatches: ['submitted', 'draft', 'rejected'].includes(expense.status)
+    });
 
     // Users can edit/submit their own expenses if:
-    // 1. They own it AND status is "submitted" (for editing)
-    // 2. They own it AND status is "draft" or "submitted" (for submitting)
+    // 1. They own it AND status is "submitted" or "rejected" (for editing/resubmitting)
+    // 2. They own it AND status is "draft" (for editing)
     // 3. They are engineer/admin (already checked above)
-    return expense.user_id === userId && (expense.status === "submitted" || expense.status === "draft");
+    const canEdit = expense.user_id === userId && (expense.status === "submitted" || expense.status === "draft" || expense.status === "rejected");
+    console.log('✅ [ExpenseService] Final canEdit result:', canEdit);
+    return canEdit;
   }
 
   /**

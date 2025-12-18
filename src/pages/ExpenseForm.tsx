@@ -60,6 +60,7 @@ export default function ExpenseForm() {
   // Line items state removed
   const [isEditing, setIsEditing] = useState(false);
   const [currentExpenseId, setCurrentExpenseId] = useState<string | null>(null);
+  const [expenseStatus, setExpenseStatus] = useState<string | null>(null);
   const [requiredFiles, setRequiredFiles] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -162,6 +163,7 @@ export default function ExpenseForm() {
       });
 
       setCurrentExpenseId(expenseData.id);
+      setExpenseStatus(expenseData.status);
 
       // Fetch existing attachments for this expense
       const { data: attachmentsData, error: attachmentsError } = await supabase
@@ -412,10 +414,13 @@ export default function ExpenseForm() {
         await ExpenseService.submitExpense(newExpense.id, user.id);
       }
 
+      const isResubmission = expenseStatus === "rejected";
       toast({
         title: "Success",
         description: userRole === "admin" 
           ? "Expense created and auto-approved. Amount deducted from your balance." 
+          : isResubmission
+          ? "Expense resubmitted successfully"
           : "Expense submitted successfully",
       });
 
@@ -463,10 +468,18 @@ export default function ExpenseForm() {
       {/* Center-aligned Header */}
       <div className="text-center">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-          {isEditing ? "Edit Expense" : "New Expense"}
+          {isEditing 
+            ? expenseStatus === "rejected" 
+              ? "Edit & Resubmit Expense" 
+              : "Edit Expense" 
+            : "New Expense"}
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-2">
-          {isEditing ? "Update your expense details" : "Create a new expense claim"}
+          {isEditing 
+            ? expenseStatus === "rejected"
+              ? "Update your expense details and resubmit for review"
+              : "Update your expense details"
+            : "Create a new expense claim"}
         </p>
       </div>
 
@@ -628,7 +641,7 @@ export default function ExpenseForm() {
             <ErrorBoundary>
               <div className={isAttachmentRequired ? "" : "pointer-events-none opacity-50"}>
                 <FileUpload 
-                  expenseId={currentExpenseId || id!} 
+                  expenseId={currentExpenseId || id || "new"} 
                   onUploadComplete={(attachment) => {
                     if (attachment && attachment.file_url) {
                       setAttachments(prev => [...prev, attachment.file_url]);
@@ -676,7 +689,7 @@ export default function ExpenseForm() {
           className="w-full"
         >
           <Send className="mr-2 h-4 w-4" />
-          Submit
+          {isEditing && expenseStatus === "rejected" ? "Resubmit" : "Submit"}
         </Button>
         <Button
           variant="outline"

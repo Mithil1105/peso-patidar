@@ -80,6 +80,7 @@ export default function ExpenseDetail() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [previewContentType, setPreviewContentType] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -207,12 +208,13 @@ export default function ExpenseDetail() {
 
       setAttachments(normalizedAttachments);
 
-      // Fetch audit logs (filtered by organization_id)
+      // Fetch audit logs including resubmission (filtered by organization_id)
       const { data: auditData, error: auditError } = await supabase
         .from("audit_logs")
         .select("*")
         .eq("expense_id", id)
         .eq("organization_id", organizationId)
+        .in("action", ["expense_created", "expense_submitted", "expense_resubmitted", "expense_verified", "expense_approved", "expense_rejected"])
         .order("created_at", { ascending: false });
 
       if (auditError) throw auditError;
@@ -250,7 +252,7 @@ export default function ExpenseDetail() {
   const canEdit = () => {
     if (!expense) return false;
     return (
-      (expense.user_id === user?.id && expense.status === "submitted") ||
+      (expense.user_id === user?.id && (expense.status === "submitted" || expense.status === "rejected")) ||
       userRole === "admin"
     );
   };
@@ -913,6 +915,7 @@ export default function ExpenseDetail() {
                         size="sm"
                         onClick={() => {
                           setImagePreviewUrl(attachment.file_url);
+                          setPreviewContentType(attachment.content_type);
                           setImagePreviewOpen(true);
                         }}
                       >
@@ -926,11 +929,29 @@ export default function ExpenseDetail() {
             </Card>
           )}
 
-          {/* Image Preview Dialog */}
+          {/* Image/PDF Preview Dialog */}
           <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               {imagePreviewUrl && (
-                <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+                previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
+                  <div className="w-full" style={{ height: '80vh' }}>
+                    <iframe 
+                      src={imagePreviewUrl} 
+                      className="w-full h-full rounded border" 
+                      title="PDF Preview"
+                      style={{ minHeight: '600px' }}
+                    />
+                  </div>
+                ) : (
+                  <img 
+                    src={imagePreviewUrl} 
+                    alt="Attachment preview" 
+                    className="w-full h-auto rounded" 
+                    onError={(e) => {
+                      console.error("Preview failed to load:", imagePreviewUrl);
+                    }}
+                  />
+                )
               )}
             </DialogContent>
           </Dialog>
@@ -969,7 +990,11 @@ export default function ExpenseDetail() {
                       )}
                     </div>
                     <div className="flex-1 space-y-1">
-                      <p className="text-sm font-medium">{log.action}</p>
+                      <p className="text-sm font-medium">
+                        {log.action === "expense_resubmitted" 
+                          ? "Expense Resubmitted" 
+                          : log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                      </p>
                       {log.comment && (
                         <p className="text-xs text-muted-foreground">{log.comment}</p>
                       )}
@@ -1006,9 +1031,12 @@ export default function ExpenseDetail() {
                 Print Receipt
               </Button>
               {canEdit() && (
-                <Button className="w-full justify-start">
+                <Button 
+                  className="w-full justify-start"
+                  onClick={() => navigate(`/expenses/${id}/edit`)}
+                >
                   <Edit className="h-4 w-4 mr-2" />
-                  Edit Expense
+                  {expense?.status === "rejected" ? "Edit & Resubmit" : "Edit Expense"}
                 </Button>
               )}
             </CardContent>

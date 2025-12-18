@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +17,7 @@ interface Attachment {
   content_type: string;
   file_url: string;
   created_at: string;
+  file_size?: number; // File size in bytes
 }
 
 interface FileUploadProps {
@@ -47,6 +48,41 @@ export function FileUpload({
   const { user, organizationId } = useAuth();
   const isMobile = useIsMobile();
 
+  // Load existing attachments when expenseId is provided (not "new")
+  useEffect(() => {
+    const loadAttachments = async () => {
+      if (expenseId && expenseId !== "new" && organizationId) {
+        try {
+          const { data, error } = await supabase
+            .from('attachments')
+            .select('*')
+            .eq('expense_id', expenseId)
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false });
+          
+          if (error) {
+            console.error('Error loading attachments:', error);
+            return;
+          }
+          
+          if (data && data.length > 0) {
+            // Map data to include file_size (default to 0 if not available)
+            const attachmentsWithSize = data.map((att) => ({
+              ...att,
+              file_size: att.file_size || 0
+            }));
+            setAttachments(attachmentsWithSize);
+            console.log('✅ Loaded existing attachments:', attachmentsWithSize.length);
+          }
+        } catch (error) {
+          console.error('Error fetching attachments:', error);
+        }
+      }
+    };
+    
+    loadAttachments();
+  }, [expenseId, organizationId]);
+
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -66,34 +102,56 @@ export function FileUpload({
     cameraInputRef.current?.click();
   };
 
+  // Image compression removed as requested
+
+  // PDF compression removed as requested
+
   const uploadFile = async (file: File) => {
     try {
       setUploading(true);
       setUploadProgress(0);
       
-      // Validate file type and size according to spec
-      const maxSize = 10 * 1024 * 1024; // 10MB as per spec
-      if (file.size > maxSize) {
-        throw new Error("File size must be less than 10MB");
+      // Calculate current total size of all attachments
+      const currentTotalSize = attachments.reduce((sum, att) => sum + (att.file_size || 0), 0);
+      const maxTotalSize = 10 * 1024 * 1024; // 10MB total limit for all attachments
+      
+      // Check if adding this file would exceed total limit
+      if (currentTotalSize + file.size > maxTotalSize) {
+        const currentTotalMB = (currentTotalSize / (1024 * 1024)).toFixed(2);
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        throw new Error(`Total size limit exceeded. Current total: ${currentTotalMB}MB, adding ${fileSizeMB}MB would exceed 10MB limit.`);
+      }
+      
+      // Validate individual file type and size - PDFs have 4MB limit, images have 10MB limit
+      const isPDF = file.type === 'application/pdf';
+      const maxIndividualSize = isPDF ? 4 * 1024 * 1024 : 10 * 1024 * 1024; // 4MB for PDFs, 10MB for images
+      const maxSizeMB = isPDF ? 4 : 10;
+      
+      if (file.size > maxIndividualSize) {
+        throw new Error(`File size must be less than ${maxSizeMB}MB${isPDF ? ' for PDF files' : ''}`);
       }
 
-      // Only allow PNG, JPG for bill photos (images only)
+      // Allow PNG, JPG images and PDF files
       const allowedTypes = [
         'image/jpeg',
         'image/jpg', 
-        'image/png'
+        'image/png',
+        'application/pdf'
       ];
 
       if (!allowedTypes.includes(file.type)) {
-        throw new Error("Only PNG and JPG image files are allowed for bill photos");
+        throw new Error("Only PNG, JPG image files and PDF files are allowed for bill uploads");
       }
 
-      // Additional validation for file extensions (images only)
-      const allowedExtensions = ['.png', '.jpg', '.jpeg'];
+      // Additional validation for file extensions
+      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf'];
       const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
       if (!allowedExtensions.includes(fileExtension)) {
-        throw new Error("Only PNG and JPG image files are allowed for bill photos");
+        throw new Error("Only PNG, JPG image files and PDF files are allowed for bill uploads");
       }
+
+      // Use file as-is (no compression)
+      const fileToUpload = file;
 
       // Create unique filename
       const fileExt = file.name.split('.').pop();
@@ -104,22 +162,50 @@ export function FileUpload({
 
       // Upload file to Supabase Storage (use receipts bucket as primary)
       const bucketName = 'receipts';
+      
+      // Validate user is authenticated
+      if (!user?.id) {
+        throw new Error("You must be logged in to upload files");
+      }
+      
+      console.log('📤 Uploading file:', {
+        fileName: file.name,
+        fileSize: fileToUpload.size,
+        fileType: fileToUpload.type,
+        uploadPath,
+        expenseId,
+        userId: user.id
+      });
+      
+      setUploadProgress(30); // Show progress
+      
       const uploadResult = await supabase.storage
         .from('receipts')
-        .upload(uploadPath, file, {
+        .upload(uploadPath, fileToUpload, {
           cacheControl: '3600',
           upsert: false
         });
 
       if (uploadResult.error) {
-        console.error('Storage upload error:', uploadResult.error);
+        console.error('❌ Storage upload error:', uploadResult.error);
+        console.error('Error details:', {
+          message: uploadResult.error.message,
+          statusCode: uploadResult.error.statusCode,
+          error: uploadResult.error.error
+        });
         throw new Error(`Failed to upload file: ${uploadResult.error.message}`);
       }
+      
+      console.log('✅ File uploaded successfully:', uploadResult.data);
+      setUploadProgress(70);
 
       // Get public URL (use the same bucket that was used for upload)
       const { data: urlData } = supabase.storage
         .from(bucketName)
         .getPublicUrl(uploadPath);
+      
+      console.log('📎 Public URL generated:', urlData.publicUrl);
+      setUploadProgress(85);
 
       // Save attachment record to database (only if expenseId is not "new")
       let attachmentData = null;
@@ -127,6 +213,12 @@ export function FileUpload({
         if (!organizationId) {
           throw new Error("Organization not found");
         }
+        
+        console.log('💾 Saving attachment to database:', {
+          expense_id: expenseId,
+          organization_id: organizationId,
+          filename: file.name
+        });
         
         const { data, error: attachmentError } = await supabase
           .from('attachments')
@@ -138,13 +230,20 @@ export function FileUpload({
             filename: file.name,
             content_type: file.type,
             uploaded_by: user?.id,
+            file_size: file.size, // Store file size
           })
           .select()
           .single();
         
-        if (attachmentError) throw attachmentError;
+        if (attachmentError) {
+          console.error('❌ Database insert error:', attachmentError);
+          throw attachmentError;
+        }
         attachmentData = data;
+        console.log('✅ Attachment saved to database:', attachmentData);
       }
+      
+      setUploadProgress(100);
 
       // Create a temporary attachment object for new expenses
       const tempAttachment = {
@@ -152,7 +251,8 @@ export function FileUpload({
         filename: file.name,
         content_type: file.type,
         file_url: urlData.publicUrl,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        file_size: file.size
       };
 
       setAttachments(prev => [...prev, attachmentData || tempAttachment]);
@@ -190,21 +290,64 @@ export function FileUpload({
       const attachment = attachments.find(a => a.id === attachmentId);
       if (!attachment) return;
 
+      console.log('🗑️ Deleting attachment:', {
+        attachmentId,
+        filename: attachment.filename,
+        fileUrl: attachment.file_url
+      });
+
       // Extract file path from URL
-      const url = new URL(attachment.file_url);
-      const filePath = url.pathname.split('/').slice(-2).join('/');
+      // Handle both public URLs and paths
+      let filePath = '';
+      if (attachment.file_url.startsWith('http')) {
+        const url = new URL(attachment.file_url);
+        // Extract path after /storage/v1/object/public/receipts/
+        const pathMatch = url.pathname.match(/\/storage\/v1\/object\/public\/receipts\/(.+)$/);
+        if (pathMatch) {
+          filePath = pathMatch[1];
+        } else {
+          // Fallback: try to extract from pathname
+          const parts = url.pathname.split('/');
+          const receiptsIndex = parts.indexOf('receipts');
+          if (receiptsIndex !== -1 && receiptsIndex < parts.length - 1) {
+            filePath = parts.slice(receiptsIndex + 1).join('/');
+          }
+        }
+      } else {
+        // If it's already a path
+        filePath = attachment.file_url;
+      }
 
-      // Delete from storage
-      await supabase.storage
-        .from('receipts')
-        .remove([filePath]);
+      console.log('📁 Extracted file path:', filePath);
 
-      // Delete from database
-      await supabase
-        .from('attachments')
-        .delete()
-        .eq('id', attachmentId);
+      // Delete from storage if filePath is valid
+      if (filePath) {
+        const { error: storageError } = await supabase.storage
+          .from('receipts')
+          .remove([filePath]);
+        
+        if (storageError) {
+          console.error('⚠️ Storage delete error (continuing with DB delete):', storageError);
+        } else {
+          console.log('✅ File deleted from storage');
+        }
+      }
 
+      // Delete from database (only if it's not a temp attachment)
+      if (attachmentId && !attachmentId.startsWith('temp-')) {
+        const { error: dbError } = await supabase
+          .from('attachments')
+          .delete()
+          .eq('id', attachmentId);
+        
+        if (dbError) {
+          console.error('❌ Database delete error:', dbError);
+          throw dbError;
+        }
+        console.log('✅ Attachment deleted from database');
+      }
+
+      // Remove from local state
       setAttachments(prev => prev.filter(a => a.id !== attachmentId));
       
       toast({
@@ -212,11 +355,11 @@ export function FileUpload({
         description: `${attachment.filename} has been deleted`,
       });
     } catch (error: any) {
-      console.error("Delete error:", error);
+      console.error("❌ Delete error:", error);
       toast({
         variant: "destructive",
         title: "Delete failed",
-        description: "Failed to delete file",
+        description: error.message || "Failed to delete file",
       });
     }
   };
@@ -224,6 +367,9 @@ export function FileUpload({
   const getFileIcon = (contentType: string) => {
     if (contentType.startsWith('image/')) {
       return <Image className="h-4 w-4" />;
+    }
+    if (contentType === 'application/pdf') {
+      return <FileText className="h-4 w-4" />;
     }
     return <FileText className="h-4 w-4" />;
   };
@@ -256,7 +402,7 @@ export function FileUpload({
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/jpg"
+            accept="image/png,image/jpeg,image/jpg,application/pdf"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -296,10 +442,10 @@ export function FileUpload({
               )}
             </div>
               <p className="text-sm text-muted-foreground mt-2">
-              {isMobile ? "Take a photo or choose from files" : "or drag and drop bill photos here"}
+              {isMobile ? "Take a photo or choose from files" : "or drag and drop bill photos/PDFs here"}
               </p>
               <p className="text-xs text-muted-foreground">
-                PNG, JPG only (max 10MB each)
+                PNG, JPG (max 10MB each), PDF (max 4MB each) • Total limit: 10MB for all files
                 {required && (
                   <span className="text-red-500 font-medium"> * Required for submission</span>
                 )}
@@ -317,7 +463,12 @@ export function FileUpload({
         {/* Attachments List */}
         {attachments.length > 0 && (
           <div className="space-y-2">
-            <h4 className="font-medium">Uploaded Files</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">Uploaded Files</h4>
+              <p className="text-xs text-muted-foreground">
+                Total: {formatFileSize(attachments.reduce((sum, att) => sum + (att.file_size || 0), 0))} / {formatFileSize(10 * 1024 * 1024)}
+              </p>
+            </div>
             <div className="space-y-2">
               {attachments.filter(attachment => attachment).map((attachment) => (
                 <div
@@ -329,7 +480,7 @@ export function FileUpload({
                     <div>
                       <p className="font-medium text-sm">{attachment.filename || 'Unknown file'}</p>
                       <p className="text-xs text-muted-foreground">
-                        {attachment.content_type || 'Unknown type'} • {(() => {
+                        {attachment.content_type || 'Unknown type'} • {attachment.file_size ? formatFileSize(attachment.file_size) : 'Unknown size'} • {(() => {
                           try {
                             return attachment.created_at ? format(new Date(attachment.created_at), "MMM d, yyyy") : 'Unknown date';
                           } catch {
@@ -370,7 +521,11 @@ export function FileUpload({
     <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
       <DialogContent className="max-w-3xl">
         {imagePreviewUrl && (
-          <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+          imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
+            <iframe src={imagePreviewUrl} className="w-full h-[600px] rounded" title="PDF Preview" />
+          ) : (
+            <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+          )
         )}
       </DialogContent>
     </Dialog>

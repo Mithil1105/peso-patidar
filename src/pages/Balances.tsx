@@ -9,10 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { notifyBalanceAdded } from "@/services/NotificationService";
-import { Search, Users } from "lucide-react";
+import { Search, Users, History, Download, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format } from "date-fns";
 
 interface ProfileRow {
   user_id: string;
@@ -35,6 +38,15 @@ export default function Balances() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [bulkAmount, setBulkAmount] = useState<number>(0);
   const [bulkAdding, setBulkAdding] = useState(false);
+  const [activeTab, setActiveTab] = useState<"balances" | "history">("balances");
+  
+  // Transfer history state
+  const [transferHistoryLoading, setTransferHistoryLoading] = useState(false);
+  const [transfers, setTransfers] = useState<any[]>([]);
+  const [filteredTransfers, setFilteredTransfers] = useState<any[]>([]);
+  const [transferSearchTerm, setTransferSearchTerm] = useState("");
+  const [transferFilterType, setTransferFilterType] = useState<string>("all");
+  const [transferFilterRole, setTransferFilterRole] = useState<string>("all");
 
   const canEdit = userRole === "admin" || userRole === "cashier";
 
@@ -47,6 +59,20 @@ export default function Balances() {
       return cleanup;
     }
   }, [userRole, user?.id]);
+
+  useEffect(() => {
+    if (activeTab === "history" && user && (userRole === "admin" || userRole === "cashier")) {
+      fetchTransferHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, user?.id, userRole]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      applyTransferFilters();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transfers, transferSearchTerm, transferFilterType, transferFilterRole, activeTab]);
 
   const setupBalanceRealtimeSubscription = () => {
     if (!user?.id) return () => {};
@@ -461,6 +487,78 @@ export default function Balances() {
         }
       }
       
+      // Log to cash transfer history (for both admin and cashier transfers)
+      if ((userRole === 'admin' || userRole === 'cashier') && user?.id && amountToAdd > 0) {
+        const recipientRole = currentRow.role;
+        let transferType: string | null = null;
+        
+        if (userRole === 'admin') {
+          if (recipientRole === 'cashier') {
+            transferType = 'admin_to_cashier';
+          } else if (recipientRole === 'employee') {
+            transferType = 'admin_to_employee';
+          } else if (recipientRole === 'engineer') {
+            transferType = 'admin_to_engineer';
+          } else {
+            transferType = 'admin_to_employee'; // fallback
+          }
+        } else {
+          // cashier
+          if (recipientRole === 'employee') {
+            transferType = 'cashier_to_employee';
+          } else if (recipientRole === 'engineer') {
+            transferType = 'cashier_to_engineer';
+          }
+          // cashier can't transfer to admin or other cashiers - skip logging
+        }
+        
+        // Only log if we have a valid transfer type
+        if (transferType) {
+          console.log('Logging cash transfer history:', {
+            organization_id: organizationId,
+            transferrer_id: user.id,
+            transferrer_role: userRole,
+            recipient_id: userId,
+            recipient_role: recipientRole,
+            amount: amountToAdd,
+            transfer_type: transferType,
+          });
+          
+          if (!organizationId) {
+            console.error('Cannot log transfer history: organizationId is missing');
+            return;
+          }
+          
+          const { data: historyData, error: historyError } = await supabase
+            .from("cash_transfer_history")
+            .insert({
+              organization_id: organizationId,
+              transferrer_id: user.id,
+              transferrer_role: userRole,
+              recipient_id: userId,
+              recipient_role: recipientRole,
+              amount: amountToAdd,
+              transfer_type: transferType,
+            })
+            .select();
+          
+          if (historyError) {
+            console.error('Error recording cash transfer history:', historyError);
+            console.error('Error details:', {
+              code: historyError.code,
+              message: historyError.message,
+              details: historyError.details,
+              hint: historyError.hint,
+            });
+            // Don't throw error - history logging is not critical for the transaction
+          } else {
+            console.log('Cash transfer history recorded successfully:', historyData);
+          }
+        } else {
+          console.log('Skipping transfer history log - invalid transfer type for cashier');
+        }
+      }
+      
       // Get cashier/admin name for notification
       const { data: adderProfile } = await supabase
         .from("profiles")
@@ -506,6 +604,11 @@ export default function Balances() {
       
       // Clear the add amount input
       setAddAmounts(prev => ({ ...prev, [userId]: 0 }));
+      
+      // Refresh transfer history if history tab is active
+      if (activeTab === "history") {
+        fetchTransferHistory();
+      }
     } catch (e: any) {
       console.error('Error in addAmountToUser:', e);
       toast({ variant: "destructive", title: "Error", description: e.message || "Failed to add amount" });
@@ -566,6 +669,77 @@ export default function Balances() {
       
       if (error) throw error;
       
+      // Log to cash transfer history if balance increased (transfer occurred)
+      if ((userRole === 'admin' || userRole === 'cashier') && user?.id && balanceDifference > 0) {
+        const recipientRole = currentRow.role;
+        let transferType: string | null = null;
+        
+        if (userRole === 'admin') {
+          if (recipientRole === 'cashier') {
+            transferType = 'admin_to_cashier';
+          } else if (recipientRole === 'employee') {
+            transferType = 'admin_to_employee';
+          } else if (recipientRole === 'engineer') {
+            transferType = 'admin_to_engineer';
+          } else {
+            transferType = 'admin_to_employee'; // fallback
+          }
+        } else {
+          // cashier
+          if (recipientRole === 'employee') {
+            transferType = 'cashier_to_employee';
+          } else if (recipientRole === 'engineer') {
+            transferType = 'cashier_to_engineer';
+          }
+          // cashier can't transfer to admin or other cashiers, skip logging
+        }
+        
+        if (transferType) {
+          console.log('Logging cash transfer history (updateBalance):', {
+            organization_id: organizationId,
+            transferrer_id: user.id,
+            transferrer_role: userRole,
+            recipient_id: userId,
+            recipient_role: recipientRole,
+            amount: balanceDifference,
+            transfer_type: transferType,
+          });
+          
+          if (!organizationId) {
+            console.error('Cannot log transfer history: organizationId is missing');
+            return;
+          }
+          
+          const { data: historyData, error: historyError } = await supabase
+            .from("cash_transfer_history")
+            .insert({
+              organization_id: organizationId,
+              transferrer_id: user.id,
+              transferrer_role: userRole,
+              recipient_id: userId,
+              recipient_role: recipientRole,
+              amount: balanceDifference,
+              transfer_type: transferType,
+            })
+            .select();
+          
+          if (historyError) {
+            console.error('Error recording cash transfer history:', historyError);
+            console.error('Error details:', {
+              code: historyError.code,
+              message: historyError.message,
+              details: historyError.details,
+              hint: historyError.hint,
+            });
+            // Don't throw error - history logging is not critical for the transaction
+          } else {
+            console.log('Cash transfer history recorded successfully:', historyData);
+          }
+        } else {
+          console.log('Skipping transfer history log - invalid transfer type for cashier');
+        }
+      }
+      
       toast({ 
         title: "Balance updated", 
         description: userRole === 'cashier' && balanceDifference > 0
@@ -585,6 +759,11 @@ export default function Balances() {
         }
         return r;
       }));
+      
+      // Refresh transfer history if history tab is active
+      if (activeTab === "history" && balanceDifference > 0) {
+        fetchTransferHistory();
+      }
     } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message || "Failed to update balance" });
     } finally {
@@ -603,19 +782,183 @@ export default function Balances() {
     );
   }
 
+  const applyTransferFilters = () => {
+    let filtered = [...transfers];
+
+    // Search filter
+    if (transferSearchTerm) {
+      const search = transferSearchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (t) =>
+          t.transferrer_name?.toLowerCase().includes(search) ||
+          t.recipient_name?.toLowerCase().includes(search) ||
+          t.transfer_type.toLowerCase().includes(search)
+      );
+    }
+
+    // Type filter
+    if (transferFilterType !== "all") {
+      filtered = filtered.filter((t) => t.transfer_type === transferFilterType);
+    }
+
+    // Role filter
+    if (transferFilterRole !== "all") {
+      if (userRole === "cashier") {
+        filtered = filtered.filter((t) => t.recipient_role === transferFilterRole);
+      } else {
+        filtered = filtered.filter(
+          (t) => t.transferrer_role === transferFilterRole || t.recipient_role === transferFilterRole
+        );
+      }
+    }
+
+    setFilteredTransfers(filtered);
+  };
+
+  const fetchTransferHistory = async () => {
+    if (!user?.id) return;
+    try {
+      setTransferHistoryLoading(true);
+      
+      let query = supabase
+        .from("cash_transfer_history")
+        .select("*")
+        .eq("organization_id", organizationId || "")
+        .order("transferred_at", { ascending: false });
+
+      if (userRole === "cashier") {
+        query = query.or(`transferrer_id.eq.${user.id},recipient_id.eq.${user.id}`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        if (error.code === "PGRST205" || error.message?.includes("does not exist") || error.message?.includes("relation") || error.code === "42P01") {
+          console.warn("cash_transfer_history table does not exist yet");
+          setTransfers([]);
+          setFilteredTransfers([]);
+          return;
+        }
+        throw error;
+      }
+
+      const typedTransfers = (data || []) as any[];
+
+      const userIds = new Set<string>();
+      typedTransfers.forEach((t) => {
+        userIds.add(t.transferrer_id);
+        userIds.add(t.recipient_id);
+      });
+
+      if (userIds.size > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("user_id, name")
+          .in("user_id", Array.from(userIds));
+
+        const nameMap = new Map(profiles?.map((p) => [p.user_id, p.name]) || []);
+
+        const transfersWithNames = typedTransfers.map((t) => ({
+          id: t.id,
+          transferrer_id: t.transferrer_id,
+          transferrer_name: nameMap.get(t.transferrer_id) || "Unknown",
+          transferrer_role: t.transferrer_role,
+          recipient_id: t.recipient_id,
+          recipient_name: nameMap.get(t.recipient_id) || "Unknown",
+          recipient_role: t.recipient_role,
+          amount: Number(t.amount),
+          transfer_type: t.transfer_type,
+          transferred_at: t.transferred_at,
+          notes: t.notes || undefined,
+        }));
+
+        setTransfers(transfersWithNames);
+      } else {
+        setTransfers([]);
+      }
+    } catch (error: any) {
+      console.error("Error fetching transfer history:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error?.message || "Failed to load transfer history.",
+      });
+    } finally {
+      setTransferHistoryLoading(false);
+    }
+  };
+
+  const getTransferTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      admin_to_cashier: "Admin → Cashier",
+      admin_to_employee: "Admin → Employee",
+      admin_to_engineer: "Admin → Manager",
+      cashier_to_employee: "Cashier → Employee",
+      cashier_to_engineer: "Cashier → Manager",
+    };
+    return labels[type] || type;
+  };
+
+  const exportTransferHistoryToCSV = () => {
+    const csvRows = [
+      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Notes"].join(","),
+      ...filteredTransfers.map((t) => {
+        const row = [
+          format(new Date(t.transferred_at), "yyyy-MM-dd HH:mm:ss"),
+          `"${t.transferrer_name || "Unknown"}"`,
+          t.transferrer_role,
+          `"${t.recipient_name || "Unknown"}"`,
+          t.recipient_role,
+          t.amount,
+          getTransferTypeLabel(t.transfer_type),
+          t.notes ? `"${t.notes.replace(/"/g, '""')}"` : "",
+        ];
+        return row.join(",");
+      }),
+    ];
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `cash-transfer-history-${format(new Date(), "yyyy-MM-dd")}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Export Successful",
+      description: "Transfer history has been exported to CSV.",
+    });
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Employee Balances</h1>
-        <p className="text-muted-foreground">
-          {userRole === 'cashier' 
-            ? `Manage employee balances. Your current balance: ${formatINR(cashierBalance)}`
-            : "View and manage initial balances for employees"
-          }
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Employee Balances</h1>
+          <p className="text-muted-foreground">
+            {userRole === 'cashier' 
+              ? `Manage employee balances. Your current balance: ${formatINR(cashierBalance)}`
+              : "View and manage initial balances for employees"
+            }
+          </p>
+        </div>
       </div>
 
-      <Card>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "balances" | "history")} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="balances">Balances</TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Transfer History
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="balances" className="space-y-6">
+          <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -911,6 +1254,63 @@ export default function Balances() {
 
                       if (updateError) throw updateError;
 
+                      // Log to cash transfer history (admin bulk transfers)
+                      if (userRole === 'admin' && user?.id) {
+                        const recipientRole = userRow.role;
+                        let transferType: string;
+                        
+                        if (recipientRole === 'cashier') {
+                          transferType = 'admin_to_cashier';
+                        } else if (recipientRole === 'employee') {
+                          transferType = 'admin_to_employee';
+                        } else if (recipientRole === 'engineer') {
+                          transferType = 'admin_to_engineer';
+                        } else {
+                          transferType = 'admin_to_employee'; // fallback
+                        }
+                        
+                        console.log('Logging cash transfer history (bulk):', {
+                          organization_id: organizationId,
+                          transferrer_id: user.id,
+                          transferrer_role: 'admin',
+                          recipient_id: userId,
+                          recipient_role: recipientRole,
+                          amount: bulkAmount,
+                          transfer_type: transferType,
+                        });
+                        
+                        if (!organizationId) {
+                          console.error('Cannot log transfer history: organizationId is missing');
+                          return;
+                        }
+                        
+                        const { data: historyData, error: historyError } = await supabase
+                          .from("cash_transfer_history")
+                          .insert({
+                            organization_id: organizationId,
+                            transferrer_id: user.id,
+                            transferrer_role: 'admin',
+                            recipient_id: userId,
+                            recipient_role: recipientRole,
+                            amount: bulkAmount,
+                            transfer_type: transferType,
+                          })
+                          .select();
+                        
+                        if (historyError) {
+                          console.error('Error recording cash transfer history:', historyError);
+                          console.error('Error details:', {
+                            code: historyError.code,
+                            message: historyError.message,
+                            details: historyError.details,
+                            hint: historyError.hint,
+                          });
+                          // Don't throw error - history logging is not critical
+                        } else {
+                          console.log('Cash transfer history recorded successfully:', historyData);
+                        }
+                      }
+
                       // Send notification
                       if (adminProfile) {
                         await notifyBalanceAdded(
@@ -953,6 +1353,11 @@ export default function Balances() {
                   setBulkAddDialogOpen(false);
                   setSelectedUserIds(new Set());
                   setBulkAmount(0);
+                  
+                  // Refresh transfer history if history tab is active
+                  if (activeTab === "history") {
+                    fetchTransferHistory();
+                  }
                 } catch (error: any) {
                   console.error("Error in bulk add:", error);
                   toast({
@@ -978,14 +1383,164 @@ export default function Balances() {
       </Dialog>
    
       
-      <div className="text-sm text-muted-foreground">
-        {userRole === 'cashier' 
-          ? "Note: When you add funds to an employee's account, the amount will be deducted from your balance. Balance is automatically reduced when an expense is approved by admin."
-          : userRole === 'admin'
-          ? "Note: You can add funds to employee accounts without any deduction from your account. Balance is automatically reduced when an expense is approved by admin."
-          : "Note: Balance is automatically reduced when an expense is approved by admin."
-        }
-      </div>
+          <div className="text-sm text-muted-foreground">
+            {userRole === 'cashier' 
+              ? "Note: When you add funds to an employee's account, the amount will be deducted from your balance. Balance is automatically reduced when an expense is approved by admin."
+              : userRole === 'admin'
+              ? "Note: You can add funds to employee accounts without any deduction from your account. Balance is automatically reduced when an expense is approved by admin."
+              : "Note: Balance is automatically reduced when an expense is approved by admin."
+            }
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Cash Transfer History</CardTitle>
+                  <CardDescription>
+                    View complete history of all cash transfers
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchTransferHistory}
+                    disabled={transferHistoryLoading}
+                    className="whitespace-nowrap"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${transferHistoryLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportTransferHistoryToCSV}
+                    disabled={transferHistoryLoading || filteredTransfers.length === 0}
+                    className="whitespace-nowrap"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Filters */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Search</label>
+                  <Input
+                    placeholder="Search by name or type..."
+                    value={transferSearchTerm}
+                    onChange={(e) => setTransferSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Transfer Type</label>
+                  <Select value={transferFilterType} onValueChange={setTransferFilterType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="admin_to_cashier">Admin → Cashier</SelectItem>
+                      <SelectItem value="admin_to_employee">Admin → Employee</SelectItem>
+                      <SelectItem value="admin_to_engineer">Admin → Manager</SelectItem>
+                      <SelectItem value="cashier_to_employee">Cashier → Employee</SelectItem>
+                      <SelectItem value="cashier_to_engineer">Cashier → Manager</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Role</label>
+                  <Select value={transferFilterRole} onValueChange={setTransferFilterRole}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="cashier">Cashier</SelectItem>
+                      <SelectItem value="engineer">Manager</SelectItem>
+                      <SelectItem value="employee">Employee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Transfer History Table */}
+              {transferHistoryLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="ml-2 text-sm text-gray-600">Loading...</span>
+                </div>
+              ) : filteredTransfers.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No transfers found
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="whitespace-nowrap">Date & Time</TableHead>
+                        <TableHead className="whitespace-nowrap">From</TableHead>
+                        <TableHead className="whitespace-nowrap">To</TableHead>
+                        <TableHead className="whitespace-nowrap">Amount</TableHead>
+                        <TableHead className="whitespace-nowrap">Type</TableHead>
+                        <TableHead className="whitespace-nowrap">Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredTransfers.map((transfer) => (
+                        <TableRow key={transfer.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {format(new Date(transfer.transferred_at), "MMM d, yyyy h:mm a")}
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium truncate max-w-[150px]">
+                                {transfer.transferrer_name || "Unknown"}
+                              </div>
+                              <Badge variant="outline" className="text-xs mt-1">
+                                {transfer.transferrer_role}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium truncate max-w-[150px]">
+                                {transfer.recipient_name || "Unknown"}
+                              </div>
+                              <Badge variant="outline" className="text-xs mt-1">
+                                {transfer.recipient_role}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            {formatINR(transfer.amount)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {getTransferTypeLabel(transfer.transfer_type)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">
+                            {transfer.notes || "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

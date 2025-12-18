@@ -72,6 +72,7 @@ interface Expense {
   user_balance: number;
   assigned_engineer_id?: string;
   admin_comment?: string;
+  isResubmitted?: boolean;
 }
 
 export default function AdminPanel() {
@@ -81,6 +82,7 @@ export default function AdminPanel() {
   const [users, setUsers] = useState<User[]>([]);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [previewContentType, setPreviewContentType] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
@@ -398,6 +400,20 @@ export default function AdminPanel() {
       throw profilesError;
     }
 
+    // Check which expenses have been resubmitted by checking audit logs
+    const expenseIds = expensesData.map(e => e.id);
+    let resubmittedIds = new Set<string>();
+    if (expenseIds.length > 0) {
+      const { data: resubmitLogs } = await supabase
+        .from("audit_logs")
+        .select("expense_id")
+        .in("expense_id", expenseIds)
+        .eq("action", "expense_resubmitted")
+        .eq("organization_id", organizationId);
+      
+      resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
+    }
+
     // Combine expenses with profile data
     console.log("🔍 [AdminPanel] Combining expenses with profiles...");
     const expensesWithProfiles = expensesData.map(expense => {
@@ -407,7 +423,8 @@ export default function AdminPanel() {
         user_name: profile?.name || "Unknown User",
         user_email: profile?.email || "unknown@example.com",
         user_balance: profile?.balance ?? 0,
-        total_amount: Number(expense.total_amount)
+        total_amount: Number(expense.total_amount),
+        isResubmitted: resubmittedIds.has(expense.id)
       };
       console.log("  - Combined expense:", combined.id, "with user:", combined.user_name);
       return combined;
@@ -1047,7 +1064,13 @@ export default function AdminPanel() {
                           )}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
-                          <StatusBadge status={expense.status as any} />
+                          {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                              Resubmitted
+                            </Badge>
+                          ) : (
+                            <StatusBadge status={expense.status as any} />
+                          )}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
                           {format(new Date(expense.created_at), "MMM d, yyyy")}
@@ -1055,7 +1078,13 @@ export default function AdminPanel() {
                         <TableCell className="text-right">
                           <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
                             <div className="sm:hidden mb-2">
-                              <StatusBadge status={expense.status as any} />
+                              {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                  Resubmitted
+                                </Badge>
+                              ) : (
+                                <StatusBadge status={expense.status as any} />
+                              )}
                             </div>
                           <div className="flex justify-end">
                               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -1218,6 +1247,7 @@ export default function AdminPanel() {
                                               onClick={() => {
                                                 console.log("🖼️ [AdminPanel] Setting image preview URL:", a.file_url);
                                                 setImagePreviewUrl(a.file_url);
+                                                setPreviewContentType(a.content_type);
                                                 setImagePreviewOpen(true);
                                               }}
                                             >
@@ -1338,22 +1368,33 @@ export default function AdminPanel() {
               )}
             </CardContent>
           </Card>
-          {/* Image Preview Dialog - outside the table */}
+          {/* Image/PDF Preview Dialog - outside the table */}
           <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               {imagePreviewUrl && (
-                <img 
-                  src={imagePreviewUrl} 
-                  alt="Attachment preview" 
-                  className="w-full h-auto rounded"
-                  onError={(e) => {
-                    console.error("❌ [AdminPanel] Preview image failed to load:", imagePreviewUrl);
-                    console.error("❌ [AdminPanel] Error event:", e);
-                  }}
-                  onLoad={() => {
-                    console.log("✅ [AdminPanel] Preview image loaded successfully:", imagePreviewUrl);
-                  }}
-                />
+                previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
+                  <div className="w-full" style={{ height: '80vh' }}>
+                    <iframe 
+                      src={imagePreviewUrl} 
+                      className="w-full h-full rounded border" 
+                      title="PDF Preview"
+                      style={{ minHeight: '600px' }}
+                    />
+                  </div>
+                ) : (
+                  <img 
+                    src={imagePreviewUrl} 
+                    alt="Attachment preview" 
+                    className="w-full h-auto rounded"
+                    onError={(e) => {
+                      console.error("❌ [AdminPanel] Preview image failed to load:", imagePreviewUrl);
+                      console.error("❌ [AdminPanel] Error event:", e);
+                    }}
+                    onLoad={() => {
+                      console.log("✅ [AdminPanel] Preview image loaded successfully:", imagePreviewUrl);
+                    }}
+                  />
+                )
               )}
             </DialogContent>
           </Dialog>
