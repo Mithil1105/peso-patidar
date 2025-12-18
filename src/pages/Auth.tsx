@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
+import { getCachedOrganization, getMostRecentOrganization } from "@/lib/organizationCache";
 
 const authSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -19,6 +20,8 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string>("/HERO.png"); // Default Pesowise logo
+  const [organizationName, setOrganizationName] = useState<string | null>(null); // Organization name from cache
   // signup removed
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -30,7 +33,42 @@ export default function Auth() {
         navigate("/dashboard");
       }
     });
+    
+    // Load most recent organization logo and name for initial display
+    const recentOrg = getMostRecentOrganization();
+    if (recentOrg?.logo_url) {
+      setLogoUrl(recentOrg.logo_url);
+    }
+    if (recentOrg?.name) {
+      setOrganizationName(recentOrg.name);
+    }
   }, [navigate]);
+
+  // Update logo and organization name when email changes (check cache for that email)
+  useEffect(() => {
+    if (email && email.includes('@')) {
+      const cachedOrg = getCachedOrganization(email);
+      if (cachedOrg?.logo_url) {
+        setLogoUrl(cachedOrg.logo_url);
+      } else {
+        // Fallback to most recent or default
+        const recentOrg = getMostRecentOrganization();
+        setLogoUrl(recentOrg?.logo_url || "/HERO.png");
+      }
+      if (cachedOrg?.name) {
+        setOrganizationName(cachedOrg.name);
+      } else {
+        // Fallback to most recent or null
+        const recentOrg = getMostRecentOrganization();
+        setOrganizationName(recentOrg?.name || null);
+      }
+    } else {
+      // No email entered, show most recent or default
+      const recentOrg = getMostRecentOrganization();
+      setLogoUrl(recentOrg?.logo_url || "/HERO.png");
+      setOrganizationName(recentOrg?.name || null);
+    }
+  }, [email]);
 
   // signup removed
 
@@ -74,12 +112,23 @@ export default function Auth() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <img 
-              src="/HERO.png" 
-              alt="Hero" 
-              className="h-16 w-auto"
+              src={logoUrl}
+              alt="Organization Logo" 
+              className="h-16 w-auto object-contain"
+              onError={(e) => {
+                // Fallback to default logo if cached logo fails to load
+                (e.target as HTMLImageElement).src = "/HERO.png";
+              }}
             />
           </div>
-          <CardTitle className="text-2xl">PesoWise - Powered by Unimisk</CardTitle>
+          {organizationName && (
+            <CardTitle className="text-xl font-bold text-primary mb-2">
+              {organizationName}
+            </CardTitle>
+          )}
+          <CardTitle className={`text-2xl ${organizationName ? 'text-muted-foreground' : ''}`}>
+            PesoWise - Powered by Unimisk
+          </CardTitle>
           <CardDescription>
             Petty Cash management app
           </CardDescription>

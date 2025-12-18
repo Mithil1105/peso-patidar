@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { cacheOrganization } from "@/lib/organizationCache";
 
 type AppRole = "admin" | "engineer" | "employee" | "cashier";
 
@@ -143,6 +144,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (orgError) throw orgError;
       setOrganization(orgData);
       setOrganizationId(orgData.id);
+      
+      // Cache organization data for login page logo display
+      // Get user email from session or current user
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser?.email && orgData) {
+          cacheOrganization(currentUser.email, {
+            id: orgData.id,
+            name: orgData.name,
+            logo_url: orgData.logo_url || null
+          });
+        }
+      } catch (cacheError) {
+        // Non-critical error, just log it
+        console.warn('Could not cache organization:', cacheError);
+      }
     } catch (error) {
       console.error("Error fetching organization:", error);
     }

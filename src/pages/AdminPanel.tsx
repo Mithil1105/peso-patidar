@@ -1265,35 +1265,91 @@ export default function AdminPanel() {
                                       <label className="text-sm font-medium">Expense Timeline</label>
                                       <div className="space-y-3 mt-2">
                                         {auditLogs.map((log, index) => {
-                                          const isApproved = log.action.toLowerCase().includes('approved');
-                                          const isVerified = log.action.toLowerCase().includes('verified');
+                                          // Determine colors based on action type
+                                          const getStatusColors = (action: string) => {
+                                            const actionLower = action.toLowerCase();
+                                            if (actionLower.includes('approved')) {
+                                              return {
+                                                dot: 'bg-green-500',
+                                                line: 'bg-green-200',
+                                                text: 'text-green-700',
+                                                bg: 'bg-green-50',
+                                                border: 'border-green-200'
+                                              };
+                                            } else if (actionLower.includes('verified')) {
+                                              return {
+                                                dot: 'bg-yellow-500',
+                                                line: 'bg-yellow-200',
+                                                text: 'text-yellow-700',
+                                                bg: 'bg-yellow-50',
+                                                border: 'border-yellow-200'
+                                              };
+                                            } else if (actionLower.includes('rejected')) {
+                                              return {
+                                                dot: 'bg-red-500',
+                                                line: 'bg-red-200',
+                                                text: 'text-red-700',
+                                                bg: 'bg-red-50',
+                                                border: 'border-red-200'
+                                              };
+                                            } else if (actionLower.includes('resubmitted')) {
+                                              return {
+                                                dot: 'bg-blue-500',
+                                                line: 'bg-blue-200',
+                                                text: 'text-blue-700',
+                                                bg: 'bg-blue-50',
+                                                border: 'border-blue-200'
+                                              };
+                                            } else if (actionLower.includes('submitted')) {
+                                              return {
+                                                dot: 'bg-indigo-500',
+                                                line: 'bg-indigo-200',
+                                                text: 'text-indigo-700',
+                                                bg: 'bg-indigo-50',
+                                                border: 'border-indigo-200'
+                                              };
+                                            } else if (actionLower.includes('created')) {
+                                              return {
+                                                dot: 'bg-gray-500',
+                                                line: 'bg-gray-200',
+                                                text: 'text-gray-700',
+                                                bg: 'bg-gray-50',
+                                                border: 'border-gray-200'
+                                              };
+                                            } else {
+                                              return {
+                                                dot: 'bg-purple-500',
+                                                line: 'bg-purple-200',
+                                                text: 'text-purple-700',
+                                                bg: 'bg-purple-50',
+                                                border: 'border-purple-200'
+                                              };
+                                            }
+                                          };
+
+                                          const colors = getStatusColors(log.action);
+                                          const displayText = log.action === "expense_resubmitted" 
+                                            ? "Expense Resubmitted" 
+                                            : log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
                                           
                                           return (
-                                            <div key={index} className="flex gap-3">
+                                            <div key={index} className={`flex gap-3 p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
                                               <div className="flex flex-col items-center">
-                                                <div className={`w-2 h-2 rounded-full ${isApproved ? 'bg-green-600' : isVerified ? 'bg-blue-600' : 'bg-gray-600'}`}></div>
+                                                <div className={`w-3 h-3 ${colors.dot} rounded-full ring-2 ring-white shadow-sm`}></div>
                                                 {index < auditLogs.length - 1 && (
-                                                  <div className="w-px h-8 bg-gray-300 mt-2"></div>
+                                                  <div className={`w-0.5 h-10 ${colors.line} mt-2`}></div>
                                                 )}
                                               </div>
                                               <div className="flex-1 space-y-1">
-                                                <p className="text-sm font-medium">{log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</p>
+                                                <p className={`text-sm font-semibold ${colors.text}`}>
+                                                  {displayText}
+                                                </p>
                                                 {log.comment && (
-                                                  <p className="text-xs text-muted-foreground">{log.comment}</p>
+                                                  <p className={`text-xs ${colors.text} opacity-80`}>{log.comment}</p>
                                                 )}
-                                                <div className={`text-sm ${isApproved || isVerified ? 'text-blue-700 font-semibold' : 'text-gray-600'}`}>
-                                                  {isApproved || isVerified ? (
-                                                    <span>
-                                                      <span className="font-bold text-base">Approved by: </span>
-                                                      <span className="font-bold text-base text-blue-800">{log.user_name}</span>
-                                                      <span className="text-gray-500"> • {format(new Date(log.created_at), "MMM d, h:mm a")}</span>
-                                                    </span>
-                                                  ) : (
-                                                    <span>
-                                                      by {log.user_name} • {format(new Date(log.created_at), "MMM d, h:mm a")}
-                                                    </span>
-                                                  )}
-                                                </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                  by <span className="font-medium">{log.user_name}</span> • {format(new Date(log.created_at), "MMM d, h:mm a")}
+                                                </p>
                                               </div>
                                             </div>
                                           );

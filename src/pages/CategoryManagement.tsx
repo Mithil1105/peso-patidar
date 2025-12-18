@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2, Plus, Tag } from "lucide-react";
+import { Edit, Trash2, Plus, Tag, Upload, FileText } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 interface Category {
@@ -34,6 +34,14 @@ export default function CategoryManagement() {
   const [categoryActive, setCategoryActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResults, setImportResults] = useState<{
+    added: string[];
+    skipped: string[];
+    errors: string[];
+  } | null>(null);
 
   useEffect(() => {
     if (userRole === "admin") {
@@ -226,6 +234,146 @@ export default function CategoryManagement() {
     }
   };
 
+  const handleMassImport = async () => {
+    if (!importFile || !organizationId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please select a CSV file",
+      });
+      return;
+    }
+
+    try {
+      setImporting(true);
+      
+      // Read CSV file
+      const text = await importFile.text();
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      
+      if (lines.length === 0) {
+        throw new Error("CSV file is empty");
+      }
+
+      // Remove header if it's "name" (case insensitive)
+      const firstLine = lines[0].toLowerCase().trim();
+      const categoryNames = firstLine === 'name' ? lines.slice(1) : lines;
+      
+      if (categoryNames.length === 0) {
+        throw new Error("No categories found in CSV file");
+      }
+
+      // Remove duplicates from CSV
+      const uniqueCategoryNames = Array.from(new Set(categoryNames.map(name => name.trim()).filter(name => name.length > 0)));
+
+      // Get existing categories
+      let existingCategories: Category[] = [];
+      let { data, error: fetchError } = await (supabase as any)
+        .from("expense_categories")
+        .select("name")
+        .eq("organization_id", organizationId);
+
+      if (fetchError && (fetchError as any).code === '42703') {
+        const res2 = await (supabase as any)
+          .from("expense_categories")
+          .select("name")
+          .eq("organization_id", organizationId);
+        data = res2.data;
+        fetchError = res2.error;
+      }
+
+      if (fetchError) throw fetchError;
+      existingCategories = (data || []) as Category[];
+
+      const existingNames = new Set(existingCategories.map(cat => cat.name.toLowerCase().trim()));
+
+      // Separate into added, skipped, and errors
+      const results = {
+        added: [] as string[],
+        skipped: [] as string[],
+        errors: [] as string[],
+      };
+
+      // Process each category
+      for (const categoryName of uniqueCategoryNames) {
+        const trimmedName = categoryName.trim();
+        
+        if (!trimmedName) {
+          results.errors.push(`Empty category name skipped`);
+          continue;
+        }
+
+        // Check if already exists (case-insensitive)
+        if (existingNames.has(trimmedName.toLowerCase())) {
+          results.skipped.push(trimmedName);
+          continue;
+        }
+
+        // Try to insert
+        try {
+          let { error: insertError } = await (supabase as any)
+            .from("expense_categories")
+            .insert({
+              name: trimmedName,
+              active: true,
+              organization_id: organizationId,
+              created_by: user?.id || null,
+            });
+
+          if (insertError && (insertError as any).code === '42703') {
+            const res2 = await (supabase as any)
+              .from("expense_categories")
+              .insert({
+                name: trimmedName,
+                is_active: true,
+                organization_id: organizationId,
+                created_by: user?.id || null,
+              });
+            insertError = res2.error as any;
+          }
+
+          if (insertError) {
+            // Check if it's a duplicate error (unique constraint)
+            if ((insertError as any).code === '23505' || insertError.message?.includes('unique')) {
+              results.skipped.push(trimmedName);
+            } else {
+              results.errors.push(`${trimmedName}: ${insertError.message || 'Failed to import'}`);
+            }
+          } else {
+            results.added.push(trimmedName);
+            // Add to existing names to avoid duplicates in same import
+            existingNames.add(trimmedName.toLowerCase());
+          }
+        } catch (e: any) {
+          results.errors.push(`${trimmedName}: ${e.message || 'Failed to import'}`);
+        }
+      }
+
+      setImportResults(results);
+
+      // Show summary toast
+      const totalProcessed = results.added.length + results.skipped.length + results.errors.length;
+      toast({
+        title: "Import Complete",
+        description: `Processed ${totalProcessed} categories: ${results.added.length} added, ${results.skipped.length} skipped, ${results.errors.length} errors`,
+      });
+
+      // Refresh categories list
+      if (results.added.length > 0) {
+        fetchCategories();
+      }
+    } catch (e: any) {
+      console.error("Failed to import categories:", e);
+      toast({
+        variant: "destructive",
+        title: "Import Failed",
+        description: e.message || "Failed to import categories from CSV file",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (userRole !== "admin") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -246,10 +394,16 @@ export default function CategoryManagement() {
           <h1 className="text-3xl font-bold">Category Management</h1>
           <p className="text-muted-foreground">Manage expense categories for the system</p>
         </div>
-        <Button onClick={openAddDialog}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Category
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Mass Import
+          </Button>
+          <Button onClick={openAddDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Category
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -372,6 +526,157 @@ export default function CategoryManagement() {
             <Button onClick={handleSave} disabled={saving || !categoryName.trim()}>
               {saving ? "Saving..." : selectedCategory ? "Update" : "Create"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mass Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setImportDialogOpen(false);
+          setImportFile(null);
+          setImportResults(null);
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Mass Import Categories</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with category names. Each category should be on a new line. 
+              Existing categories will be skipped. All imported categories will be set as active.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {!importResults ? (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="csv-file">CSV File</Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    id="csv-file"
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setImportFile(file);
+                      }
+                    }}
+                    className="cursor-pointer"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  CSV format: Single column with category names, one per line. Header row is optional.
+                </p>
+                {importFile && (
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                    <FileText className="h-4 w-4" />
+                    <span className="text-sm">{importFile.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({(importFile.size / 1024).toFixed(2)} KB)
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm font-medium text-blue-900 mb-2">CSV Format Example:</p>
+                <pre className="text-xs text-blue-800 bg-white p-2 rounded border">
+{`name
+Travel
+Food
+Office Supplies
+Transportation`}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-4">
+              <div className="space-y-3">
+                {importResults.added.length > 0 && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                    <h4 className="font-semibold text-green-900 mb-2">
+                      ✅ Successfully Added ({importResults.added.length})
+                    </h4>
+                    <ul className="text-sm text-green-800 space-y-1 max-h-40 overflow-y-auto">
+                      {importResults.added.map((name, idx) => (
+                        <li key={idx}>• {name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {importResults.skipped.length > 0 && (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <h4 className="font-semibold text-yellow-900 mb-2">
+                      ⚠️ Skipped - Already Exist ({importResults.skipped.length})
+                    </h4>
+                    <ul className="text-sm text-yellow-800 space-y-1 max-h-40 overflow-y-auto">
+                      {importResults.skipped.map((name, idx) => (
+                        <li key={idx}>• {name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {importResults.errors.length > 0 && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                    <h4 className="font-semibold text-red-900 mb-2">
+                      ❌ Errors ({importResults.errors.length})
+                    </h4>
+                    <ul className="text-sm text-red-800 space-y-1 max-h-40 overflow-y-auto">
+                      {importResults.errors.map((error, idx) => (
+                        <li key={idx}>• {error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            {importResults ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setImportDialogOpen(false);
+                    setImportFile(null);
+                    setImportResults(null);
+                    fetchCategories();
+                  }}
+                >
+                  Close
+                </Button>
+                <Button
+                  onClick={() => {
+                    setImportFile(null);
+                    setImportResults(null);
+                  }}
+                >
+                  Import More
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setImportDialogOpen(false);
+                    setImportFile(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleMassImport}
+                  disabled={!importFile || importing}
+                >
+                  {importing ? "Importing..." : "Import Categories"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

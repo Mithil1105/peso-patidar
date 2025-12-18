@@ -503,13 +503,31 @@ export default function Settings() {
       // Refresh organization data
       await refreshOrganization();
 
+      // Update cache with new logo
+      if (user?.email) {
+        const { cacheOrganization } = await import('@/lib/organizationCache');
+        const updatedOrg = await supabase
+          .from('organizations')
+          .select('id, name, logo_url')
+          .eq('id', organizationId)
+          .single();
+        
+        if (updatedOrg.data) {
+          cacheOrganization(user.email, {
+            id: updatedOrg.data.id,
+            name: updatedOrg.data.name,
+            logo_url: updatedOrg.data.logo_url || null
+          });
+        }
+      }
+
       // Clear file selection
       setLogoFile(null);
       setLogoPreview(null);
 
       toast({
         title: "Logo Updated",
-        description: "Organization logo has been updated successfully. Please refresh the page if you don't see the new logo.",
+        description: "Organization logo has been updated successfully.",
       });
     } catch (error: any) {
       console.error("Error uploading logo:", error);
@@ -585,6 +603,24 @@ export default function Settings() {
 
       // Refresh organization data
       await refreshOrganization();
+
+      // Update cache to remove logo
+      if (user?.email) {
+        const { cacheOrganization } = await import('@/lib/organizationCache');
+        const updatedOrg = await supabase
+          .from('organizations')
+          .select('id, name, logo_url')
+          .eq('id', organizationId)
+          .single();
+        
+        if (updatedOrg.data) {
+          cacheOrganization(user.email, {
+            id: updatedOrg.data.id,
+            name: updatedOrg.data.name,
+            logo_url: null
+          });
+        }
+      }
 
       toast({
         title: "Logo Removed",
