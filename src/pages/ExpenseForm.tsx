@@ -12,8 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, Save, Send } from "lucide-react";
+import { CalendarIcon, Save, Send, Check, ChevronsUpDown } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { formatINR } from "@/lib/format";
@@ -65,11 +66,18 @@ export default function ExpenseForm() {
   const [attachments, setAttachments] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categorySearchTerm, setCategorySearchTerm] = useState("");
+  const [recommendedCategories, setRecommendedCategories] = useState<string[]>([]);
+  const [showRecommended, setShowRecommended] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [attachmentRequiredAboveAmount, setAttachmentRequiredAboveAmount] = useState<number>(50); // Default ₹50
   const [isAttachmentRequired, setIsAttachmentRequired] = useState(false);
+  
+  // Form fields state
+  const [categoryFormFields, setCategoryFormFields] = useState<any[]>([]);
+  const [formFieldValues, setFormFieldValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const init = async () => {
@@ -97,7 +105,10 @@ export default function ExpenseForm() {
           catError = res2.error;
         }
         
-        if (catData) setCategories(catData.map((c: any) => c.name || c));
+        if (catData) {
+          const categoryNames = catData.map((c: any) => c.name || c);
+          setCategories(categoryNames);
+        }
 
         if (user?.id) {
           const { data: role } = await supabase
@@ -133,6 +144,65 @@ export default function ExpenseForm() {
     }
   }, [id, organizationId]);
 
+  // Fetch form fields for selected category
+  const fetchCategoryFormFields = async (categoryName: string) => {
+    try {
+      if (!organizationId || !categoryName) {
+        setCategoryFormFields([]);
+        setFormFieldValues({});
+        return;
+      }
+
+      // Get category ID
+      let { data: categoryData } = await supabase
+        .from("expense_categories")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("name", categoryName)
+        .maybeSingle();
+
+      if (!categoryData) {
+        setCategoryFormFields([]);
+        setFormFieldValues({});
+        return;
+      }
+
+      // Get form field assignments for this category
+      const { data: assignments, error } = await supabase
+        .from("expense_category_form_fields")
+        .select(`
+          *,
+          expense_form_field_templates(*)
+        `)
+        .eq("organization_id", organizationId)
+        .eq("category_id", categoryData.id)
+        .order("display_order", { ascending: true });
+
+      if (error) throw error;
+
+      const fields = (assignments || []).map((assignment: any) => ({
+        ...assignment,
+        template: assignment.expense_form_field_templates
+      }));
+
+      setCategoryFormFields(fields);
+
+      // Initialize form field values with defaults
+      const initialValues: Record<string, string> = {};
+      fields.forEach((field: any) => {
+        if (field.template?.default_value) {
+          initialValues[field.template.id] = field.template.default_value;
+        } else if (field.template?.field_type === 'checkbox') {
+          initialValues[field.template.id] = 'false';
+        }
+      });
+      setFormFieldValues(initialValues);
+    } catch (e: any) {
+      console.error("Failed to fetch category form fields:", e);
+      setCategoryFormFields([]);
+    }
+  };
+
   // Update attachment requirement based on amount
   useEffect(() => {
     const amount = expense.amount || 0;
@@ -164,6 +234,26 @@ export default function ExpenseForm() {
 
       setCurrentExpenseId(expenseData.id);
       setExpenseStatus(expenseData.status);
+      
+      // Fetch form fields for this category and load existing values
+      if (expenseData.category) {
+        await fetchCategoryFormFields(expenseData.category);
+        
+        // Load existing form field values
+        const { data: existingValues } = await supabase
+          .from("expense_form_field_values")
+          .select("template_id, field_value")
+          .eq("expense_id", expenseData.id)
+          .eq("organization_id", organizationId);
+        
+        if (existingValues) {
+          const values: Record<string, string> = {};
+          existingValues.forEach((val: any) => {
+            values[val.template_id] = val.field_value;
+          });
+          setFormFieldValues(values);
+        }
+      }
 
       // Fetch existing attachments for this expense
       const { data: attachmentsData, error: attachmentsError } = await supabase
@@ -318,6 +408,158 @@ export default function ExpenseForm() {
     }
   };
 
+  // Fetch recommended categories based on usage
+  const fetchRecommendedCategories = async () => {
+    try {
+      if (!organizationId || !user?.id || categories.length === 0) {
+        // If no categories yet, set default recommendations
+        if (categories.length > 0) {
+          setRecommendedCategories(categories.slice(0, 3));
+        }
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from("category_usage_tracking")
+        .select("category_name, usage_count")
+        .eq("organization_id", organizationId)
+        .eq("user_id", user.id)
+        .order("usage_count", { ascending: false })
+        .order("last_used_at", { ascending: false })
+        .limit(4);
+      
+      if (error) {
+        console.error("Failed to fetch recommended categories:", error);
+      }
+      
+      let recommended: string[] = [];
+      
+      if (data && data.length > 0) {
+        // User has usage history - use their top categories
+        recommended = (data || [])
+          .map(item => item.category_name)
+          .filter(name => categories.includes(name)); // Only include active categories
+      }
+      
+      // If user has no history or less than 3 recommendations, fill with default/common categories
+      if (recommended.length < 3 && categories.length > 0) {
+        // Common categories that are likely to be used
+        const commonCategories = ["Travel", "Food", "Office Supplies", "Transport", "Meals", "Fuel", "Accommodation"];
+        
+        // Get categories that aren't already in recommended
+        const availableCategories = categories.filter(cat => 
+          !recommended.includes(cat) && 
+          commonCategories.some(common => cat.toLowerCase().includes(common.toLowerCase()))
+        );
+        
+        // Fill up to 3 total recommendations
+        const needed = 3 - recommended.length;
+        recommended = [...recommended, ...availableCategories.slice(0, needed)];
+        
+        // If still not enough, just add any available categories
+        if (recommended.length < 3) {
+          const remaining = categories.filter(cat => !recommended.includes(cat));
+          recommended = [...recommended, ...remaining.slice(0, 3 - recommended.length)];
+        }
+      }
+      
+      setRecommendedCategories(recommended.slice(0, 4)); // Max 4 recommendations
+    } catch (e: any) {
+      console.error("Error fetching recommended categories:", e);
+      // Fallback: use first 3 categories if available
+      if (categories.length > 0) {
+        setRecommendedCategories(categories.slice(0, 3));
+      }
+    }
+  };
+  
+  // Fetch recommended categories when categories change
+  useEffect(() => {
+    if (categories.length > 0 && organizationId && user?.id) {
+      fetchRecommendedCategories();
+    }
+  }, [categories.length, organizationId, user?.id]);
+
+  // Track category usage
+  const trackCategoryUsage = async (categoryName: string) => {
+    try {
+      if (!organizationId || !user?.id || !categoryName) return;
+      
+      // Try RPC function first
+      const { error: rpcError } = await supabase.rpc('increment_category_usage', {
+        p_organization_id: organizationId,
+        p_user_id: user.id,
+        p_category_name: categoryName
+      });
+      
+      if (rpcError) {
+        // Fallback to direct upsert with increment
+        const { data: existing } = await supabase
+          .from("category_usage_tracking")
+          .select("usage_count")
+          .eq("organization_id", organizationId)
+          .eq("user_id", user.id)
+          .eq("category_name", categoryName)
+          .maybeSingle();
+        
+        const newCount = existing ? existing.usage_count + 1 : 1;
+        
+        const { error: upsertError } = await supabase
+          .from("category_usage_tracking")
+          .upsert({
+            organization_id: organizationId,
+            user_id: user.id,
+            category_name: categoryName,
+            usage_count: newCount,
+            last_used_at: new Date().toISOString()
+          }, {
+            onConflict: 'organization_id,user_id,category_name'
+          });
+        
+        if (upsertError) {
+          console.error("Failed to track category usage:", upsertError);
+        }
+      }
+      
+      // Refresh recommended categories
+      await fetchRecommendedCategories();
+    } catch (e: any) {
+      console.error("Error tracking category usage:", e);
+    }
+  };
+
+  // Save form field values
+  const saveFormFieldValues = async (expenseId: string) => {
+    try {
+      if (!organizationId || categoryFormFields.length === 0) return;
+
+      const valuesToSave = Object.entries(formFieldValues)
+        .filter(([_, value]) => value !== null && value !== undefined && value !== "")
+        .map(([templateId, value]) => ({
+          organization_id: organizationId,
+          expense_id: expenseId,
+          template_id: templateId,
+          field_value: String(value),
+        }));
+
+      if (valuesToSave.length > 0) {
+        const { error } = await supabase
+          .from("expense_form_field_values")
+          .upsert(valuesToSave, {
+            onConflict: 'expense_id,template_id',
+          });
+
+        if (error) {
+          console.error("Failed to save form field values:", error);
+          // Don't throw - form fields are supplementary
+        }
+      }
+    } catch (e: any) {
+      console.error("Error saving form field values:", e);
+      // Don't throw - form fields are supplementary
+    }
+  };
+
   // line item handlers removed
 
   const saveExpense = async () => {
@@ -331,6 +573,31 @@ export default function ExpenseForm() {
         ...expense,
         expense_date: expense.expense_date,
       });
+
+      // Validate form fields
+      for (const field of categoryFormFields) {
+        const template = field.template;
+        const isRequired = field.required !== null ? field.required : template.required;
+        const value = formFieldValues[template.id] || "";
+        
+        if (isRequired && !value.trim()) {
+          throw new Error(`${template.name} is required`);
+        }
+        
+        // Validate number fields
+        if (template.field_type === 'number' && value) {
+          const numValue = parseFloat(value);
+          if (isNaN(numValue)) {
+            throw new Error(`${template.name} must be a valid number`);
+          }
+          if (template.validation_rules?.min !== undefined && numValue < template.validation_rules.min) {
+            throw new Error(`${template.name} must be at least ${template.validation_rules.min}`);
+          }
+          if (template.validation_rules?.max !== undefined && numValue > template.validation_rules.max) {
+            throw new Error(`${template.name} must be at most ${template.validation_rules.max}`);
+          }
+        }
+      }
 
       // Check if bill photos are required based on amount
       const expenseAmount = validatedExpense.amount;
@@ -390,8 +657,17 @@ export default function ExpenseForm() {
         // This must succeed before submission
         await moveTempFilesToExpense(id);
         
-        // Submit the expense (this will handle status change to submitted)
-        await ExpenseService.submitExpense(id, user.id);
+        // Save form field values
+        await saveFormFieldValues(id);
+        
+        // Track category usage
+        await trackCategoryUsage(validatedExpense.category);
+        
+        // Only submit if not already approved (admins editing approved expenses don't need to resubmit)
+        if (expenseStatus !== "approved" || userRole !== "admin") {
+          // Submit the expense (this will handle status change to submitted)
+          await ExpenseService.submitExpense(id, user.id);
+        }
       } else {
         // Create new expense
         const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
@@ -412,15 +688,27 @@ export default function ExpenseForm() {
         
         // Submit the expense
         await ExpenseService.submitExpense(newExpense.id, user.id);
+        
+        // Save form field values
+        await saveFormFieldValues(newExpense.id);
+        
+        // Track category usage
+        await trackCategoryUsage(validatedExpense.category);
       }
 
       const isResubmission = expenseStatus === "rejected";
+      const isAdminEditApproved = isEditing && expenseStatus === "approved" && userRole === "admin";
+      
       toast({
         title: "Success",
-        description: userRole === "admin" 
+        description: isAdminEditApproved
+          ? "Approved expense updated successfully"
+          : userRole === "admin" && !isEditing
           ? "Expense created and auto-approved. Amount deducted from your balance." 
           : isResubmission
           ? "Expense resubmitted successfully"
+          : isEditing
+          ? "Expense updated successfully"
           : "Expense submitted successfully",
       });
 
@@ -471,6 +759,8 @@ export default function ExpenseForm() {
           {isEditing 
             ? expenseStatus === "rejected" 
               ? "Edit & Resubmit Expense" 
+              : expenseStatus === "approved" && userRole === "admin"
+              ? "Edit Approved Expense (Admin)"
               : "Edit Expense" 
             : "New Expense"}
         </h1>
@@ -478,6 +768,8 @@ export default function ExpenseForm() {
           {isEditing 
             ? expenseStatus === "rejected"
               ? "Update your expense details and resubmit for review"
+              : expenseStatus === "approved" && userRole === "admin"
+              ? "As an admin, you can edit this approved expense. Changes will be saved immediately."
               : "Update your expense details"
             : "Create a new expense claim"}
         </p>
@@ -491,30 +783,240 @@ export default function ExpenseForm() {
             <CardDescription className="text-center">Basic information about your expense</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label htmlFor="category">Category *</Label>
+              
               <div className="flex items-center gap-2">
-                <Select
-                  value={expense.category}
-                  onValueChange={(val) => setExpense({ ...expense, category: val })}
-                >
-                  <SelectTrigger id="category" className="w-full">
-                    <SelectValue placeholder={loadingCategories ? 'Loading...' : 'Select a category'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between"
+                      id="category"
+                    >
+                      {expense.category || (loadingCategories ? 'Loading...' : 'Select a category')}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search categories..." />
+                      <CommandList>
+                        <CommandEmpty>No categories found.</CommandEmpty>
+                        <CommandGroup>
+                          {categories.map((c) => (
+                            <CommandItem
+                              key={c}
+                              value={c}
+                              onSelect={async () => {
+                                setExpense({ ...expense, category: c });
+                                await fetchCategoryFormFields(c);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  expense.category === c ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {c}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {isAdmin && (
                   <Button type="button" variant="outline" onClick={() => setAddCatOpen(true)}>Add</Button>
                 )}
               </div>
+              
+              {/* Recommended Categories - Prominent below the dropdown */}
+              {recommendedCategories.length > 0 && (
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-lg border-2 border-blue-200 dark:border-blue-800 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <Label className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                        ⭐ Recommended Categories
+                      </Label>
+                      <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                        Your most frequently used categories
+                      </p>
+                    </div>
+                    {showRecommended && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900"
+                        onClick={() => setShowRecommended(false)}
+                      >
+                        Hide
+                      </Button>
+                    )}
+                  </div>
+                  {showRecommended ? (
+                    <div className="flex flex-wrap gap-2">
+                      {recommendedCategories.map((cat) => (
+                        <Button
+                          key={cat}
+                          type="button"
+                          variant={expense.category === cat ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            "h-9 text-sm font-medium transition-all",
+                            expense.category === cat 
+                              ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600" 
+                              : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-100"
+                          )}
+                          onClick={async () => {
+                            setExpense({ ...expense, category: cat });
+                            await fetchCategoryFormFields(cat);
+                          }}
+                        >
+                          {cat}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900"
+                      onClick={() => setShowRecommended(true)}
+                    >
+                      Show Recommended Categories ({recommendedCategories.length})
+                    </Button>
+                  )}
+                </div>
+              )}
+              
               {!categories.length && (
                 <p className="text-xs text-muted-foreground">No categories yet. {isAdmin ? 'Add one to get started.' : 'Please contact admin.'}</p>
               )}
             </div>
+
+            {/* Category Form Fields */}
+            {categoryFormFields.length > 0 && (
+              <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+                <h3 className="font-semibold text-sm">Additional Information</h3>
+                {categoryFormFields.map((field: any) => {
+                  const template = field.template;
+                  const fieldId = `field-${template.id}`;
+                  const isRequired = field.required !== null ? field.required : template.required;
+                  const value = formFieldValues[template.id] || "";
+
+                  return (
+                    <div key={template.id} className="space-y-2">
+                      <Label htmlFor={fieldId}>
+                        {template.name}
+                        {isRequired && <span className="text-red-500 ml-1">*</span>}
+                      </Label>
+                      
+                      {template.field_type === 'text' && (
+                        <Input
+                          id={fieldId}
+                          value={value}
+                          onChange={(e) => setFormFieldValues({
+                            ...formFieldValues,
+                            [template.id]: e.target.value
+                          })}
+                          placeholder={template.placeholder || ""}
+                          required={isRequired}
+                        />
+                      )}
+                      
+                      {template.field_type === 'number' && (
+                        <Input
+                          id={fieldId}
+                          type="number"
+                          value={value}
+                          onChange={(e) => setFormFieldValues({
+                            ...formFieldValues,
+                            [template.id]: e.target.value
+                          })}
+                          placeholder={template.placeholder || ""}
+                          min={template.validation_rules?.min}
+                          max={template.validation_rules?.max}
+                          required={isRequired}
+                        />
+                      )}
+                      
+                      {template.field_type === 'date' && (
+                        <Input
+                          id={fieldId}
+                          type="date"
+                          value={value}
+                          onChange={(e) => setFormFieldValues({
+                            ...formFieldValues,
+                            [template.id]: e.target.value
+                          })}
+                          required={isRequired}
+                        />
+                      )}
+                      
+                      {template.field_type === 'textarea' && (
+                        <Textarea
+                          id={fieldId}
+                          value={value}
+                          onChange={(e) => setFormFieldValues({
+                            ...formFieldValues,
+                            [template.id]: e.target.value
+                          })}
+                          placeholder={template.placeholder || ""}
+                          required={isRequired}
+                          rows={3}
+                        />
+                      )}
+                      
+                      {template.field_type === 'select' && (
+                        <Select
+                          value={value}
+                          onValueChange={(val) => setFormFieldValues({
+                            ...formFieldValues,
+                            [template.id]: val
+                          })}
+                        >
+                          <SelectTrigger id={fieldId}>
+                            <SelectValue placeholder={template.placeholder || "Select an option"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(template.options || []).map((option: string, idx: number) => (
+                              <SelectItem key={idx} value={option}>{option}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      
+                      {template.field_type === 'checkbox' && (
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id={fieldId}
+                            checked={value === 'true'}
+                            onChange={(e) => setFormFieldValues({
+                              ...formFieldValues,
+                              [template.id]: e.target.checked ? 'true' : 'false'
+                            })}
+                            className="rounded"
+                          />
+                          <Label htmlFor={fieldId} className="cursor-pointer">
+                            {template.placeholder || "Check this box"}
+                          </Label>
+                        </div>
+                      )}
+                      
+                      {template.help_text && (
+                        <p className="text-xs text-muted-foreground">{template.help_text}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="title">Title *</Label>
@@ -631,35 +1133,33 @@ export default function ExpenseForm() {
               )}
             </CardTitle>
             <CardDescription>
-              {isAttachmentRequired 
+              {isAttachmentRequired
                 ? `Upload photos of your receipts and bills. Required for expenses above ${formatINR(attachmentRequiredAboveAmount)}.`
-                : `Upload photos of your receipts and bills (optional for expenses up to ${formatINR(attachmentRequiredAboveAmount)}).`
+                : `Upload photos of your receipts and bills. Optional for expenses up to ${formatINR(attachmentRequiredAboveAmount)}.`
               }
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ErrorBoundary>
-              <div className={isAttachmentRequired ? "" : "pointer-events-none opacity-50"}>
-                <FileUpload 
-                  expenseId={currentExpenseId || id || "new"} 
-                  onUploadComplete={(attachment) => {
-                    if (attachment && attachment.file_url) {
-                      setAttachments(prev => [...prev, attachment.file_url]);
-                      toast({
-                        title: "Bill photo uploaded",
-                        description: "Photo has been attached to this expense",
-                      });
-                    }
-                  }}
-                  required={isAttachmentRequired}
-                />
-              </div>
+              <FileUpload 
+                expenseId={currentExpenseId || id || "new"} 
+                onUploadComplete={(attachment) => {
+                  if (attachment && attachment.file_url) {
+                    setAttachments(prev => [...prev, attachment.file_url]);
+                    toast({
+                      title: "Bill photo uploaded",
+                      description: "Photo has been attached to this expense",
+                    });
+                  }
+                }}
+                required={isAttachmentRequired}
+              />
             </ErrorBoundary>
             {!isAttachmentRequired && (
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                 <p className="text-sm text-blue-800">
-                  ℹ️ Bills above {formatINR(attachmentRequiredAboveAmount)} require an attachment (configured by admin). 
-                  Your current amount ({formatINR(expense.amount || 0)}) does not require attachments.
+                  ℹ️ Bill upload is optional for expenses up to {formatINR(attachmentRequiredAboveAmount)}. 
+                  Your current amount ({formatINR(expense.amount || 0)}) is below the threshold, so attachments are optional.
                 </p>
               </div>
             )}
@@ -689,7 +1189,11 @@ export default function ExpenseForm() {
           className="w-full"
         >
           <Send className="mr-2 h-4 w-4" />
-          {isEditing && expenseStatus === "rejected" ? "Resubmit" : "Submit"}
+          {isEditing && expenseStatus === "rejected" 
+            ? "Resubmit" 
+            : isEditing && expenseStatus === "approved" && userRole === "admin"
+            ? "Save Changes"
+            : "Submit"}
         </Button>
         <Button
           variant="outline"

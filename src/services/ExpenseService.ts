@@ -159,9 +159,15 @@ export class ExpenseService {
 
     if (fetchError) throw fetchError;
 
-    // Check if expense can be edited (submitted or rejected expenses can be edited, not verified or approved)
-    if (currentExpense.status !== "submitted" && currentExpense.status !== "rejected" && currentExpense.status !== "draft" && !data.status) {
-      throw new Error("Only draft, submitted, or rejected expenses can be edited. Verified or approved expenses cannot be modified.");
+    // Check if user is admin - admins can edit any expense
+    const isAdmin = await this.hasOrgRole(userId, organizationId, "admin");
+    
+    // Check if expense can be edited
+    // Admins can edit any expense, regular users can only edit draft/submitted/rejected
+    if (!isAdmin) {
+      if (currentExpense.status !== "submitted" && currentExpense.status !== "rejected" && currentExpense.status !== "draft" && !data.status) {
+        throw new Error("Only draft, submitted, or rejected expenses can be edited. Verified or approved expenses cannot be modified.");
+      }
     }
 
     const totalAmount = typeof data.amount === 'number' ? data.amount : currentExpense.total_amount;

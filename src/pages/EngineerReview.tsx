@@ -89,6 +89,12 @@ export default function ManagerReview() {
   const [sortOrder, setSortOrder] = useState<string>("desc");
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [auditLogs, setAuditLogs] = useState<Array<{action: string; user_name: string; comment?: string; created_at: string}>>([]);
+  const [formFieldValues, setFormFieldValues] = useState<Array<{
+    template_id: string;
+    template_name: string;
+    field_type: string;
+    field_value: string;
+  }>>([]);
 
   useEffect(() => {
     if (userRole === "engineer" && organizationId) {
@@ -395,7 +401,30 @@ export default function ManagerReview() {
 
       setLineItems(lineItemsData || []);
       setAttachments(attachmentsData || []);
+      
+      // Fetch form field values
+      const { data: fieldValuesData, error: fieldValuesError } = await supabase
+        .from("expense_form_field_values")
+        .select(`
+          template_id,
+          field_value,
+          expense_form_field_templates(name, field_type)
+        `)
+        .eq("expense_id", expenseId)
+        .eq("organization_id", organizationId);
 
+      if (!fieldValuesError && fieldValuesData) {
+        const transformed = fieldValuesData.map((fv: any) => ({
+          template_id: fv.template_id,
+          template_name: fv.expense_form_field_templates?.name || "Unknown",
+          field_type: fv.expense_form_field_templates?.field_type || "text",
+          field_value: fv.field_value,
+        }));
+        setFormFieldValues(transformed);
+      } else {
+        setFormFieldValues([]);
+      }
+      
       // Fetch audit logs to show approval/rejection history
       const { data: logsData, error: logsError } = await supabase
         .from("audit_logs")
@@ -860,6 +889,29 @@ export default function ManagerReview() {
                                     <div>
                                       <label className="text-sm font-medium">Purpose</label>
                                       <p className="text-sm">{selectedExpense.purpose}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Form Field Values */}
+                                  {formFieldValues.length > 0 && (
+                                    <div className="space-y-3 pt-3 border-t">
+                                      <label className="text-sm font-medium">Additional Information</label>
+                                      {formFieldValues.map((field) => (
+                                        <div key={field.template_id} className="space-y-1">
+                                          <div className="text-xs text-muted-foreground">
+                                            {field.template_name}
+                                          </div>
+                                          <div className="text-sm">
+                                            {field.field_type === 'checkbox' ? (
+                                              <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
+                                                {field.field_value === 'true' ? 'Yes' : 'No'}
+                                              </Badge>
+                                            ) : (
+                                              <span className="font-medium">{field.field_value}</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
                                 </CardContent>

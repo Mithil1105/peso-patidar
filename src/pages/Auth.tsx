@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 import { getCachedOrganization, getMostRecentOrganization } from "@/lib/organizationCache";
+import { useFavicon } from "@/hooks/useFavicon";
 
 const authSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -18,6 +19,9 @@ const authSchema = z.object({
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
+  
+  // Update favicon based on cached organization logo
+  useFavicon();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [logoUrl, setLogoUrl] = useState<string>("/HERO.png"); // Default Pesowise logo

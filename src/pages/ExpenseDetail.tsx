@@ -82,6 +82,12 @@ export default function ExpenseDetail() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [previewContentType, setPreviewContentType] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [formFieldValues, setFormFieldValues] = useState<Array<{
+    template_id: string;
+    template_name: string;
+    field_type: string;
+    field_value: string;
+  }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -236,6 +242,27 @@ export default function ExpenseDetail() {
       );
 
       setAuditLogs(auditLogsWithNames);
+
+      // Fetch form field values
+      const { data: fieldValuesData, error: fieldValuesError } = await supabase
+        .from("expense_form_field_values")
+        .select(`
+          template_id,
+          field_value,
+          expense_form_field_templates(name, field_type)
+        `)
+        .eq("expense_id", id)
+        .eq("organization_id", organizationId);
+
+      if (!fieldValuesError && fieldValuesData) {
+        const transformed = fieldValuesData.map((fv: any) => ({
+          template_id: fv.template_id,
+          template_name: fv.expense_form_field_templates?.name || "Unknown",
+          field_type: fv.expense_form_field_templates?.field_type || "text",
+          field_value: fv.field_value,
+        }));
+        setFormFieldValues(transformed);
+      }
 
     } catch (error) {
       console.error("Error fetching expense details:", error);
@@ -851,6 +878,38 @@ export default function ExpenseDetail() {
             </CardContent>
           </Card>
 
+          {/* Form Field Values */}
+          {formFieldValues.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Additional Information</CardTitle>
+                <CardDescription>
+                  Category-specific form field data
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {formFieldValues.map((field) => (
+                    <div key={field.template_id} className="space-y-1">
+                      <div className="text-sm font-medium text-muted-foreground">
+                        {field.template_name}
+                      </div>
+                      <div className="text-base">
+                        {field.field_type === 'checkbox' ? (
+                          <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
+                            {field.field_value === 'true' ? 'Yes' : 'No'}
+                          </Badge>
+                        ) : (
+                          <span className="font-medium">{field.field_value}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Line Items */}
           <Card>
             <CardHeader>
@@ -1103,7 +1162,11 @@ export default function ExpenseDetail() {
                   onClick={() => navigate(`/expenses/${id}/edit`)}
                 >
                   <Edit className="h-4 w-4 mr-2" />
-                  {expense?.status === "rejected" ? "Edit & Resubmit" : "Edit Expense"}
+                  {expense?.status === "rejected" 
+                    ? "Edit & Resubmit" 
+                    : expense?.status === "approved" && userRole === "admin"
+                    ? "Edit Approved Expense (Admin)"
+                    : "Edit Expense"}
                 </Button>
               )}
             </CardContent>

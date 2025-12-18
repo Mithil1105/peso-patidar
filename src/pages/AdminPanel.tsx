@@ -96,6 +96,12 @@ export default function AdminPanel() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [auditLogs, setAuditLogs] = useState<Array<{action: string; user_name: string; comment?: string; created_at: string}>>([]);
+  const [formFieldValues, setFormFieldValues] = useState<Array<{
+    template_id: string;
+    template_name: string;
+    field_type: string;
+    field_value: string;
+  }>>([]);
 
   useEffect(() => {
     console.log("🔄 [AdminPanel] useEffect triggered");
@@ -271,11 +277,41 @@ export default function AdminPanel() {
     if (selectedExpense) {
       fetchAttachments(selectedExpense.id);
       fetchAuditLogs(selectedExpense.id);
+      fetchFormFieldValues(selectedExpense.id);
     } else {
       setAttachments([]);
       setAuditLogs([]);
+      setFormFieldValues([]);
     }
   }, [selectedExpense]);
+
+  const fetchFormFieldValues = async (expenseId: string) => {
+    try {
+      if (!organizationId) return;
+      
+      const { data: fieldValuesData, error: fieldValuesError } = await supabase
+        .from("expense_form_field_values")
+        .select(`
+          template_id,
+          field_value,
+          expense_form_field_templates(name, field_type)
+        `)
+        .eq("expense_id", expenseId)
+        .eq("organization_id", organizationId);
+
+      if (!fieldValuesError && fieldValuesData) {
+        const transformed = fieldValuesData.map((fv: any) => ({
+          template_id: fv.template_id,
+          template_name: fv.expense_form_field_templates?.name || "Unknown",
+          field_type: fv.expense_form_field_templates?.field_type || "text",
+          field_value: fv.field_value,
+        }));
+        setFormFieldValues(transformed);
+      }
+    } catch (e: any) {
+      console.error("Failed to fetch form field values:", e);
+    }
+  };
 
   const fetchUsers = async () => {
     if (!organizationId) return;
@@ -1159,6 +1195,29 @@ export default function AdminPanel() {
                                       <StatusBadge status={selectedExpense.status as any} />
                                     </div>
                                   </div>
+
+                                  {/* Form Field Values */}
+                                  {formFieldValues.length > 0 && (
+                                    <div className="space-y-3 pt-2 border-t">
+                                      <label className="text-sm font-medium">Additional Information</label>
+                                      {formFieldValues.map((field) => (
+                                        <div key={field.template_id} className="space-y-1">
+                                          <div className="text-xs text-muted-foreground">
+                                            {field.template_name}
+                                          </div>
+                                          <div className="text-sm">
+                                            {field.field_type === 'checkbox' ? (
+                                              <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
+                                                {field.field_value === 'true' ? 'Yes' : 'No'}
+                                              </Badge>
+                                            ) : (
+                                              <span className="font-medium">{field.field_value}</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
 
                                   {/* For submitted expenses, show both Verify and Approve buttons */}
                                   {selectedExpense.status === "submitted" ? (

@@ -723,11 +723,15 @@ export default function Expenses() {
                               <Eye className="mr-2 h-4 w-4" />
                               View
                             </DropdownMenuItem>
-                            {(expense.status === "submitted" || expense.status === "rejected") && (
+                            {(expense.status === "submitted" || expense.status === "rejected" || (expense.status === "approved" && userRole === "admin")) && (
                               <>
                                 <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
                                   <Edit className="mr-2 h-4 w-4" />
-                                  {expense.status === "rejected" ? "Edit & Resubmit" : "Edit"}
+                                  {expense.status === "rejected" 
+                                    ? "Edit & Resubmit" 
+                                    : expense.status === "approved" && userRole === "admin"
+                                    ? "Edit Approved Expense (Admin)"
+                                    : "Edit"}
                                 </DropdownMenuItem>
                                 {expense.status === "submitted" && (
                                   <DropdownMenuItem 

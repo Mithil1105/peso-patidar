@@ -1,6 +1,7 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFavicon } from "@/hooks/useFavicon";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +18,9 @@ import { NotificationPopup } from "@/components/NotificationPopup";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization } = useAuth();
+  
+  // Update favicon based on organization logo
+  useFavicon(userProfile?.email);
   const { toast } = useToast();
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);
