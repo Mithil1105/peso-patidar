@@ -13,7 +13,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CalendarIcon, Save, Send } from "lucide-react";
@@ -123,16 +122,40 @@ export default function ExpenseForm() {
         }
 
         // Fetch attachment required above amount setting
-        const { data: attachmentLimitSetting } = await supabase
-          .from('settings')
-          .select('value')
-          .eq('key', 'attachment_required_above_amount')
+        // First try organization_settings table (preferred)
+        const { data: orgSettings, error: orgError } = await supabase
+          .from('organization_settings')
+          .select('attachment_required_above_amount')
+          .eq('organization_id', organizationId)
           .maybeSingle();
         
-        if (attachmentLimitSetting) {
-          const limit = parseFloat(attachmentLimitSetting.value);
+        console.log('📋 Loading attachment limit - organization_settings:', { orgSettings, orgError, organizationId });
+        
+        if (!orgError && orgSettings?.attachment_required_above_amount !== null && orgSettings?.attachment_required_above_amount !== undefined) {
+          const limit = Number(orgSettings.attachment_required_above_amount);
+          console.log('✅ Using attachment limit from organization_settings:', limit);
           if (!isNaN(limit) && limit >= 0) {
             setAttachmentRequiredAboveAmount(limit);
+          }
+        } else {
+          // Fallback to settings table with organization_id filter
+          const { data: attachmentLimitSetting, error: settingsError } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'attachment_required_above_amount')
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+          
+          console.log('📋 Loading attachment limit - settings table:', { attachmentLimitSetting, settingsError, organizationId });
+          
+          if (!settingsError && attachmentLimitSetting) {
+            const limit = parseFloat(attachmentLimitSetting.value);
+            console.log('✅ Using attachment limit from settings table:', limit);
+            if (!isNaN(limit) && limit >= 0) {
+              setAttachmentRequiredAboveAmount(limit);
+            }
+          } else {
+            console.warn('⚠️ No attachment limit found, using default 50');
           }
         }
       } finally {
@@ -602,8 +625,27 @@ export default function ExpenseForm() {
       }
 
       // Check if bill photos are required based on amount
+      // Fetch the latest attachment limit from database to ensure we have the correct value
+      const { data: latestOrgSettings } = await supabase
+        .from('organization_settings')
+        .select('attachment_required_above_amount')
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+      
+      const currentAttachmentLimit = latestOrgSettings?.attachment_required_above_amount !== null && latestOrgSettings?.attachment_required_above_amount !== undefined
+        ? Number(latestOrgSettings.attachment_required_above_amount)
+        : attachmentRequiredAboveAmount;
+      
       const expenseAmount = validatedExpense.amount;
-      const requiresAttachment = expenseAmount > attachmentRequiredAboveAmount;
+      const requiresAttachment = expenseAmount > currentAttachmentLimit;
+
+      console.log('🔍 Attachment validation:', { 
+        expenseAmount, 
+        currentAttachmentLimit, 
+        requiresAttachment,
+        attachmentRequiredAboveAmount,
+        latestOrgSettings 
+      });
 
       if (requiresAttachment) {
         // For new expenses, check if attachments exist
@@ -620,7 +662,7 @@ export default function ExpenseForm() {
           
           // Require at least one attachment either in state or in storage
           if (!hasAttachmentsInState && !hasTempFiles) {
-            throw new Error(`Bill photos are required for expenses above ₹${attachmentRequiredAboveAmount}. Please upload at least one photo of your receipt or bill.`);
+            throw new Error(`Bill photos are required for expenses above ₹${currentAttachmentLimit}. Please upload at least one photo of your receipt or bill.`);
           }
         } else if (id) {
           // For editing, check if there are any attachments (existing in DB, in state, or temp files)
@@ -642,7 +684,7 @@ export default function ExpenseForm() {
           
           // Require at least one attachment from any source
           if (!hasExistingAttachments && !hasAttachmentsInState && !hasTempFiles) {
-            throw new Error(`Bill photos are required for expenses above ₹${attachmentRequiredAboveAmount}. Please upload at least one photo of your receipt or bill.`);
+            throw new Error(`Bill photos are required for expenses above ₹${currentAttachmentLimit}. Please upload at least one photo of your receipt or bill.`);
           }
         }
       }
@@ -1139,21 +1181,19 @@ export default function ExpenseForm() {
           </CardHeader>
           <CardContent>
             <ErrorBoundary>
-              <div className={isAttachmentRequired ? "" : "pointer-events-none opacity-50"}>
-                <FileUpload 
-                  expenseId={currentExpenseId || id || "new"} 
-                  onUploadComplete={(attachment) => {
-                    if (attachment && attachment.file_url) {
-                      setAttachments(prev => [...prev, attachment.file_url]);
-                      toast({
-                        title: "Bill photo uploaded",
-                        description: "Photo has been attached to this expense",
-                      });
-                    }
-                  }}
-                  required={isAttachmentRequired}
-                />
-              </div>
+              <FileUpload 
+                expenseId={currentExpenseId || id || "new"} 
+                onUploadComplete={(attachment) => {
+                  if (attachment && attachment.file_url) {
+                    setAttachments(prev => [...prev, attachment.file_url]);
+                    toast({
+                      title: "Bill photo uploaded",
+                      description: "Photo has been attached to this expense",
+                    });
+                  }
+                }}
+                required={isAttachmentRequired}
+              />
             </ErrorBoundary>
             {!isAttachmentRequired && (
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">

@@ -69,6 +69,26 @@ export default function Settings() {
         setLoading(false);
         return;
       }
+      
+      // First try organization_settings table (preferred, used by ExpenseService)
+      const { data: orgSettings, error: orgError } = await supabase
+        .from("organization_settings")
+        .select("engineer_approval_limit, attachment_required_above_amount")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+      if (!orgError && orgSettings) {
+        if (orgSettings.engineer_approval_limit !== null && orgSettings.engineer_approval_limit !== undefined) {
+          setEngineerApprovalLimit(orgSettings.engineer_approval_limit.toString());
+        }
+        if (orgSettings.attachment_required_above_amount !== null && orgSettings.attachment_required_above_amount !== undefined) {
+          setAttachmentRequiredAboveAmount(orgSettings.attachment_required_above_amount.toString());
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Fallback to settings table
       const { data: settingsData, error } = await supabase
         .from("settings")
         .select("*")
@@ -146,7 +166,7 @@ export default function Settings() {
       }
 
       // Upsert both settings with organization_id
-      const { error } = await supabase
+      const { error: settingsError } = await supabase
         .from("settings")
         .upsert([
           {
@@ -167,8 +187,8 @@ export default function Settings() {
           onConflict: "key,organization_id"
         });
 
-      if (error) {
-        if (error.code === '42P01' || error.message.includes('does not exist')) {
+      if (settingsError) {
+        if (settingsError.code === '42P01' || settingsError.message.includes('does not exist')) {
           toast({
             variant: "destructive",
             title: "Database Table Missing",
@@ -176,7 +196,25 @@ export default function Settings() {
           });
           return;
         }
-        throw error;
+        throw settingsError;
+      }
+
+      // Also update organization_settings table (used by ExpenseService)
+      const { error: orgSettingsError } = await supabase
+        .from("organization_settings")
+        .upsert({
+          organization_id: organizationId,
+          engineer_approval_limit: limitValue,
+          attachment_required_above_amount: attachmentLimitValue,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: "organization_id"
+        });
+
+      if (orgSettingsError) {
+        console.error("Error updating organization_settings:", orgSettingsError);
+        // Don't throw - settings table update succeeded, just log the error
+        // This allows the settings to still work via settings table
       }
 
       toast({
