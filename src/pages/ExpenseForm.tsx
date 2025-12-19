@@ -13,8 +13,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, Save, Send, Check, ChevronsUpDown } from "lucide-react";
+import { CalendarIcon, Save, Send } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { formatINR } from "@/lib/format";
@@ -606,31 +608,40 @@ export default function ExpenseForm() {
       if (requiresAttachment) {
         // For new expenses, check if attachments exist
         if (!isEditing) {
-          // Check for temp files
+          // First check the attachments state (files uploaded via FileUpload component)
+          const hasAttachmentsInState = attachments && attachments.length > 0;
+          
+          // Also check for temp files in storage as a fallback
           const { data: tempFiles } = await supabase.storage
             .from('receipts')
             .list(`temp/${user.id}`, { limit: 100 });
           
-          if (!tempFiles || tempFiles.length === 0) {
+          const hasTempFiles = tempFiles && tempFiles.length > 0;
+          
+          // Require at least one attachment either in state or in storage
+          if (!hasAttachmentsInState && !hasTempFiles) {
             throw new Error(`Bill photos are required for expenses above ₹${attachmentRequiredAboveAmount}. Please upload at least one photo of your receipt or bill.`);
           }
         } else if (id) {
-          // For editing, check if there are any attachments (existing in DB or new temp files)
+          // For editing, check if there are any attachments (existing in DB, in state, or temp files)
           const { data: existingAttachments } = await supabase
             .from("attachments")
             .select("id")
             .eq("expense_id", id);
+          
+          // Check the attachments state (includes existing + newly uploaded)
+          const hasAttachmentsInState = attachments && attachments.length > 0;
           
           // Check for temp files that will be moved
           const { data: tempFiles } = await supabase.storage
             .from('receipts')
             .list(`temp/${user.id}`, { limit: 100 });
           
-          const existingCount = existingAttachments?.length || 0;
-          const newTempFilesCount = tempFiles?.length || 0;
-          const totalAttachments = existingCount + newTempFilesCount;
+          const hasExistingAttachments = existingAttachments && existingAttachments.length > 0;
+          const hasTempFiles = tempFiles && tempFiles.length > 0;
           
-          if (totalAttachments === 0) {
+          // Require at least one attachment from any source
+          if (!hasExistingAttachments && !hasAttachmentsInState && !hasTempFiles) {
             throw new Error(`Bill photos are required for expenses above ₹${attachmentRequiredAboveAmount}. Please upload at least one photo of your receipt or bill.`);
           }
         }
@@ -657,17 +668,14 @@ export default function ExpenseForm() {
         // This must succeed before submission
         await moveTempFilesToExpense(id);
         
+        // Submit the expense (this will handle status change to submitted)
+        await ExpenseService.submitExpense(id, user.id);
+        
         // Save form field values
         await saveFormFieldValues(id);
         
         // Track category usage
         await trackCategoryUsage(validatedExpense.category);
-        
-        // Only submit if not already approved (admins editing approved expenses don't need to resubmit)
-        if (expenseStatus !== "approved" || userRole !== "admin") {
-          // Submit the expense (this will handle status change to submitted)
-          await ExpenseService.submitExpense(id, user.id);
-        }
       } else {
         // Create new expense
         const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
@@ -697,18 +705,12 @@ export default function ExpenseForm() {
       }
 
       const isResubmission = expenseStatus === "rejected";
-      const isAdminEditApproved = isEditing && expenseStatus === "approved" && userRole === "admin";
-      
       toast({
         title: "Success",
-        description: isAdminEditApproved
-          ? "Approved expense updated successfully"
-          : userRole === "admin" && !isEditing
+        description: userRole === "admin" 
           ? "Expense created and auto-approved. Amount deducted from your balance." 
           : isResubmission
           ? "Expense resubmitted successfully"
-          : isEditing
-          ? "Expense updated successfully"
           : "Expense submitted successfully",
       });
 
@@ -759,8 +761,6 @@ export default function ExpenseForm() {
           {isEditing 
             ? expenseStatus === "rejected" 
               ? "Edit & Resubmit Expense" 
-              : expenseStatus === "approved" && userRole === "admin"
-              ? "Edit Approved Expense (Admin)"
               : "Edit Expense" 
             : "New Expense"}
         </h1>
@@ -768,8 +768,6 @@ export default function ExpenseForm() {
           {isEditing 
             ? expenseStatus === "rejected"
               ? "Update your expense details and resubmit for review"
-              : expenseStatus === "approved" && userRole === "admin"
-              ? "As an admin, you can edit this approved expense. Changes will be saved immediately."
               : "Update your expense details"
             : "Create a new expense claim"}
         </p>
@@ -1133,33 +1131,35 @@ export default function ExpenseForm() {
               )}
             </CardTitle>
             <CardDescription>
-              {isAttachmentRequired
+              {isAttachmentRequired 
                 ? `Upload photos of your receipts and bills. Required for expenses above ${formatINR(attachmentRequiredAboveAmount)}.`
-                : `Upload photos of your receipts and bills. Optional for expenses up to ${formatINR(attachmentRequiredAboveAmount)}.`
+                : `Upload photos of your receipts and bills (optional for expenses up to ${formatINR(attachmentRequiredAboveAmount)}).`
               }
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ErrorBoundary>
-              <FileUpload 
-                expenseId={currentExpenseId || id || "new"} 
-                onUploadComplete={(attachment) => {
-                  if (attachment && attachment.file_url) {
-                    setAttachments(prev => [...prev, attachment.file_url]);
-                    toast({
-                      title: "Bill photo uploaded",
-                      description: "Photo has been attached to this expense",
-                    });
-                  }
-                }}
-                required={isAttachmentRequired}
-              />
+              <div className={isAttachmentRequired ? "" : "pointer-events-none opacity-50"}>
+                <FileUpload 
+                  expenseId={currentExpenseId || id || "new"} 
+                  onUploadComplete={(attachment) => {
+                    if (attachment && attachment.file_url) {
+                      setAttachments(prev => [...prev, attachment.file_url]);
+                      toast({
+                        title: "Bill photo uploaded",
+                        description: "Photo has been attached to this expense",
+                      });
+                    }
+                  }}
+                  required={isAttachmentRequired}
+                />
+              </div>
             </ErrorBoundary>
             {!isAttachmentRequired && (
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                 <p className="text-sm text-blue-800">
-                  ℹ️ Bill upload is optional for expenses up to {formatINR(attachmentRequiredAboveAmount)}. 
-                  Your current amount ({formatINR(expense.amount || 0)}) is below the threshold, so attachments are optional.
+                  ℹ️ Bills above {formatINR(attachmentRequiredAboveAmount)} require an attachment (configured by admin). 
+                  Your current amount ({formatINR(expense.amount || 0)}) does not require attachments.
                 </p>
               </div>
             )}
@@ -1189,11 +1189,7 @@ export default function ExpenseForm() {
           className="w-full"
         >
           <Send className="mr-2 h-4 w-4" />
-          {isEditing && expenseStatus === "rejected" 
-            ? "Resubmit" 
-            : isEditing && expenseStatus === "approved" && userRole === "admin"
-            ? "Save Changes"
-            : "Submit"}
+          {isEditing && expenseStatus === "rejected" ? "Resubmit" : "Submit"}
         </Button>
         <Button
           variant="outline"
