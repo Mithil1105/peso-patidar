@@ -298,6 +298,26 @@ export default function Expenses() {
         }
 
         if (!cashierUserId) {
+          // Run diagnostic to understand why cashier wasn't found
+          try {
+            const { data: diagnosticData, error: diagError } = await supabase
+              .rpc('diagnose_cashier_assignment', { engineer_user_id: managerId });
+            
+            if (!diagError && diagnosticData) {
+              console.error("Cashier assignment diagnostic:", diagnosticData);
+              const issues = diagnosticData
+                .filter((d: any) => d.result === 'MISSING' || d.result === 'NOT_ASSIGNED' || d.result === 'NOT_FOUND')
+                .map((d: any) => `${d.check_type}: ${d.details?.issue || d.result}`)
+                .join('; ');
+              
+              if (issues) {
+                throw new Error(`Cashier assignment issue: ${issues}. Please contact an administrator.`);
+              }
+            }
+          } catch (diagErr) {
+            console.error("Error running diagnostic:", diagErr);
+          }
+          
           throw new Error("Your manager doesn't have a cashier assigned. Please contact an administrator.");
         }
 
@@ -723,15 +743,11 @@ export default function Expenses() {
                               <Eye className="mr-2 h-4 w-4" />
                               View
                             </DropdownMenuItem>
-                            {(expense.status === "submitted" || expense.status === "rejected" || (expense.status === "approved" && userRole === "admin")) && (
+                            {(expense.status === "submitted" || expense.status === "rejected") && (
                               <>
                                 <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
                                   <Edit className="mr-2 h-4 w-4" />
-                                  {expense.status === "rejected" 
-                                    ? "Edit & Resubmit" 
-                                    : expense.status === "approved" && userRole === "admin"
-                                    ? "Edit Approved Expense (Admin)"
-                                    : "Edit"}
+                                  {expense.status === "rejected" ? "Edit & Resubmit" : "Edit"}
                                 </DropdownMenuItem>
                                 {expense.status === "submitted" && (
                                   <DropdownMenuItem 
