@@ -287,39 +287,60 @@ export default function Expenses() {
           managerId = user.id;
         }
 
-        // Find cashier assigned to this manager using location-based or direct assignment
-        // This function prioritizes location-based assignment and falls back to direct assignment
-        const { data: cashierUserId, error: cashierError } = await supabase
-          .rpc('get_cashier_for_engineer', { engineer_user_id: managerId });
+        // Find cashier by location matching - DIRECT CHECK
+        // Step 1: Get engineer's location
+        const { data: engineerLocationData, error: locationError } = await supabase
+          .from("engineer_locations")
+          .select("location_id")
+          .eq("engineer_id", managerId)
+          .limit(1)
+          .single();
 
-        if (cashierError) {
-          console.error("Error finding cashier:", cashierError);
-          throw cashierError;
+        if (locationError || !engineerLocationData) {
+          throw new Error("Your manager is not assigned to any location. Please contact an administrator.");
         }
 
-        if (!cashierUserId) {
-          // Run diagnostic to understand why cashier wasn't found
-          try {
-            const { data: diagnosticData, error: diagError } = await supabase
-              .rpc('diagnose_cashier_assignment', { engineer_user_id: managerId });
-            
-            if (!diagError && diagnosticData) {
-              console.error("Cashier assignment diagnostic:", diagnosticData);
-              const issues = diagnosticData
-                .filter((d: any) => d.result === 'MISSING' || d.result === 'NOT_ASSIGNED' || d.result === 'NOT_FOUND')
-                .map((d: any) => `${d.check_type}: ${d.details?.issue || d.result}`)
-                .join('; ');
-              
-              if (issues) {
-                throw new Error(`Cashier assignment issue: ${issues}. Please contact an administrator.`);
-              }
-            }
-          } catch (diagErr) {
-            console.error("Error running diagnostic:", diagErr);
-          }
-          
-          throw new Error("Your manager doesn't have a cashier assigned. Please contact an administrator.");
+        const locationId = engineerLocationData.location_id;
+
+        // Get location's organization_id
+        const { data: locationData, error: locDataError } = await supabase
+          .from("locations")
+          .select("organization_id")
+          .eq("id", locationId)
+          .single();
+
+        if (locDataError || !locationData) {
+          throw new Error("Could not find location details. Please contact an administrator.");
         }
+
+        const locationOrgId = locationData.organization_id;
+
+        // Step 2: Find cashier with the same location in the same organization
+        const { data: cashierProfiles, error: cashierError } = await supabase
+          .from("profiles")
+          .select("user_id")
+          .eq("cashier_assigned_location_id", locationId)
+          .eq("organization_id", locationOrgId);
+
+        if (cashierError || !cashierProfiles || cashierProfiles.length === 0) {
+          throw new Error("No cashier is assigned to your manager's location. Please contact an administrator.");
+        }
+
+        // Verify the cashier has cashier role in organization_memberships
+        const cashierUserIds = cashierProfiles.map(p => p.user_id);
+        const { data: cashierRoles, error: rolesError } = await supabase
+          .from("organization_memberships")
+          .select("user_id")
+          .in("user_id", cashierUserIds)
+          .eq("role", "cashier")
+          .eq("organization_id", locationOrgId)
+          .eq("is_active", true);
+
+        if (rolesError || !cashierRoles || cashierRoles.length === 0) {
+          throw new Error("No cashier with proper role is assigned to your manager's location. Please contact an administrator.");
+        }
+
+        const cashierUserId = cashierRoles[0].user_id;
 
         targetUserId = cashierUserId;
       } else if (userRole === "cashier") {

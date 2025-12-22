@@ -27,21 +27,25 @@ export class MoneyReturnService {
     cashierId: string,
     amount: number
   ): Promise<MoneyReturnRequest> {
-    // First, verify the requester has sufficient balance
+    // First, verify the requester has sufficient balance and get organization_id
     const { data: requesterProfile, error: profileError } = await supabase
       .from("profiles")
-      .select("balance, name")
+      .select("balance, name, organization_id")
       .eq("user_id", requesterId)
       .single();
 
     if (profileError) throw profileError;
+
+    if (!requesterProfile?.organization_id) {
+      throw new Error("Requester is not associated with an organization");
+    }
 
     const currentBalance = Number(requesterProfile?.balance ?? 0);
     if (amount > currentBalance) {
       throw new Error(`Insufficient balance. You only have ${formatINR(currentBalance)}`);
     }
 
-    // Create the return request
+    // Create the return request with organization_id
     const { data: request, error: requestError } = await supabase
       .from("money_return_requests")
       .insert({
@@ -49,6 +53,7 @@ export class MoneyReturnService {
         cashier_id: cashierId,
         amount: amount,
         status: "pending",
+        organization_id: requesterProfile.organization_id,
       })
       .select()
       .single();
