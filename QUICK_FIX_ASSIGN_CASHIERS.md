@@ -106,3 +106,5 @@ GROUP BY loc.name, p.name;
 3. After assigning, engineers in that location will automatically be linked to the cashier
 4. The "Return Money" feature will work once cashiers are assigned
 
+
+

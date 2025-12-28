@@ -1162,11 +1162,7 @@ export default function ExpenseDetail() {
                   onClick={() => navigate(`/expenses/${id}/edit`)}
                 >
                   <Edit className="h-4 w-4 mr-2" />
-                  {expense?.status === "rejected" 
-                    ? "Edit & Resubmit" 
-                    : expense?.status === "approved" && userRole === "admin"
-                    ? "Edit Approved Expense (Admin)"
-                    : "Edit Expense"}
+                  {expense?.status === "rejected" ? "Edit & Resubmit" : "Edit Expense"}
                 </Button>
               )}
             </CardContent>

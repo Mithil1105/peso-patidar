@@ -129,55 +129,20 @@ export class MoneyReturnService {
 
     if (cashierError) throw cashierError;
 
-    // Start transaction: Deduct from requester and add to cashier
-    const newRequesterBalance = requesterBalance - amount;
-    const newCashierBalance = (Number(cashierProfile?.balance ?? 0)) + amount;
+    // Use SECURITY DEFINER function to update balances and mark as approved (bypasses RLS)
+    // This ensures cashiers can update requester balances and it's all atomic
+    const { error: balanceUpdateError } = await supabase
+      .rpc('approve_money_return_update_balances', {
+        request_id: requestId,
+        cashier_user_id: cashierId
+      });
 
-    // Update requester balance
-    const { error: requesterUpdateError } = await supabase
-      .from("profiles")
-      .update({ balance: newRequesterBalance })
-      .eq("user_id", request.requester_id);
-
-    if (requesterUpdateError) throw requesterUpdateError;
-
-    // Update cashier balance
-    const { error: cashierUpdateError } = await supabase
-      .from("profiles")
-      .update({ balance: newCashierBalance })
-      .eq("user_id", cashierId);
-
-    if (cashierUpdateError) {
-      // Rollback requester balance if cashier update fails
-      await supabase
-        .from("profiles")
-        .update({ balance: requesterBalance })
-        .eq("user_id", request.requester_id);
-      throw cashierUpdateError;
+    if (balanceUpdateError) {
+      throw balanceUpdateError;
     }
-
-    // Mark request as approved
-    const { error: updateError } = await supabase
-      .from("money_return_requests")
-      .update({
-        status: "approved",
-        approved_at: new Date().toISOString(),
-        approved_by: cashierId,
-      })
-      .eq("id", requestId);
-
-    if (updateError) {
-      // Rollback both balances if update fails
-      await supabase
-        .from("profiles")
-        .update({ balance: requesterBalance })
-        .eq("user_id", request.requester_id);
-      await supabase
-        .from("profiles")
-        .update({ balance: Number(cashierProfile?.balance ?? 0) })
-        .eq("user_id", cashierId);
-      throw updateError;
-    }
+    
+    // Function already marked request as approved, so we're done with that part
+    // The trigger will automatically log to cash_transfer_history
 
     // Mark money assignments as returned (FIFO)
     let remainingAmount = amount;
@@ -294,6 +259,24 @@ export class MoneyReturnService {
 
     if (error) throw error;
     return (data || []) as MoneyReturnRequest[];
+  }
+
+  /**
+   * Cashier returns money to admin (direct transfer, no approval needed)
+   */
+  static async cashierReturnToAdmin(
+    cashierId: string,
+    adminId: string,
+    amount: number
+  ): Promise<void> {
+    const { error } = await supabase
+      .rpc('cashier_return_money_to_admin', {
+        cashier_user_id: cashierId,
+        admin_user_id: adminId,
+        amount_param: amount
+      });
+
+    if (error) throw error;
   }
 }
 

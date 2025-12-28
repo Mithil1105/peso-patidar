@@ -23,6 +23,7 @@ import Settings from "./pages/Settings";
 import NotificationSettings from "./pages/NotificationSettings";
 import CashierTransactions from "./pages/CashierTransactions";
 import CashTransferHistory from "./pages/CashTransferHistory";
+import MasterAdminPanel from "./pages/MasterAdminPanel";
 
 const queryClient = new QueryClient();
 
@@ -211,6 +212,16 @@ const App = () => (
                 <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
                   <Layout>
                     <NotificationSettings />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/master-admin"
+              element={
+                <ProtectedRoute requireMasterAdmin={true}>
+                  <Layout>
+                    <MasterAdminPanel />
                   </Layout>
                 </ProtectedRoute>
               }

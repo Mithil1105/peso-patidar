@@ -1,7 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/contexts/AuthContext";
-import { useFavicon } from "@/hooks/useFavicon";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,10 +16,7 @@ import { useNotificationManager } from "@/hooks/useNotificationManager";
 import { NotificationPopup } from "@/components/NotificationPopup";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization } = useAuth();
-  
-  // Update favicon based on organization logo
-  useFavicon(userProfile?.email);
+  const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization, isMasterAdmin } = useAuth();
   const { toast } = useToast();
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -48,7 +44,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       .slice(0, 2);
   };
 
-  const getRoleDisplayName = (role: string) => {
+  const getRoleDisplayName = (role: string | null) => {
+    if (isMasterAdmin) {
+      return 'Master Admin';
+    }
     switch (role) {
       case 'admin':
         return 'Administrator';
@@ -210,14 +209,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger className="hover:bg-gray-100 rounded-lg p-2 transition-colors flex-shrink-0" />
               <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3">
                 <img 
-                  key={organization?.logo_url || 'default'}
-                  src={organization?.logo_url || "/HERO.png"} 
-                  alt={organization?.name || "Logo"} 
-                  className="h-5 w-auto sm:h-6 md:h-8 flex-shrink-0 hidden sm:block object-contain"
-                  onError={(e) => {
-                    // Fallback to default logo if organization logo fails to load
-                    (e.target as HTMLImageElement).src = "/HERO.png";
-                  }}
+                  src="/HERO.png" 
+                  alt="Hero" 
+                  className="h-5 w-auto sm:h-6 md:h-8 flex-shrink-0 hidden sm:block"
                 />
               <div className="flex-1 min-w-0 overflow-hidden">
                 {editingOrgName && userRole === 'admin' ? (
