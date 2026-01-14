@@ -1,112 +1,487 @@
-# peso-patidar
+# PesoWise - Smart Petty Cash Management & Expense Tracking Software
 
-# PesoWise - Petty Cash management app
+<div align="center">
 
-A comprehensive web application for managing petty cash expenses with role-based access control, approval workflows, and audit logging.
-s
-## 🚀 Features
+![PesoWise Logo](/HERO.png)
+
+**Streamline your expense management with PesoWise - A comprehensive SaaS platform for petty cash tracking, employee reimbursements, and automated approval workflows.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+
+**Powered by [Unimisk](https://unimisk.com)**
+
+</div>
+
+---
+
+## 📖 Table of Contents
+
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [User Roles & Permissions](#-user-roles--permissions)
+- [Workflow](#-workflow)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Project Structure](#-project-structure)
+- [API Documentation](#-api-documentation)
+- [Security](#-security)
+- [Testing](#-testing)
+- [Deployment](#-deployment)
+- [Contributing](#-contributing)
+- [Support](#-support)
+- [License](#-license)
+
+---
+
+## 🎯 Overview
+
+**PesoWise** is a modern, multi-tenant SaaS application designed to revolutionize how organizations manage petty cash expenses and employee reimbursements. Built with enterprise-grade security and scalability in mind, PesoWise provides a seamless experience for employees, engineers, administrators, and cashiers to track, approve, and manage financial workflows.
+
+### Why PesoWise?
+
+- ✅ **Multi-Organization Support** - Complete data isolation for multiple tenants
+- ✅ **Role-Based Access Control** - Granular permissions for different user types
+- ✅ **Automated Workflows** - Streamlined approval processes from submission to payment
+- ✅ **Real-Time Balance Tracking** - Instant updates on cash balances and transactions
+- ✅ **Comprehensive Audit Trail** - Full compliance with detailed logging
+- ✅ **Modern UI/UX** - Intuitive interface built with shadcn/ui and Tailwind CSS
+- ✅ **Secure & Scalable** - Built on Supabase with Row Level Security (RLS)
+
+---
+
+## ✨ Key Features
 
 ### Core Functionality
-- **Admin-only user creation** - Only administrators can create new user accounts
-- **Petty cash draft/submit flow** - Employees can create drafts and submit for review
-- **Assign→Verify→Approve lifecycle** - Engineers verify, admins approve petty cash expenses
-- **File upload validation** - PDF, PNG, JPG files ≤10MB with proper validation
-- **Role-based access control (RBAC)** - Admin, Engineer, Employee roles with proper permissions
-- **Comprehensive audit logging** - All actions tracked for compliance
-- **Backend total computation** - Automatic calculation of expense totals
 
-### User Roles
-- **Admin**: Full system access, user management, petty cash approval
-- **Engineer**: Review and verify assigned petty cash expenses, add comments
-- **Employee**: Create and submit petty cash claims, view own expenses
+#### 💰 Expense Management
+- **Draft & Submit Flow** - Employees create expense drafts and submit for review
+- **Multi-Step Approval** - Engineer verification → Admin approval workflow
+- **Line Item Tracking** - Detailed breakdown of expenses with categories
+- **Receipt Management** - Upload and attach receipts (PDF, PNG, JPG)
+- **Status Tracking** - Real-time visibility into expense status
+- **Transaction Numbers** - Unique transaction IDs per organization
 
-### Petty Cash Workflow
-1. **Draft** → Employee creates petty cash expense with line items
-2. **Submitted** → Employee submits for review
-3. **Under Review** → Admin assigns to engineer (optional)
-4. **Verified** → Engineer verifies petty cash expenses
-5. **Approved/Rejected** → Admin makes final decision
-6. **Paid** → Accounting processes payment
+#### 👥 User Management
+- **Admin-Only User Creation** - Secure user onboarding
+- **Role Assignment** - Assign roles during user creation
+- **Profile Management** - Comprehensive user profiles with organization context
+- **Balance Management** - Set and track individual user balances
+
+#### 💵 Balance & Cash Management
+- **Real-Time Balance Tracking** - Instant balance updates
+- **Cash Transfer System** - Cashiers can transfer funds between accounts
+- **Automatic Deductions** - Balance reduced when expenses are approved
+- **Balance History** - Complete transaction history
+- **Money Return Requests** - Employees can request balance returns
+
+#### 📊 Analytics & Reporting
+- **Dashboard Analytics** - Visual charts and insights
+- **Expense Reports** - Comprehensive financial reports
+- **Category Analytics** - Track spending by category
+- **User Statistics** - Role-based dashboard views
+- **Export Capabilities** - Download reports in various formats
+
+#### 🏢 Multi-Tenancy
+- **Organization Isolation** - Complete data separation per organization
+- **Custom Organization Settings** - Per-organization configuration
+- **Organization Logos** - Branded experience per tenant
+- **Location Management** - Multi-location support with location-based cashier assignment
+
+#### 🔔 Notifications
+- **Real-Time Notifications** - Instant updates on expense status changes
+- **Email Notifications** - Configurable email alerts
+- **Notification Preferences** - User-customizable notification settings
+- **In-App Notifications** - Popup notifications for important events
+
+---
+
+## 👤 User Roles & Permissions
+
+### 🔴 Admin
+**Full system access and management capabilities**
+
+- Create and manage users across the organization
+- Approve/reject verified expenses
+- Set and manage user balances
+- Access all expense reports and analytics
+- Manage expense categories and locations
+- Configure organization settings
+- View comprehensive system reports
+- Manage cashier assignments
+
+### 🟡 Engineer
+**Review and verification responsibilities**
+
+- Review assigned employee expenses
+- Verify expense details and documentation
+- Add comments and feedback on expenses
+- View assigned employees' expense reports
+- Manage employee balances (add funds)
+- Approve expenses within approval limit
+- Access analytics for assigned employees
+
+### 🟢 Employee
+**Expense submission and tracking**
+
+- Create and submit expense reports
+- Upload receipts and supporting documents
+- View personal expense history
+- Track expense status and approvals
+- View personal balance information
+- Edit draft expenses
+- Request money returns
+
+### 🔵 Cashier
+**Balance and fund management**
+
+- Add funds to employee/engineer accounts
+- Deduct from own balance when adding funds
+- View balance management interface
+- Access user balance information
+- View cash transfer history
+- Manage money assignments
+- Process money return requests
+
+---
+
+## 🔄 Workflow
+
+### Expense Lifecycle
+
+```
+1. DRAFT
+   └─ Employee creates expense with line items
+   └─ Upload receipts and documents
+   └─ Save as draft for later editing
+
+2. SUBMITTED
+   └─ Employee submits expense for review
+   └─ Status changes to "Under Review"
+
+3. UNDER REVIEW
+   └─ Admin can assign to Engineer (optional)
+   └─ Engineer reviews expense details
+
+4. VERIFIED
+   └─ Engineer verifies expense
+   └─ Adds comments/feedback
+   └─ Status changes to "Verified"
+
+5. APPROVED/REJECTED
+   └─ Admin makes final decision
+   └─ If approved: Balance automatically deducted
+   └─ If rejected: Employee can edit and resubmit
+
+6. PAID
+   └─ Accounting processes payment
+   └─ Expense marked as paid
+```
+
+### Balance Management Flow
+
+```
+Cashier/Admin/Engineer → Add Funds → Employee Balance Updated
+Employee → Submit Expense → Admin Approves → Balance Deducted
+Employee → Request Return → Cashier Processes → Balance Returned
+```
+
+---
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React 18, TypeScript, Vite
-- **UI Components**: shadcn/ui, Tailwind CSS
-- **State Management**: React Context API, TanStack Query
-- **Routing**: React Router DOM v6
-- **Forms**: React Hook Form with Zod validation
-- **Backend**: Supabase (PostgreSQL, Auth, Storage)
-- **Testing**: Vitest, Testing Library
-- **Icons**: Lucide React
-- **Charts**: Recharts
+### Frontend
+- **React 18** - Modern UI library with hooks
+- **TypeScript** - Type-safe development
+- **Vite** - Fast build tool and dev server
+- **Tailwind CSS** - Utility-first CSS framework
+- **shadcn/ui** - High-quality component library
+- **React Router DOM v6** - Client-side routing
+- **React Hook Form** - Form state management
+- **Zod** - Schema validation
+- **TanStack Query** - Server state management
+- **Recharts** - Data visualization
+- **Lucide React** - Icon library
+- **Framer Motion** - Animation library
 
-## 📋 Prerequisites
+### Backend
+- **Supabase** - Backend-as-a-Service
+  - **PostgreSQL** - Relational database
+  - **Supabase Auth** - Authentication & authorization
+  - **Supabase Storage** - File storage
+  - **Row Level Security (RLS)** - Database-level security
+  - **Real-time Subscriptions** - Live data updates
 
-- Node.js 18+ and npm
-- Supabase account and project
-- Git
+### Development Tools
+- **Vitest** - Unit testing framework
+- **Testing Library** - Component testing
+- **ESLint** - Code linting
+- **TypeScript** - Static type checking
 
-## 🚀 Quick Start
+---
 
-### 1. Clone the Repository
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Node.js** 18+ and npm (or yarn/pnpm)
+- **Supabase Account** - [Sign up for free](https://supabase.com)
+- **Git** - Version control
+
+### Installation
+
+#### 1. Clone the Repository
 
 ```bash
-git clone <your-repo-url>
-cd voyage-account
+git clone https://github.com/your-org/pesowise.git
+cd pesowise
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Environment Setup
+#### 3. Environment Setup
 
 Create a `.env.local` file in the root directory:
 
 ```env
+# Supabase Configuration
 VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
-**Important**: The `VITE_SUPABASE_SERVICE_ROLE_KEY` is required for admins to create users. Accounts are created and activated immediately. You can find your service role key in Supabase Dashboard > Settings > API.
+**Important Notes:**
+- Get your Supabase credentials from: **Dashboard → Settings → API**
+- The `VITE_SUPABASE_SERVICE_ROLE_KEY` is required for admin user creation
+- Never commit `.env.local` to version control
 
-### 4. Database Setup
+#### 4. Database Setup
 
-Run the Supabase migrations to set up the database schema:
+##### Option A: Using Supabase CLI (Recommended)
 
 ```bash
-# If you have Supabase CLI installed
-supabase db reset
+# Install Supabase CLI
+npm install -g supabase
 
-# Or manually run the migration file:
-# supabase/migrations/20251005171552_6159c659-1917-425b-813e-9ef879ba396e.sql
+# Initialize Supabase (if not already done)
+supabase init
+
+# Link to your project
+supabase link --project-ref your-project-ref
+
+# Run migrations
+supabase db reset
 ```
 
-### 5. Create Initial Admin User
+##### Option B: Manual Migration
 
-Since only admins can create users, you'll need to manually create the first admin user in Supabase:
+1. Go to your Supabase Dashboard
+2. Navigate to **SQL Editor**
+3. Run the migration files in order from `master_migration/`:
+   - `01_cleanup.sql`
+   - `02_schema.sql`
+   - `03_policies.sql`
+   - `04_saas_multi_tenancy.sql`
+   - `05_update_rls_for_organizations.sql`
+   - Continue with remaining migrations...
 
-1. Go to your Supabase dashboard
-2. Navigate to Authentication → Users
-3. Create a new user
-4. Go to SQL Editor and run:
+#### 5. Create Initial Organization and Admin
+
+Since the system requires an admin to create users, you need to set up the first organization and admin:
 
 ```sql
--- Replace 'user-id-here' with the actual user ID from auth.users
-INSERT INTO public.user_roles (user_id, role) 
-VALUES ('user-id-here', 'admin');
+-- Run this in Supabase SQL Editor
+-- Replace with your actual user ID from auth.users
+
+-- 1. Create organization
+INSERT INTO public.organizations (name, slug, plan, subscription_status)
+VALUES ('Your Organization', 'your-org-slug', 'pro', 'active')
+RETURNING id;
+
+-- 2. Create admin membership (replace user_id and organization_id)
+INSERT INTO public.organization_memberships (organization_id, user_id, role)
+VALUES ('organization-id-here', 'user-id-here', 'admin');
 ```
 
-### 6. Start Development Server
+Alternatively, use the provided script:
+```bash
+# Check master_migration/create_org_and_admin_complete.sql
+```
+
+#### 6. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-The application will be available at `http://localhost:3000`
+The application will be available at `http://localhost:5173` (or the port shown in terminal)
+
+---
+
+## 🏗️ Project Structure
+
+```
+pesowise/
+├── public/                 # Static assets
+│   ├── HERO.png           # Logo and favicon
+│   ├── robots.txt         # SEO robots file
+│   └── sitemap.xml        # SEO sitemap
+│
+├── src/
+│   ├── components/        # React components
+│   │   ├── ui/           # shadcn/ui components
+│   │   ├── AppSidebar.tsx
+│   │   ├── FileUpload.tsx
+│   │   ├── Layout.tsx
+│   │   ├── ProtectedRoute.tsx
+│   │   └── ...
+│   │
+│   ├── contexts/         # React contexts
+│   │   └── AuthContext.tsx
+│   │
+│   ├── hooks/            # Custom React hooks
+│   │   ├── use-mobile.tsx
+│   │   ├── use-toast.ts
+│   │   └── ...
+│   │
+│   ├── integrations/     # External integrations
+│   │   └── supabase/
+│   │       ├── client.ts
+│   │       └── types.ts
+│   │
+│   ├── lib/              # Utility functions
+│   │   ├── format.ts
+│   │   ├── utils.ts
+│   │   └── organizationCache.ts
+│   │
+│   ├── pages/            # Page components
+│   │   ├── Auth.tsx
+│   │   ├── Dashboard.tsx
+│   │   ├── Expenses.tsx
+│   │   ├── ExpenseForm.tsx
+│   │   ├── ExpenseDetail.tsx
+│   │   ├── AdminPanel.tsx
+│   │   ├── UserManagement.tsx
+│   │   ├── EngineerReview.tsx
+│   │   ├── Balances.tsx
+│   │   ├── Analytics.tsx
+│   │   ├── Reports.tsx
+│   │   ├── Settings.tsx
+│   │   └── ...
+│   │
+│   ├── services/         # Business logic
+│   │   ├── ExpenseService.ts
+│   │   ├── MoneyReturnService.ts
+│   │   └── NotificationService.ts
+│   │
+│   ├── test/             # Test utilities
+│   │   └── setup.ts
+│   │
+│   ├── App.tsx           # Main app component
+│   ├── main.tsx          # Entry point
+│   └── index.css         # Global styles
+│
+├── master_migration/     # Database migrations
+│   ├── 01_cleanup.sql
+│   ├── 02_schema.sql
+│   ├── 03_policies.sql
+│   ├── 04_saas_multi_tenancy.sql
+│   └── ...
+│
+├── supabase/
+│   └── migrations/       # Supabase migrations
+│
+├── docs/                 # Documentation
+│   └── openapi.yaml      # API specification
+│
+├── index.html            # HTML entry point
+├── package.json          # Dependencies
+├── tsconfig.json         # TypeScript config
+├── vite.config.ts        # Vite configuration
+└── tailwind.config.ts    # Tailwind configuration
+```
+
+---
+
+## 📚 API Documentation
+
+PesoWise uses Supabase as its backend, providing RESTful APIs and real-time capabilities. The complete API is documented using OpenAPI 3.0 specification.
+
+### View API Documentation
+
+- **OpenAPI Spec**: [`docs/openapi.yaml`](docs/openapi.yaml)
+- **Supabase API**: Auto-generated from your Supabase project
+
+### Key API Endpoints
+
+#### Authentication
+- `POST /auth/v1/token` - User authentication
+- `POST /auth/v1/logout` - User logout
+- `GET /auth/v1/user` - Get current user
+
+#### Expenses
+- `GET /rest/v1/expenses` - List expenses (filtered by organization)
+- `POST /rest/v1/expenses` - Create expense
+- `PATCH /rest/v1/expenses/:id` - Update expense
+- `POST /rest/v1/rpc/submit_expense` - Submit expense for review
+- `POST /rest/v1/rpc/verify_expense` - Engineer verification
+- `POST /rest/v1/rpc/approve_expense` - Admin approval
+
+#### Storage
+- `POST /storage/v1/object/receipts` - Upload receipt
+- `GET /storage/v1/object/receipts/:path` - Download receipt
+
+### Authentication
+
+All API requests require authentication via JWT tokens:
+
+```typescript
+const { data, error } = await supabase
+  .from('expenses')
+  .select('*')
+  .eq('organization_id', orgId);
+```
+
+---
+
+## 🔒 Security
+
+### Authentication & Authorization
+
+- **JWT-based Authentication** - Secure token-based auth via Supabase
+- **Row Level Security (RLS)** - Database-level access control
+- **Role-Based Access Control (RBAC)** - Granular permissions
+- **Protected Routes** - Client-side route protection
+- **Organization Isolation** - Complete data separation
+
+### Data Validation
+
+- **Frontend Validation** - Zod schemas for form validation
+- **Backend Validation** - Supabase functions and RLS policies
+- **File Validation** - Type and size checks for uploads
+- **Input Sanitization** - Protection against XSS attacks
+
+### Audit Trail
+
+- **Comprehensive Logging** - All actions logged in `audit_logs`
+- **User Tracking** - Every action linked to user and organization
+- **Timestamp Tracking** - Precise action timestamps
+- **Immutable Records** - Audit logs cannot be modified
+
+### File Security
+
+- **Secure Storage** - Files stored in Supabase Storage
+- **Access Control** - RLS policies on storage buckets
+- **File Type Validation** - Only allowed file types accepted
+- **Size Limits** - Maximum 10MB per file
+
+---
 
 ## 🧪 Testing
 
@@ -115,6 +490,9 @@ The application will be available at `http://localhost:3000`
 ```bash
 # Run all tests
 npm test
+
+# Run tests in watch mode
+npm test -- --watch
 
 # Run tests with UI
 npm run test:ui
@@ -129,82 +507,22 @@ npm run test:coverage
 - **Integration Tests**: `src/__tests__/integration/` - Test component interactions
 - **Test Setup**: `src/test/setup.ts` - Mock configurations
 
-## 📚 API Documentation
+### Writing Tests
 
-The API is documented using OpenAPI 3.0 specification. View the complete documentation:
+```typescript
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import MyComponent from './MyComponent';
 
-- **OpenAPI Spec**: `docs/openapi.yaml`
-- **API Endpoints**: All Supabase RPC functions and REST endpoints
-- **Authentication**: JWT-based authentication via Supabase Auth
-- **File Upload**: Multipart form data for receipt attachments
-
-### Key API Endpoints
-
-- `POST /auth/login` - User authentication
-- `POST /expenses` - Create petty cash expense
-- `POST /expenses/{id}/submit` - Submit petty cash expense
-- `POST /expenses/{id}/verify` - Engineer verification
-- `POST /expenses/{id}/approve` - Admin approval
-- `POST /expenses/{id}/attachments` - Upload receipts
-
-## 🏗️ Project Structure
-
-```
-src/
-├── components/          # Reusable UI components
-│   ├── ui/             # shadcn/ui components
-│   ├── AppSidebar.tsx  # Navigation sidebar
-│   ├── FileUpload.tsx  # File upload component
-│   └── ...
-├── contexts/           # React contexts
-│   └── AuthContext.tsx # Authentication context
-├── hooks/             # Custom React hooks
-├── integrations/      # External service integrations
-│   └── supabase/      # Supabase client and types
-├── pages/             # Page components
-│   ├── Auth.tsx       # Login page
-│   ├── Dashboard.tsx  # User dashboard
-│   ├── ExpenseForm.tsx # Create/edit petty cash expenses
-│   ├── AdminPanel.tsx # Admin management
-│   ├── EngineerReview.tsx # Engineer verification
-│   └── ...
-├── services/          # Business logic services
-│   └── ExpenseService.ts # Petty cash management logic
-├── test/             # Test utilities and setup
-└── lib/              # Utility functions
+describe('MyComponent', () => {
+  it('renders correctly', () => {
+    render(<MyComponent />);
+    expect(screen.getByText('Hello')).toBeInTheDocument();
+  });
+});
 ```
 
-## 🔒 Security Features
-
-### Authentication & Authorization
-- JWT-based authentication via Supabase Auth
-- Role-based access control (RBAC)
-- Row Level Security (RLS) policies in PostgreSQL
-- Protected routes with role validation
-
-### Data Validation
-- Frontend validation with Zod schemas
-- Backend validation in Supabase functions
-- File type and size validation
-- Input sanitization
-
-### Audit Trail
-- All user actions logged in `audit_logs` table
-- Timestamp and user tracking
-- Action-specific comments
-- Immutable audit records
-
-## 📁 File Upload
-
-### Supported Formats
-- **PDF**: `.pdf`
-- **Images**: `.png`, `.jpg`, `.jpeg`
-
-### Validation Rules
-- Maximum file size: 10MB
-- File type validation on both frontend and backend
-- Secure file storage in Supabase Storage
-- Public URL generation for file access
+---
 
 ## 🚀 Deployment
 
@@ -214,74 +532,139 @@ src/
 npm run build
 ```
 
+The build output will be in the `dist/` directory.
+
 ### Environment Variables
 
-Set these environment variables in your production environment:
+Set these in your production environment (Vercel, Netlify, etc.):
 
 ```env
 VITE_SUPABASE_URL=your_production_supabase_url
 VITE_SUPABASE_ANON_KEY=your_production_supabase_anon_key
+VITE_SUPABASE_SERVICE_ROLE_KEY=your_production_service_role_key
 ```
 
-### Supabase Configuration
+### Deployment Platforms
 
-1. Enable Row Level Security on all tables
-2. Configure storage policies for file uploads
-3. Set up proper CORS policies
-4. Configure email templates for user invitations
+#### Vercel (Recommended)
 
-## 🤝 Contributing
+1. Connect your GitHub repository
+2. Set environment variables
+3. Deploy automatically on push
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+The `vercel.json` file is already configured for SPA routing.
 
-### Development Guidelines
+#### Netlify
 
-- Follow TypeScript best practices
-- Write tests for new features
-- Use conventional commit messages
-- Ensure all tests pass before submitting PR
+1. Connect your repository
+2. Set build command: `npm run build`
+3. Set publish directory: `dist`
+4. Add `_redirects` file in `public/` (already included)
 
-## 📝 License
+### Supabase Production Setup
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For support and questions:
-
-- Create an issue in the repository
-- Check the [API documentation](docs/openapi.yaml)
-- Review the test files for usage examples
-
-## 🔄 Recent Updates
-
-### v1.0.0 - Complete Petty Cash Flow Implementation
-- ✅ Admin-only user creation with proper validation
-- ✅ Complete petty cash draft/submit workflow
-- ✅ Engineer verification and admin approval process
-- ✅ File upload with PDF/JPG/PNG validation (≤10MB)
-- ✅ Comprehensive RBAC with backend validation
-- ✅ Full audit logging for all actions
-- ✅ Backend total computation for petty cash expenses
-- ✅ Unit and integration test coverage
-- ✅ OpenAPI documentation
-- ✅ Updated README with setup instructions
+1. **Enable RLS** on all tables
+2. **Configure Storage Policies** for file uploads
+3. **Set CORS Policies** for your domain
+4. **Configure Email Templates** for user invitations
+5. **Set up Database Backups**
 
 ---
 
-**Note**: This is a Supabase-based application, not Next.js/Express/Prisma as mentioned in some specifications. The implementation uses Supabase's built-in authentication, database, and storage services for a complete backend solution.
+## 🤝 Contributing
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+We welcome contributions! Please follow these steps:
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
-#   p e s o w i s e 
- 
- #   p e s o w i s e 
- 
- #   p e s o - p a t i d a r 
- 
- 
+### Development Workflow
+
+1. **Fork the repository**
+2. **Create a feature branch**
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+3. **Make your changes**
+4. **Write/update tests** for your changes
+5. **Ensure all tests pass**
+   ```bash
+   npm test
+   ```
+6. **Commit your changes**
+   ```bash
+   git commit -m 'feat: Add amazing feature'
+   ```
+7. **Push to your branch**
+   ```bash
+   git push origin feature/amazing-feature
+   ```
+8. **Open a Pull Request**
+
+### Development Guidelines
+
+- ✅ Follow TypeScript best practices
+- ✅ Write tests for new features
+- ✅ Use conventional commit messages
+- ✅ Ensure all tests pass before submitting PR
+- ✅ Update documentation for new features
+- ✅ Follow the existing code style
+
+### Commit Message Format
+
+```
+type(scope): subject
+
+body (optional)
+
+footer (optional)
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+---
+
+## 🆘 Support
+
+### Getting Help
+
+- **GitHub Issues** - [Create an issue](https://github.com/your-org/pesowise/issues)
+- **Documentation** - Check the [API docs](docs/openapi.yaml)
+- **Examples** - Review test files for usage examples
+
+### Common Issues
+
+#### "Cannot create user" error
+- Ensure `VITE_SUPABASE_SERVICE_ROLE_KEY` is set correctly
+- Check that RLS policies allow user creation
+
+#### "Organization not found" error
+- Verify organization exists in database
+- Check organization_memberships table
+
+#### Build errors
+- Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`
+- Check Node.js version (requires 18+)
+
+---
+
+## 📝 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Unimisk** - Powered by Unimisk
+- **Supabase** - Backend infrastructure
+- **shadcn/ui** - UI component library
+- **Vite** - Build tool
+- **React** - UI framework
+
+---
+
+<div align="center">
+
+**Made with ❤️ by the PesoWise Team**
+
+[Website](https://pesowise.com) • [Documentation](docs/) • [Issues](https://github.com/your-org/pesowise/issues) • [License](LICENSE)
+
+</div>

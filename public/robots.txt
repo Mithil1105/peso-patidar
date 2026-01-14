@@ -1,8 +1,31 @@
+# PesoWise Robots.txt
+# Smart Petty Cash Management & Expense Tracking Software
+
+# Allow all search engines
+User-agent: *
+Allow: /
+
+# Disallow private/admin routes
+User-agent: *
+Disallow: /admin/
+Disallow: /expenses/*/edit
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://pesowise.com/sitemap.xml
+
+# Crawl-delay (optional, helps prevent server overload)
+User-agent: *
+Crawl-delay: 1
+
+# Specific bot configurations
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 0
 
 User-agent: Bingbot
 Allow: /
+Crawl-delay: 1
 
 User-agent: Twitterbot
 Allow: /
@@ -10,5 +33,5 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
-User-agent: *
+User-agent: LinkedInBot
 Allow: /
