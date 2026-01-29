@@ -11,9 +11,7 @@ import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
 
 interface DashboardStats {
   totalExpenses: number;
@@ -41,7 +39,7 @@ interface Notification {
 }
 
 export default function Dashboard() {
-  const { user, userRole, organizationId } = useAuth();
+  const { user, userRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     totalExpenses: 0,
     pendingAmount: 0,
@@ -63,20 +61,6 @@ export default function Dashboard() {
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [returnRequests, setReturnRequests] = useState<any[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  // Cashier return to admin states
-  const [returnToAdminDialogOpen, setReturnToAdminDialogOpen] = useState(false);
-  const [returnToAdminAmount, setReturnToAdminAmount] = useState("");
-  const [selectedAdminId, setSelectedAdminId] = useState<string>("");
-  const [admins, setAdmins] = useState<Array<{ user_id: string; name: string }>>([]);
-  const [loadingAdmins, setLoadingAdmins] = useState(false);
-  const [returningToAdmin, setReturningToAdmin] = useState(false);
-  const [announcements, setAnnouncements] = useState<Array<{
-    id: string;
-    message: string;
-    type: string;
-    priority: string;
-    expires_at: string;
-  }>>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -85,20 +69,18 @@ export default function Dashboard() {
       try {
         fetchStats();
         fetchNotifications();
-        fetchMasterAdminAnnouncements();
         if (userRole === "employee" || userRole === "engineer" || userRole === "cashier") {
           fetchUserBalance();
         }
         if (userRole === "cashier") {
           fetchReturnRequests();
-          fetchAdmins();
         }
       } catch (error) {
         console.error("Error in Dashboard useEffect:", error);
         // Don't crash the page, just log the error
       }
     }
-  }, [user, userRole, organizationId]);
+  }, [user, userRole]);
 
   const fetchReturnRequests = async () => {
     if (!user?.id || userRole !== "cashier") return;
@@ -217,162 +199,8 @@ export default function Dashboard() {
     }
   };
 
-  const fetchMasterAdminAnnouncements = async () => {
-    if (!organizationId) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from("master_admin_announcements")
-        .select("*")
-        .eq("is_active", true)
-        .gt("expires_at", new Date().toISOString())
-        .or(`organization_id.is.null,organization_id.eq.${organizationId}`)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      const validAnnouncements = (data || []).filter(ann => {
-        const expiresAt = new Date(ann.expires_at);
-        return expiresAt > new Date();
-      });
-
-      // Check for new announcements (show popup for new ones)
-      const previousAnnouncements = announcements.map(a => a.id);
-      const newAnnouncements = validAnnouncements.filter(a => !previousAnnouncements.includes(a.id));
-      
-      setAnnouncements(validAnnouncements);
-
-      // Show popup for new announcements
-      newAnnouncements.forEach(announcement => {
-        const variant = 
-          announcement.type === 'urgent' ? 'destructive' :
-          announcement.type === 'warning' ? 'default' :
-          'default';
-        
-        toast({
-          title: announcement.type === 'urgent' ? '🚨 Urgent Announcement' :
-                 announcement.type === 'warning' ? '⚠️ Warning' :
-                 announcement.type === 'payment_reminder' ? '💳 Payment Reminder' :
-                 'ℹ️ Announcement',
-          description: announcement.message,
-          variant: variant as any,
-          duration: 10000, // Show for 10 seconds
-        });
-      });
-    } catch (error) {
-      console.error("Error fetching master admin announcements:", error);
-      // Don't show error toast, just log it
-    }
-  };
-
-  const fetchAdmins = async () => {
-    if (!user?.id || !organizationId || userRole !== "cashier") return;
-    try {
-      setLoadingAdmins(true);
-      // Get all admins in the organization
-      const { data: adminMemberships, error: membershipsError } = await supabase
-        .from("organization_memberships")
-        .select("user_id")
-        .eq("organization_id", organizationId)
-        .eq("role", "admin")
-        .eq("is_active", true);
-
-      if (membershipsError) throw membershipsError;
-
-      if (!adminMemberships || adminMemberships.length === 0) {
-        setAdmins([]);
-        return;
-      }
-
-      const adminIds = adminMemberships.map(m => m.user_id);
-      
-      // Get admin profiles
-      const { data: adminProfiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("user_id, name")
-        .in("user_id", adminIds)
-        .eq("organization_id", organizationId);
-
-      if (profilesError) throw profilesError;
-
-      setAdmins((adminProfiles || []).map(p => ({
-        user_id: p.user_id,
-        name: p.name || "Unknown Admin"
-      })));
-    } catch (error) {
-      console.error("Error fetching admins:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load admins. Please try again.",
-      });
-    } finally {
-      setLoadingAdmins(false);
-    }
-  };
-
-  const handleReturnToAdmin = async () => {
-    if (!user?.id || !selectedAdminId || userBalance === null) return;
-
-    const amount = parseFloat(returnToAdminAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Amount",
-        description: "Please enter a valid amount greater than 0",
-      });
-      return;
-    }
-
-    if (amount > userBalance) {
-      toast({
-        variant: "destructive",
-        title: "Insufficient Balance",
-        description: `You only have ${formatINR(userBalance)}. Cannot return ${formatINR(amount)}`,
-      });
-      return;
-    }
-
-    try {
-      setReturningToAdmin(true);
-      const { MoneyReturnService } = await import("@/services/MoneyReturnService");
-      await MoneyReturnService.cashierReturnToAdmin(user.id, selectedAdminId, amount);
-
-      // Refresh balance and stats
-      fetchUserBalance();
-      fetchStats();
-
-      // Reset form
-      setReturnToAdminAmount("");
-      setSelectedAdminId("");
-      setReturnToAdminDialogOpen(false);
-
-      const selectedAdmin = admins.find(a => a.user_id === selectedAdminId);
-      toast({
-        title: "Money Returned Successfully",
-        description: `Returned ${formatINR(amount)} to ${selectedAdmin?.name || "admin"}. Your new balance: ${formatINR((userBalance ?? 0) - amount)}`,
-      });
-    } catch (error: any) {
-      console.error("Error returning money to admin:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to return money. Please try again.",
-      });
-    } finally {
-      setReturningToAdmin(false);
-    }
-  };
-
   useEffect(() => {
     if (!user?.id) return;
-
-    // Poll for announcements every 30 seconds
-    const announcementInterval = setInterval(() => {
-      if (organizationId) {
-        fetchMasterAdminAnnouncements();
-      }
-    }, 30000);
 
     try {
       console.log('🔄 Initializing dashboard notification subscription...');
@@ -436,7 +264,6 @@ export default function Dashboard() {
           console.log('Cleaning up dashboard subscription and polling');
           cleanup();
           clearInterval(pollInterval);
-          clearInterval(announcementInterval);
           balanceCleanup();
           requestsCleanup();
         } catch (error) {
@@ -452,15 +279,12 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      if (!organizationId) return;
-      
-      // For admins, fetch ALL expenses in their organization. For others, fetch only their expenses
+      // For admins, fetch ALL expenses. For others, fetch only their expenses
       let expenses: any[] = [];
       if (userRole === "admin") {
         const { data: allExpenses, error: expensesError } = await supabase
           .from("expenses")
-          .select("*")
-          .eq("organization_id", organizationId);
+          .select("*");
         
         if (expensesError) throw expensesError;
         expenses = allExpenses || [];
@@ -468,18 +292,16 @@ export default function Dashboard() {
         const { data: userExpenses, error: expensesError } = await supabase
           .from("expenses")
           .select("*")
-          .eq("organization_id", organizationId)
           .eq("user_id", user?.id);
         
         if (expensesError) throw expensesError;
         expenses = userExpenses || [];
       }
 
-      // Fetch user profile for balance (filtered by organization_id)
+      // Fetch user profile for balance
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("balance")
-        .eq("organization_id", organizationId)
         .eq("user_id", user?.id)
         .single();
 
@@ -494,7 +316,6 @@ export default function Dashboard() {
         const { data: assignedExpenses, error: assignedError } = await supabase
           .from("expenses")
           .select("*")
-          .eq("organization_id", organizationId)
           .eq("assigned_engineer_id", user.id)
           .eq("status", "submitted"); // Only "submitted" status counts as pending review
 
@@ -522,19 +343,17 @@ export default function Dashboard() {
       let totalCashierBalance = 0;
       
       if (userRole === "admin") {
-        // Fetch expenses that need admin approval (filtered by organization_id):
+        // Fetch expenses that need admin approval:
         // 1. Verified expenses (need admin approval)
         const { data: verifiedExpenses, error: verifiedError } = await supabase
           .from("expenses")
           .select("*")
-          .eq("organization_id", organizationId)
           .eq("status", "verified");
 
         // 2. Submitted expenses with no assigned engineer (go directly to admin)
         const { data: submittedExpenses, error: submittedError } = await supabase
           .from("expenses")
           .select("*")
-          .eq("organization_id", organizationId)
           .eq("status", "submitted")
           .is("assigned_engineer_id", null);
 
@@ -559,43 +378,33 @@ export default function Dashboard() {
           );
         }
 
-        // Calculate total balances from actual profile balances (not from expenses)
+        // Calculate total balances from expenses data (sum of expenses by role)
         try {
-          // Get all profiles with balances, filtered by organization and role
-          const { data: allProfiles, error: profilesError } = await supabase
-            .from("profiles")
-            .select("user_id, balance, organization_id")
-            .eq("organization_id", organizationId);
+          // Get all user roles to map user_id to role
+          const { data: allRoles, error: rolesError } = await supabase
+            .from("user_roles")
+            .select("user_id, role");
 
-          if (!profilesError && allProfiles) {
-            // Get all user roles to map user_id to role
-            const { data: allRoles, error: rolesError } = await supabase
-              .from("organization_memberships")
-              .select("user_id, role")
-              .eq("organization_id", organizationId)
-              .eq("is_active", true);
-
-            if (!rolesError && allRoles) {
-              // Create a map of user_id to role
-              const userRoleMap = new Map(allRoles.map(r => [r.user_id, r.role]));
+          if (!rolesError && allRoles) {
+            // Create a map of user_id to role
+            const userRoleMap = new Map(allRoles.map(r => [r.user_id, r.role]));
+            
+            // Calculate totals from expenses by role
+            expenses.forEach(expense => {
+              const role = userRoleMap.get(expense.user_id);
+              const amount = Number(expense.total_amount || 0);
               
-              // Calculate totals from actual profile balances by role
-              allProfiles.forEach(profile => {
-                const role = userRoleMap.get(profile.user_id);
-                const balance = Number(profile.balance || 0);
-                
-                if (role === "employee") {
-                  totalEmployeeBalance += balance;
-                } else if (role === "engineer") {
-                  totalEngineerBalance += balance;
-                } else if (role === "cashier") {
-                  totalCashierBalance += balance;
-                }
-              });
-            }
+              if (role === "employee") {
+                totalEmployeeBalance += amount;
+              } else if (role === "engineer") {
+                totalEngineerBalance += amount;
+              } else if (role === "cashier") {
+                totalCashierBalance += amount;
+              }
+            });
           }
         } catch (error) {
-          console.error("Error calculating total balances from profiles:", error);
+          console.error("Error calculating total balances from expenses:", error);
         }
       }
 
@@ -635,7 +444,7 @@ export default function Dashboard() {
 
   const fetchNotifications = async () => {
     try {
-      if (!user?.id || !organizationId) return;
+      if (!user?.id) return;
 
       // Fetch 2 most recent notifications
       const { data: notificationsData, error: notificationsError } = await supabase
@@ -645,7 +454,6 @@ export default function Dashboard() {
           expenses(title)
         `)
         .eq("user_id", user.id)
-        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
         .limit(2);
 
@@ -857,84 +665,25 @@ export default function Dashboard() {
           managerId = user.id;
         }
 
-        // Find cashier by location matching - DIRECT CHECK
-        // Step 1: Get engineer's location
-        const { data: engineerLocationData, error: locationError } = await supabase
-          .from("engineer_locations")
-          .select("location_id")
-          .eq("engineer_id", managerId)
-          .limit(1)
-          .single();
+        // Find cashier assigned to this manager using location-based or direct assignment
+        // This function prioritizes location-based assignment and falls back to direct assignment
+        const { data: cashierUserId, error: cashierError } = await supabase
+          .rpc('get_cashier_for_engineer', { engineer_user_id: managerId });
 
-        if (locationError || !engineerLocationData) {
-          toast({
-            variant: "destructive",
-            title: "No Location Assigned",
-            description: "Your manager is not assigned to any location. Please contact an administrator.",
-          });
-          setReturningMoney(false);
-          return;
+        if (cashierError) {
+          console.error("Error finding cashier:", cashierError);
+          throw cashierError;
         }
 
-        const locationId = engineerLocationData.location_id;
-
-        // Get location's organization_id
-        const { data: locationData, error: locDataError } = await supabase
-          .from("locations")
-          .select("organization_id")
-          .eq("id", locationId)
-          .single();
-
-        if (locDataError || !locationData) {
-          toast({
-            variant: "destructive",
-            title: "Location Error",
-            description: "Could not find location details. Please contact an administrator.",
-          });
-          setReturningMoney(false);
-          return;
-        }
-
-        const locationOrgId = locationData.organization_id;
-
-        // Step 2: Find cashier with the same location in the same organization
-        const { data: cashierProfiles, error: cashierError } = await supabase
-          .from("profiles")
-          .select("user_id")
-          .eq("cashier_assigned_location_id", locationId)
-          .eq("organization_id", locationOrgId);
-
-        if (cashierError || !cashierProfiles || cashierProfiles.length === 0) {
+        if (!cashierUserId) {
           toast({
             variant: "destructive",
             title: "No Cashier Assigned",
-            description: "No cashier is assigned to your manager's location. Please contact an administrator.",
+            description: "Your manager doesn't have a cashier assigned. Please contact an administrator.",
           });
           setReturningMoney(false);
           return;
         }
-
-        // Verify the cashier has cashier role in organization_memberships
-        const cashierUserIds = cashierProfiles.map(p => p.user_id);
-        const { data: cashierRoles, error: rolesError } = await supabase
-          .from("organization_memberships")
-          .select("user_id")
-          .in("user_id", cashierUserIds)
-          .eq("role", "cashier")
-          .eq("organization_id", locationOrgId)
-          .eq("is_active", true);
-
-        if (rolesError || !cashierRoles || cashierRoles.length === 0) {
-          toast({
-            variant: "destructive",
-            title: "No Cashier Assigned",
-            description: "No cashier with proper role is assigned to your manager's location. Please contact an administrator.",
-          });
-          setReturningMoney(false);
-          return;
-        }
-
-        const cashierUserId = cashierRoles[0].user_id;
 
         targetUserId = cashierUserId;
       } else {
@@ -1312,85 +1061,6 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Cashier: Return Money to Admin */}
-      {userRole === "cashier" && (
-        <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
-            <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-              <ArrowRight className="h-5 w-5 text-blue-600" />
-              Return Money to Admin
-            </CardTitle>
-            <CardDescription className="text-sm">Return money directly to an admin in your organization</CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-            <Button
-              onClick={() => setReturnToAdminDialogOpen(true)}
-              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
-              size="lg"
-            >
-              <ArrowRight className="h-4 w-4 mr-2" />
-              Return Money to Admin
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Master Admin Announcements */}
-      {announcements.length > 0 && (
-        <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-yellow-50">
-          <CardHeader className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4 md:pt-6">
-            <CardTitle className="text-base sm:text-lg md:text-xl flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 text-orange-600" />
-              Important Announcements
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">Messages from master admin</CardDescription>
-          </CardHeader>
-          <CardContent className="px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 md:pb-6">
-            <div className="space-y-3">
-              {announcements.map((announcement) => {
-                const bgColor = 
-                  announcement.type === 'urgent' ? 'bg-red-100 border-red-300' :
-                  announcement.type === 'warning' ? 'bg-orange-100 border-orange-300' :
-                  announcement.type === 'payment_reminder' ? 'bg-yellow-100 border-yellow-300' :
-                  'bg-blue-100 border-blue-300';
-                
-                const iconColor =
-                  announcement.type === 'urgent' ? 'text-red-600' :
-                  announcement.type === 'warning' ? 'text-orange-600' :
-                  announcement.type === 'payment_reminder' ? 'text-yellow-600' :
-                  'text-blue-600';
-
-                return (
-                  <div
-                    key={announcement.id}
-                    className={`p-4 rounded-lg border-2 ${bgColor}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${iconColor}`} />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant={
-                            announcement.priority === 'high' ? 'destructive' :
-                            announcement.priority === 'medium' ? 'default' :
-                            'secondary'
-                          }>
-                            {announcement.type.replace('_', ' ').toUpperCase()}
-                          </Badge>
-                        </div>
-                        <p className="text-sm font-medium text-gray-900">{announcement.message}</p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          Expires: {format(new Date(announcement.expires_at), "MMM d, yyyy 'at' h:mm a")}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Live Notifications Section */}
       <Card>
         <CardHeader className="px-3 sm:px-4 md:px-6 pt-3 sm:pt-4 md:pt-6">
@@ -1601,78 +1271,6 @@ export default function Dashboard() {
                 disabled={returningMoney || !returnAmount || parseFloat(returnAmount) <= 0}
               >
                 {returningMoney ? "Returning..." : "Return Money"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Cashier Return to Admin Dialog */}
-      {userRole === "cashier" && (
-        <Dialog open={returnToAdminDialogOpen} onOpenChange={setReturnToAdminDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Return Money to Admin</DialogTitle>
-              <DialogDescription>
-                Return money directly to an admin. Your current balance: {formatINR(userBalance ?? 0)}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="adminSelect">Select Admin</Label>
-                {loadingAdmins ? (
-                  <div className="flex items-center justify-center py-2">
-                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="ml-2 text-sm text-gray-600">Loading admins...</span>
-                  </div>
-                ) : admins.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">No admins found in your organization</p>
-                ) : (
-                  <Select value={selectedAdminId} onValueChange={setSelectedAdminId} disabled={returningToAdmin}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an admin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {admins.map((admin) => (
-                        <SelectItem key={admin.user_id} value={admin.user_id}>
-                          {admin.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="returnToAdminAmount">Amount to Return</Label>
-                <Input
-                  id="returnToAdminAmount"
-                  type="number"
-                  placeholder="0.00"
-                  value={returnToAdminAmount}
-                  onChange={(e) => setReturnToAdminAmount(e.target.value)}
-                  min="0"
-                  step="0.01"
-                  disabled={returningToAdmin}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setReturnToAdminDialogOpen(false);
-                  setReturnToAdminAmount("");
-                  setSelectedAdminId("");
-                }}
-                disabled={returningToAdmin}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleReturnToAdmin}
-                disabled={returningToAdmin || !returnToAdminAmount || parseFloat(returnToAdminAmount) <= 0 || !selectedAdminId}
-              >
-                {returningToAdmin ? "Returning..." : "Return Money"}
               </Button>
             </DialogFooter>
           </DialogContent>

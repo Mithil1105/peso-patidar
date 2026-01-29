@@ -27,25 +27,21 @@ export class MoneyReturnService {
     cashierId: string,
     amount: number
   ): Promise<MoneyReturnRequest> {
-    // First, verify the requester has sufficient balance and get organization_id
+    // First, verify the requester has sufficient balance
     const { data: requesterProfile, error: profileError } = await supabase
       .from("profiles")
-      .select("balance, name, organization_id")
+      .select("balance, name")
       .eq("user_id", requesterId)
       .single();
 
     if (profileError) throw profileError;
-
-    if (!requesterProfile?.organization_id) {
-      throw new Error("Requester is not associated with an organization");
-    }
 
     const currentBalance = Number(requesterProfile?.balance ?? 0);
     if (amount > currentBalance) {
       throw new Error(`Insufficient balance. You only have ${formatINR(currentBalance)}`);
     }
 
-    // Create the return request with organization_id
+    // Create the return request
     const { data: request, error: requestError } = await supabase
       .from("money_return_requests")
       .insert({
@@ -53,7 +49,6 @@ export class MoneyReturnService {
         cashier_id: cashierId,
         amount: amount,
         status: "pending",
-        organization_id: requesterProfile.organization_id,
       })
       .select()
       .single();
@@ -129,20 +124,55 @@ export class MoneyReturnService {
 
     if (cashierError) throw cashierError;
 
-    // Use SECURITY DEFINER function to update balances and mark as approved (bypasses RLS)
-    // This ensures cashiers can update requester balances and it's all atomic
-    const { error: balanceUpdateError } = await supabase
-      .rpc('approve_money_return_update_balances', {
-        request_id: requestId,
-        cashier_user_id: cashierId
-      });
+    // Start transaction: Deduct from requester and add to cashier
+    const newRequesterBalance = requesterBalance - amount;
+    const newCashierBalance = (Number(cashierProfile?.balance ?? 0)) + amount;
 
-    if (balanceUpdateError) {
-      throw balanceUpdateError;
+    // Update requester balance
+    const { error: requesterUpdateError } = await supabase
+      .from("profiles")
+      .update({ balance: newRequesterBalance })
+      .eq("user_id", request.requester_id);
+
+    if (requesterUpdateError) throw requesterUpdateError;
+
+    // Update cashier balance
+    const { error: cashierUpdateError } = await supabase
+      .from("profiles")
+      .update({ balance: newCashierBalance })
+      .eq("user_id", cashierId);
+
+    if (cashierUpdateError) {
+      // Rollback requester balance if cashier update fails
+      await supabase
+        .from("profiles")
+        .update({ balance: requesterBalance })
+        .eq("user_id", request.requester_id);
+      throw cashierUpdateError;
     }
-    
-    // Function already marked request as approved, so we're done with that part
-    // The trigger will automatically log to cash_transfer_history
+
+    // Mark request as approved
+    const { error: updateError } = await supabase
+      .from("money_return_requests")
+      .update({
+        status: "approved",
+        approved_at: new Date().toISOString(),
+        approved_by: cashierId,
+      })
+      .eq("id", requestId);
+
+    if (updateError) {
+      // Rollback both balances if update fails
+      await supabase
+        .from("profiles")
+        .update({ balance: requesterBalance })
+        .eq("user_id", request.requester_id);
+      await supabase
+        .from("profiles")
+        .update({ balance: Number(cashierProfile?.balance ?? 0) })
+        .eq("user_id", cashierId);
+      throw updateError;
+    }
 
     // Mark money assignments as returned (FIFO)
     let remainingAmount = amount;
@@ -259,24 +289,6 @@ export class MoneyReturnService {
 
     if (error) throw error;
     return (data || []) as MoneyReturnRequest[];
-  }
-
-  /**
-   * Cashier returns money to admin (direct transfer, no approval needed)
-   */
-  static async cashierReturnToAdmin(
-    cashierId: string,
-    adminId: string,
-    amount: number
-  ): Promise<void> {
-    const { error } = await supabase
-      .rpc('cashier_return_money_to_admin', {
-        cashier_user_id: cashierId,
-        admin_user_id: adminId,
-        amount_param: amount
-      });
-
-    if (error) throw error;
   }
 }
 

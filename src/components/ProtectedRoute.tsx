@@ -5,11 +5,10 @@ import { Loader2 } from "lucide-react";
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: ("admin" | "engineer" | "employee" | "cashier")[];
-  requireMasterAdmin?: boolean;
 }
 
-export function ProtectedRoute({ children, allowedRoles, requireMasterAdmin }: ProtectedRouteProps) {
-  const { user, userRole, isMasterAdmin, loading } = useAuth();
+export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const { user, userRole, loading } = useAuth();
 
   if (loading) {
     return (
@@ -23,11 +22,7 @@ export function ProtectedRoute({ children, allowedRoles, requireMasterAdmin }: P
     return <Navigate to="/auth" replace />;
   }
 
-  if (requireMasterAdmin && !isMasterAdmin) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  if (allowedRoles && userRole && !allowedRoles.includes(userRole) && !isMasterAdmin) {
+  if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
     return <Navigate to="/dashboard" replace />;
   }
 

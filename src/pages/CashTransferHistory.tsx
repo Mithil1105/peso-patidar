@@ -171,9 +171,6 @@ export default function CashTransferHistory() {
       admin_to_engineer: "Admin → Manager",
       cashier_to_employee: "Cashier → Employee",
       cashier_to_engineer: "Cashier → Manager",
-      cashier_to_admin: "Cashier → Admin (Return)",
-      employee_to_cashier: "Employee → Cashier (Return)",
-      engineer_to_cashier: "Manager → Cashier (Return)",
     };
     return labels[type] || type;
   };
@@ -285,9 +282,6 @@ export default function CashTransferHistory() {
                   <SelectItem value="admin_to_engineer">Admin → Manager</SelectItem>
                   <SelectItem value="cashier_to_employee">Cashier → Employee</SelectItem>
                   <SelectItem value="cashier_to_engineer">Cashier → Manager</SelectItem>
-                  <SelectItem value="cashier_to_admin">Cashier → Admin (Return)</SelectItem>
-                  <SelectItem value="employee_to_cashier">Employee → Cashier (Return)</SelectItem>
-                  <SelectItem value="engineer_to_cashier">Manager → Cashier (Return)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

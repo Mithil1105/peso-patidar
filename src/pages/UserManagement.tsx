@@ -48,7 +48,7 @@ export default function UserManagement() {
   const [engineers, setEngineers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [cashiers, setCashiers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [users, setUsers] = useState<{ user_id: string; name: string; email: string; balance: number; role: string; assigned_engineer_name?: string; cashier_assigned_engineer_name?: string; cashier_assigned_location_id?: string; cashier_assigned_location_name?: string; assigned_cashier_name?: string; cashier_assigned_engineer_id?: string; reporting_engineer_id?: string }[]>([]);
-  const [locations, setLocations] = useState<{ id: string; name: string; organization_id: string }[]>([]);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [engineerLocations, setEngineerLocations] = useState<Record<string, string>>({}); // engineer_id -> location_id (single location only)
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<{ user_id: string; name: string; email: string; balance: number; role: string } | null>(null);
@@ -140,7 +140,7 @@ export default function UserManagement() {
         if (!organizationId) return;
         const { data, error } = await supabase
           .from("locations")
-          .select("id, name, organization_id")
+          .select("id, name")
           .eq("organization_id", organizationId)
           .order("name", { ascending: true });
         if (error) throw error;
@@ -154,11 +154,9 @@ export default function UserManagement() {
     // Load engineer-location assignments
     const loadEngineerLocations = async () => {
       try {
-        if (!organizationId) return;
         const { data, error } = await supabase
           .from("engineer_locations")
-          .select("engineer_id, location_id")
-          .eq("organization_id", organizationId);
+          .select("engineer_id, location_id");
         if (error) throw error;
         
         const assignments: Record<string, string> = {};
@@ -441,25 +439,21 @@ export default function UserManagement() {
     setDrawerOpen(true);
     setExpensesLoading(true);
     try {
-      if (!organizationId) return;
-      
       const { data, error } = await supabase
         .from("expenses")
         .select("id, title, total_amount, status, created_at, updated_at")
-        .eq("organization_id", organizationId)
         .eq("user_id", u.user_id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       const list = data || [];
       setExpenses(list);
 
-      // Fetch audit logs for these expenses to build history and deductions (filtered by organization_id)
+      // Fetch audit logs for these expenses to build history and deductions
       const expenseIds = list.map((e: any) => e.id);
       if (expenseIds.length > 0) {
         const { data: logs, error: logsErr } = await supabase
           .from("audit_logs")
           .select("expense_id, user_id, action, comment, created_at")
-          .eq("organization_id", organizationId)
           .in("expense_id", expenseIds)
           .order("created_at", { ascending: false });
         if (logsErr) throw logsErr;
@@ -698,13 +692,12 @@ export default function UserManagement() {
         
         // Priority: Location assignment over direct engineer assignment
         if (formData.cashierAssignedLocationId && formData.cashierAssignedLocationId !== "none") {
-          // Check if location already has a cashier in the same organization
-          // First get all profiles with this location assigned in the same organization
+          // Check if location already has a cashier
+          // First get all profiles with this location assigned
           const { data: profilesWithLocation, error: profilesError } = await supabase
             .from("profiles")
             .select("user_id")
-            .eq("cashier_assigned_location_id", formData.cashierAssignedLocationId)
-            .eq("organization_id", organizationId!);
+            .eq("cashier_assigned_location_id", formData.cashierAssignedLocationId);
           
           if (profilesError) throw profilesError;
           
@@ -771,28 +764,11 @@ export default function UserManagement() {
 
       // If creating an engineer and a location is selected, assign it
       if (validated.role === "engineer" && formData.locationId && formData.locationId !== "none") {
-        if (!organizationId) {
-          throw new Error("Organization not found");
-        }
-        
-        // Verify location belongs to organization
-        const { data: locationData, error: locationFetchError } = await supabase
-          .from("locations")
-          .select("organization_id")
-          .eq("id", formData.locationId)
-          .eq("organization_id", organizationId)
-          .single();
-        
-        if (locationFetchError || !locationData) {
-          throw new Error("Location not found or does not belong to your organization");
-        }
-        
         const { error: locationError } = await supabase
           .from("engineer_locations")
           .insert({
             engineer_id: authData.user.id,
             location_id: formData.locationId,
-            organization_id: organizationId,
           });
 
         if (locationError) throw locationError;
@@ -817,21 +793,18 @@ export default function UserManagement() {
       setShowPassword(false);
       
       // Reload engineer locations
-      if (organizationId) {
-        const { data: elData, error: elError } = await supabase
-          .from("engineer_locations")
-          .select("engineer_id, location_id")
-          .eq("organization_id", organizationId);
-        if (!elError && elData) {
-          const assignments: Record<string, string> = {};
-          elData.forEach((el: any) => {
-            // Only store the first location for each engineer (one location per engineer)
-            if (!assignments[el.engineer_id]) {
-              assignments[el.engineer_id] = el.location_id;
-            }
-          });
-          setEngineerLocations(assignments);
-        }
+      const { data: elData, error: elError } = await supabase
+        .from("engineer_locations")
+        .select("engineer_id, location_id");
+      if (!elError && elData) {
+        const assignments: Record<string, string> = {};
+        elData.forEach((el: any) => {
+          // Only store the first location for each engineer (one location per engineer)
+          if (!assignments[el.engineer_id]) {
+            assignments[el.engineer_id] = el.location_id;
+          }
+        });
+        setEngineerLocations(assignments);
       }
 
     } catch (error: any) {
@@ -884,12 +857,11 @@ export default function UserManagement() {
         
         // Fetch location for engineer (only one location allowed)
         let locationId: string = "none";
-        if (u.role === "engineer" && organizationId) {
+        if (u.role === "engineer") {
           const { data: locationData } = await supabase
             .from("engineer_locations")
             .select("location_id")
             .eq("engineer_id", u.user_id)
-            .eq("organization_id", organizationId)
             .limit(1)
             .maybeSingle();
           locationId = locationData?.location_id || "none";
@@ -966,13 +938,12 @@ export default function UserManagement() {
       if (editFormData.role === "cashier") {
         // Priority: Location assignment over direct engineer assignment
         if (editFormData.cashierAssignedLocationId && editFormData.cashierAssignedLocationId !== "none") {
-          // Check if location already has a cashier in the same organization (unless it's the current cashier being edited)
-          // First get all profiles with this location assigned in the same organization (excluding current user)
+          // Check if location already has a cashier (unless it's the current cashier being edited)
+          // First get all profiles with this location assigned (excluding current user)
           const { data: profilesWithLocation, error: profilesError } = await supabase
             .from("profiles")
             .select("user_id")
             .eq("cashier_assigned_location_id", editFormData.cashierAssignedLocationId)
-            .eq("organization_id", organizationId!) // Ensure same organization
             .neq("user_id", userToEdit.user_id); // Exclude current cashier
           
           if (profilesError) throw profilesError;
@@ -1067,28 +1038,11 @@ export default function UserManagement() {
 
         // Insert new location assignment (only one location allowed)
         if (editFormData.locationId && editFormData.locationId !== "none") {
-          if (!organizationId) {
-            throw new Error("Organization not found");
-          }
-          
-          // Get location's organization_id to ensure it matches
-          const { data: locationData, error: locationFetchError } = await supabase
-            .from("locations")
-            .select("organization_id")
-            .eq("id", editFormData.locationId)
-            .eq("organization_id", organizationId)
-            .single();
-          
-          if (locationFetchError || !locationData) {
-            throw new Error("Location not found or does not belong to your organization");
-          }
-          
           const { error: locationError } = await supabase
             .from("engineer_locations")
             .insert({
               engineer_id: userToEdit.user_id,
               location_id: editFormData.locationId,
-              organization_id: organizationId,
             });
 
           if (locationError) throw locationError;
@@ -1112,21 +1066,18 @@ export default function UserManagement() {
       setUserToEdit(null);
       
       // Reload engineer locations
-      if (organizationId) {
-        const { data: elData, error: elError } = await supabase
-          .from("engineer_locations")
-          .select("engineer_id, location_id")
-          .eq("organization_id", organizationId);
-        if (!elError && elData) {
-          const assignments: Record<string, string> = {};
-          elData.forEach((el: any) => {
-            // Only store the first location for each engineer (one location per engineer)
-            if (!assignments[el.engineer_id]) {
-              assignments[el.engineer_id] = el.location_id;
-            }
-          });
-          setEngineerLocations(assignments);
-        }
+      const { data: elData, error: elError } = await supabase
+        .from("engineer_locations")
+        .select("engineer_id, location_id");
+      if (!elError && elData) {
+        const assignments: Record<string, string> = {};
+        elData.forEach((el: any) => {
+          // Only store the first location for each engineer (one location per engineer)
+          if (!assignments[el.engineer_id]) {
+            assignments[el.engineer_id] = el.location_id;
+          }
+        });
+        setEngineerLocations(assignments);
       }
       
       // Reload users list
@@ -2268,12 +2219,11 @@ export default function UserManagement() {
                            <SelectContent className="border-0 shadow-xl">
                              <SelectItem value="none">Unassigned</SelectItem>
                              {locations.filter(loc => {
-                               // Filter out locations that already have a cashier assigned in the same organization
-                               // Check both in-memory users array and ensure organization match
+                               // Filter out locations that already have a cashier assigned
                                const locationHasCashier = users.some(u => 
                                  u.role === "cashier" && 
                                  u.cashier_assigned_location_id === loc.id
-                               ) && loc.organization_id === organizationId;
+                               );
                                return !locationHasCashier;
                              }).map(loc => (
                                <SelectItem key={loc.id} value={loc.id}>
@@ -2841,16 +2791,7 @@ export default function UserManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Unassigned</SelectItem>
-                      {locations.filter(loc => {
-                        // Filter out locations that already have a cashier assigned in the same organization
-                        // Check both in-memory users array and ensure organization match
-                        const locationHasCashier = users.some(u => 
-                          u.role === "cashier" && 
-                          u.cashier_assigned_location_id === loc.id &&
-                          u.user_id !== userToEdit?.user_id // Exclude current cashier being edited
-                        ) && loc.organization_id === organizationId;
-                        return !locationHasCashier;
-                      }).map(loc => (
+                      {locations.map(loc => (
                         <SelectItem key={loc.id} value={loc.id}>
                           {loc.name}
                         </SelectItem>

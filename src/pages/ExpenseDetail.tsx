@@ -278,6 +278,8 @@ export default function ExpenseDetail() {
 
   const canEdit = () => {
     if (!expense) return false;
+    // Cashiers cannot edit expenses
+    if (userRole === "cashier") return false;
     return (
       (expense.user_id === user?.id && (expense.status === "submitted" || expense.status === "rejected")) ||
       userRole === "admin"

@@ -287,60 +287,19 @@ export default function Expenses() {
           managerId = user.id;
         }
 
-        // Find cashier by location matching - DIRECT CHECK
-        // Step 1: Get engineer's location
-        const { data: engineerLocationData, error: locationError } = await supabase
-          .from("engineer_locations")
-          .select("location_id")
-          .eq("engineer_id", managerId)
-          .limit(1)
-          .single();
+        // Find cashier assigned to this manager using location-based or direct assignment
+        // This function prioritizes location-based assignment and falls back to direct assignment
+        const { data: cashierUserId, error: cashierError } = await supabase
+          .rpc('get_cashier_for_engineer', { engineer_user_id: managerId });
 
-        if (locationError || !engineerLocationData) {
-          throw new Error("Your manager is not assigned to any location. Please contact an administrator.");
+        if (cashierError) {
+          console.error("Error finding cashier:", cashierError);
+          throw cashierError;
         }
 
-        const locationId = engineerLocationData.location_id;
-
-        // Get location's organization_id
-        const { data: locationData, error: locDataError } = await supabase
-          .from("locations")
-          .select("organization_id")
-          .eq("id", locationId)
-          .single();
-
-        if (locDataError || !locationData) {
-          throw new Error("Could not find location details. Please contact an administrator.");
+        if (!cashierUserId) {
+          throw new Error("Your manager doesn't have a cashier assigned. Please contact an administrator.");
         }
-
-        const locationOrgId = locationData.organization_id;
-
-        // Step 2: Find cashier with the same location in the same organization
-        const { data: cashierProfiles, error: cashierError } = await supabase
-          .from("profiles")
-          .select("user_id")
-          .eq("cashier_assigned_location_id", locationId)
-          .eq("organization_id", locationOrgId);
-
-        if (cashierError || !cashierProfiles || cashierProfiles.length === 0) {
-          throw new Error("No cashier is assigned to your manager's location. Please contact an administrator.");
-        }
-
-        // Verify the cashier has cashier role in organization_memberships
-        const cashierUserIds = cashierProfiles.map(p => p.user_id);
-        const { data: cashierRoles, error: rolesError } = await supabase
-          .from("organization_memberships")
-          .select("user_id")
-          .in("user_id", cashierUserIds)
-          .eq("role", "cashier")
-          .eq("organization_id", locationOrgId)
-          .eq("is_active", true);
-
-        if (rolesError || !cashierRoles || cashierRoles.length === 0) {
-          throw new Error("No cashier with proper role is assigned to your manager's location. Please contact an administrator.");
-        }
-
-        const cashierUserId = cashierRoles[0].user_id;
 
         targetUserId = cashierUserId;
       } else if (userRole === "cashier") {
@@ -558,10 +517,12 @@ export default function Expenses() {
               Export CSV
             </Button>
           )}
-          <Button onClick={() => navigate("/expenses/new")}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Expense
-          </Button>
+          {(userRole === "employee" || userRole === "admin" || userRole === "engineer") && (
+            <Button onClick={() => navigate("/expenses/new")}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Expense
+            </Button>
+          )}
           {(userRole === "engineer" || userRole === "employee" || userRole === "cashier") && (
             <Dialog open={returnMoneyDialogOpen} onOpenChange={setReturnMoneyDialogOpen}>
               <DialogTrigger asChild>
@@ -764,7 +725,7 @@ export default function Expenses() {
                               <Eye className="mr-2 h-4 w-4" />
                               View
                             </DropdownMenuItem>
-                            {(expense.status === "submitted" || expense.status === "rejected") && (
+                            {(expense.status === "submitted" || expense.status === "rejected") && userRole !== "cashier" && (
                               <>
                                 <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
                                   <Edit className="mr-2 h-4 w-4" />

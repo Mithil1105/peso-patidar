@@ -49,6 +49,18 @@ export default function ExpenseForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Block cashiers from accessing expense form
+  useEffect(() => {
+    if (userRole === "cashier") {
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: "Cashiers are not allowed to create or edit expenses.",
+      });
+      navigate("/expenses");
+    }
+  }, [userRole, navigate, toast]);
   
   const [loading, setLoading] = useState(false);
   const [expense, setExpense] = useState({

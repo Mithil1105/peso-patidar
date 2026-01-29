@@ -16,7 +16,7 @@ import { useNotificationManager } from "@/hooks/useNotificationManager";
 import { NotificationPopup } from "@/components/NotificationPopup";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization, isMasterAdmin } = useAuth();
+  const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization } = useAuth();
   const { toast } = useToast();
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -44,10 +44,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       .slice(0, 2);
   };
 
-  const getRoleDisplayName = (role: string | null) => {
-    if (isMasterAdmin) {
-      return 'Master Admin';
-    }
+  const getRoleDisplayName = (role: string) => {
     switch (role) {
       case 'admin':
         return 'Administrator';

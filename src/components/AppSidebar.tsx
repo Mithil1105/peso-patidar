@@ -10,7 +10,6 @@ import {
   Tag,
   Settings as SettingsIcon,
   Clock,
-  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,7 +28,7 @@ import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import { Badge } from "@/components/ui/badge";
 
 export function AppSidebar() {
-  const { userRole, signOut, organization, isMasterAdmin } = useAuth();
+  const { userRole, signOut, organization } = useAuth();
   const { unreadCount } = useUnreadNotifications();
 
   const employeeItems = [
@@ -71,14 +70,7 @@ export function AppSidebar() {
     { title: "Settings", url: "/settings", icon: SettingsIcon },
   ];
 
-  const masterAdminItems = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-    { title: "Master Admin Panel", url: "/master-admin", icon: Shield },
-    { title: "Settings", url: "/settings", icon: SettingsIcon },
-  ];
-
   const items = 
-    isMasterAdmin ? masterAdminItems :
     userRole === "admin" ? adminItems :
     userRole === "engineer" ? engineerItems :
     userRole === "cashier" ? cashierItems :

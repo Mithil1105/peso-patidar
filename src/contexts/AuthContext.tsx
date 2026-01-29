@@ -27,7 +27,6 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   organization: Organization | null;
   organizationId: string | null;
-  isMasterAdmin: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUserProfile: (userId?: string) => Promise<void>;
@@ -43,7 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
-  const [isMasterAdmin, setIsMasterAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,14 +57,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             fetchUserRole(session.user.id);
             fetchUserProfile(session.user.id);
             fetchOrganization(session.user.id);
-            fetchMasterAdminStatus(session.user.id);
           }, 0);
         } else {
           setUserRole(null);
           setUserProfile(null);
           setOrganization(null);
           setOrganizationId(null);
-          setIsMasterAdmin(false);
           setLoading(false);
         }
       }
@@ -80,7 +76,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchUserRole(session.user.id);
         fetchUserProfile(session.user.id);
         fetchOrganization(session.user.id);
-        fetchMasterAdminStatus(session.user.id);
       } else {
         setLoading(false);
       }
@@ -126,42 +121,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchMasterAdminStatus = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("is_master_admin")
-        .eq("user_id", userId)
-        .single();
-      
-      if (error) {
-        console.error("Error fetching master admin status:", error);
-        // Also check master_admin_memberships table as fallback
-        const { data: membershipData, error: membershipError } = await supabase
-          .from("master_admin_memberships")
-          .select("is_active")
-          .eq("user_id", userId)
-          .eq("is_active", true)
-          .maybeSingle();
-        
-        if (!membershipError && membershipData) {
-          console.log("Master admin found via master_admin_memberships table");
-          setIsMasterAdmin(true);
-          return;
-        }
-        setIsMasterAdmin(false);
-        return;
-      }
-      
-      const isMaster = data?.is_master_admin || false;
-      console.log("Master admin status:", isMaster, "for user:", userId);
-      setIsMasterAdmin(isMaster);
-    } catch (error) {
-      console.error("Error fetching master admin status:", error);
-      setIsMasterAdmin(false);
-    }
-  };
-
   const fetchOrganization = async (userId: string) => {
     try {
       // Get organization via organization_memberships
@@ -173,49 +132,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (membershipError) throw membershipError;
-      
-      // Check if user is master admin (master admins don't have organization)
-      const { data: masterAdminCheck } = await supabase
-        .from("profiles")
-        .select("is_master_admin")
-        .eq("user_id", userId)
-        .single();
-      
-      if (masterAdminCheck?.is_master_admin) {
-        // Master admin doesn't have an organization
-        return;
-      }
-      
       if (!membership?.organization_id) return;
 
       // Fetch organization details
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
-        .select("id, name, slug, plan, logo_url, is_blocked, is_active, payment_status")
+        .select("id, name, slug, plan, logo_url")
         .eq("id", membership.organization_id)
         .single();
 
       if (orgError) throw orgError;
-      
-      // Check master admin status before checking organization block
-      const { data: masterAdminData } = await supabase
-        .from("profiles")
-        .select("is_master_admin")
-        .eq("user_id", userId)
-        .single();
-      
-      const isUserMasterAdmin = masterAdminData?.is_master_admin || false;
-      
-      // Check if organization is blocked
-      if (orgData.is_blocked || !orgData.is_active) {
-        console.warn("Organization is blocked or inactive");
-        // Don't block master admins
-        if (!isUserMasterAdmin) {
-          await signOut();
-          return;
-        }
-      }
-      
       setOrganization(orgData);
       setOrganizationId(orgData.id);
       
@@ -262,7 +188,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userProfile, 
       organization,
       organizationId,
-      isMasterAdmin,
       loading, 
       signOut, 
       refreshUserProfile,
