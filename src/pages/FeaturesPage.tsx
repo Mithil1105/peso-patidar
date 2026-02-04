@@ -1,457 +1,334 @@
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { MarketingLayout } from "@/components/marketing/MarketingLayout";
-import { Section, SectionBand } from "@/components/marketing/Section";
-import { HeroBackdrop } from "@/components/marketing/HeroBackdrop";
-import { FloatingOrbs } from "@/components/marketing/FloatingOrbs";
-import { FeatureIllustration } from "@/components/marketing/FeatureIllustration";
-import { ReceiptChecklistIllustration } from "@/components/marketing/PageIllustrations";
-import { TestimonialCards } from "@/components/marketing/TestimonialCards";
-import { GifSlot } from "@/components/marketing/GifSlot";
-import { SEOHead } from "@/components/SEOHead";
+import { useState } from "react";
+import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
+import StaggerContainer, { StaggerItem } from "@/components/marketing/StaggerContainer";
+import { Testimonials, CTASection, FAQAccordion } from "@/components/marketing/sections";
 import {
-    FileText,
-    Upload,
-    CheckCircle2,
-    ArrowRight,
-    Users,
-    BarChart3,
-    Shield,
-    Database,
-    Download,
-    Eye,
-    MessageSquare,
-    Clock,
-    Wallet,
-    Building2
+  ReceiptIllustration,
+  MockExpenseForm,
+  MockExpenseCard,
+  MockWorkflowDiagram,
+  MockBalanceTransfer,
+  MockOrgChart,
+  MockAnalyticsDashboard,
+  MockAuditLog,
+  MockApprovalTimeline,
+  type MockExpenseFormData,
+} from "@/components/marketing/features";
+import {
+  FileText,
+  GitBranch,
+  Wallet,
+  Building2,
+  BarChart3,
+  Shield,
+  CheckCircle2,
+  FileCheck,
+  Upload,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
+import type { FAQItem } from "@/components/marketing/sections";
+
+/* Feature category data */
+const expenseFeatures = [
+  "Create expense reports with title, vendor, date, and amount",
+  "Categorize expenses for better organization and reporting",
+  "Upload receipts in PDF, JPG, or PNG format (recommended 10MB max)",
+  "Track expense status through the entire workflow",
+  "Add notes and context to each expense for transparency",
+];
+const workflowFeatures = [
+  "Multi-step workflow: Draft → Submitted → Under Review → Verified → Approved/Rejected",
+  "Optional engineer verification for on-site validation before approval",
+  "Admin final approval with full visibility into all details",
+  "Configurable approval limits and thresholds per category",
+  "Comments and feedback at each stage for clear communication",
+];
+const balanceFeatures = [
+  "Real-time balance visibility across all petty cash accounts",
+  "Add funds to petty cash with proper documentation trail",
+  "Automatic balance deduction when expenses are approved",
+  "Balance transfers between accounts with full audit trail",
+  "Return request management for unused funds",
+];
+const multiorgFeatures = [
+  "Organization-level data isolation using row-level security",
+  "Custom settings per organization for flexibility",
+  "Organization-specific expense categories and locations",
+  "Consolidated reporting across all entities for management",
+  "Role-based access control per organization",
+];
+const analyticsFeatures = [
+  "Role-based dashboards with relevant metrics for each user type",
+  "Expense trends and patterns visualization over time",
+  "Budget utilization tracking by category and location",
+  "CSV export for admins to perform custom analysis",
+  "Custom date range filtering for flexible reporting",
+];
+const auditFeatures = [
+  "Timestamped action logs for every significant change",
+  "Actor tracking for all changes (who did what, when)",
+  "Receipt and document preservation for compliance",
+  "Compliance-ready records that meet audit requirements",
+  "Historical data access with full search capabilities",
+];
+
+const featureCategories = [
+  {
+    id: "expense",
+    title: "Expense Management",
+    description:
+      "Complete expense tracking from creation to approval with full documentation support.",
+    icon: FileText,
+    features: expenseFeatures,
+    mockComponent: MockExpenseCard,
+  },
+  {
+    id: "workflow",
+    title: "Approval Workflow",
+    description:
+      "Structured approval process with role-based permissions and configurable stages.",
+    icon: GitBranch,
+    features: workflowFeatures,
+    mockComponent: MockWorkflowDiagram,
+  },
+  {
+    id: "balance",
+    title: "Balance Management",
+    description:
+      "Real-time petty cash balance tracking and control across all your accounts.",
+    icon: Wallet,
+    features: balanceFeatures,
+    mockComponent: MockBalanceTransfer,
+  },
+  {
+    id: "multiorg",
+    title: "Multi-Organization Support",
+    description:
+      "Manage multiple branches or entities independently with complete data isolation.",
+    icon: Building2,
+    features: multiorgFeatures,
+    mockComponent: MockOrgChart,
+  },
+  {
+    id: "analytics",
+    title: "Analytics & Reporting",
+    description:
+      "Insights and exports for better decision making and budget management.",
+    icon: BarChart3,
+    features: analyticsFeatures,
+    mockComponent: MockAnalyticsDashboard,
+  },
+  {
+    id: "audit",
+    title: "Audit & Compliance",
+    description:
+      "Complete audit trails for accountability and regulatory compliance.",
+    icon: Shield,
+    features: auditFeatures,
+    mockComponent: MockAuditLog,
+  },
+];
+
+const useCases = [
+  {
+    icon: FileCheck,
+    title: "Office Petty Cash",
+    description:
+      "Track daily office supplies, utilities, and miscellaneous expenses with proper documentation and approval workflows.",
+  },
+  {
+    icon: Upload,
+    title: "Travel Reimbursements",
+    description:
+      "Manage employee travel expenses with receipt uploads, multi-level approval, and automatic balance updates.",
+  },
+  {
+    icon: Users,
+    title: "Site Operations",
+    description:
+      "Handle on-site purchases with engineer verification before admin approval, perfect for field operations.",
+  },
+];
+
+const faqItems: FAQItem[] = [
+  {
+    question: "What file formats are supported for receipt uploads?",
+    answer:
+      "PesoWise supports PDF, JPG, and PNG file formats for receipt uploads. We recommend keeping files under 10MB for optimal performance.",
+  },
+  {
+    question: "Can I customize the approval workflow?",
+    answer:
+      "Yes, you can configure whether engineer verification is required, set approval limits, and customize the workflow stages to match your organization's processes.",
+  },
+  {
+    question: "How does multi-organization work?",
+    answer:
+      "Each organization has its own isolated data, settings, categories, and user permissions. Administrators can manage multiple organizations from a single account while maintaining complete data separation.",
+  },
+  {
+    question: "What reporting options are available?",
+    answer:
+      "PesoWise offers role-based dashboards, expense trend analysis, budget tracking, and CSV exports for detailed data analysis. Admin users have access to comprehensive reporting across all categories.",
+  },
+];
 
 export default function FeaturesPage() {
-    const navigate = useNavigate();
+  const [productTourSubmittedExpense, setProductTourSubmittedExpense] = useState<MockExpenseFormData | null>(null);
 
-    const faqSchema = {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-            {
-                "@type": "Question",
-                "name": "What expense management features does PesoWise offer?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "PesoWise offers expense tracking, receipt uploads, multi-step approval workflows, real-time balance tracking, multi-organization support, role-based dashboards, custom categories, audit logs, and CSV export capabilities."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Can PesoWise handle multiple organizations?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, PesoWise supports multi-organization expense management with strict data isolation. Each organization has separate categories, locations, balances, and user access."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "How does the expense approval workflow work?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Employees submit expenses, engineers can verify and approve within limits, and admins provide final approval. Approved expenses automatically update balances, while rejected expenses can be edited and resubmitted."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "What file types are supported for receipt uploads?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "PesoWise supports PDF, PNG, and JPG file formats for receipt uploads. Receipts are stored securely with organization-level isolation and can be previewed or downloaded anytime."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Does PesoWise provide audit trails?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, PesoWise maintains comprehensive audit logs for all expense submissions, approval decisions, balance changes, and receipt events. Each action is traceable to the user and timestamp for compliance."
-                }
-            }
-        ]
-    };
+  return (
+    <MarketingShell>
+      {/* Hero */}
+      <FullBleedBand variant="hero" className="py-20">
+        <div className="grid items-center gap-12 lg:grid-cols-2">
+          <ScrollReveal variant="fade-up">
+            <h1 className="text-4xl font-bold leading-tight text-foreground md:text-5xl">
+              Features built for real expense workflows
+            </h1>
+            <p className="mt-4 text-lg text-muted-foreground">
+              Everything from expense capture to approvals, balances, receipts, and audit trails—structured, secure, and organization-ready.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal variant="fade-left" delay={0.2}>
+            <div className="relative flex items-center justify-center">
+              <ReceiptIllustration className="h-48 w-auto" />
+              <div className="absolute -right-4 top-1/2 -translate-y-1/2">
+                <MockExpenseForm />
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
+      </FullBleedBand>
 
-    const breadcrumbSchema = {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {
-                "@type": "ListItem",
-                "position": 1,
-                "name": "Home",
-                "item": "https://pesowise.com/"
-            },
-            {
-                "@type": "ListItem",
-                "position": 2,
-                "name": "Features",
-                "item": "https://pesowise.com/features"
-            }
-        ]
-    };
+      {/* Feature Categories (6 blocks) */}
+      {featureCategories.map((category, index) => {
+        const Icon = category.icon;
+        const MockComponent = category.mockComponent;
+        const isEven = index % 2 === 0;
+        return (
+          <FullBleedBand
+            key={category.id}
+            variant={isEven ? "transparent" : "soft"}
+            className="py-16"
+          >
+            <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
+              <ScrollReveal
+                variant={isEven ? "fade-right" : "fade-left"}
+                className={!isEven ? "lg:order-2" : undefined}
+              >
+                <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
+                  <Icon className="h-6 w-6 text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold text-foreground mb-3">{category.title}</h2>
+                <p className="text-muted-foreground mb-6">{category.description}</p>
+                <ul className="space-y-3">
+                  {category.features.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-accent mt-0.5" />
+                      <span className="text-sm text-muted-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollReveal>
+              <ScrollReveal
+                variant={isEven ? "fade-left" : "fade-right"}
+                delay={0.15}
+                className={!isEven ? "lg:order-1" : undefined}
+              >
+                <div className="flex justify-center">
+                  <div className="w-full max-w-sm">
+                    <MockComponent />
+                  </div>
+                </div>
+              </ScrollReveal>
+            </div>
+          </FullBleedBand>
+        );
+      })}
 
-    return (
-        <>
-            <SEOHead
-                title="Expense Management & Petty Cash Features | PesoWise"
-                description="Explore PesoWise features including expense tracking, receipt uploads, approval workflows, balance management, and multi-organization support."
-                canonicalUrl="https://pesowise.com/features"
-                faqSchema={faqSchema}
-                structuredData={breadcrumbSchema}
-            />
-            <MarketingLayout>
-                {/* Hero */}
-                <Section className="relative py-20 overflow-hidden">
-                    <div className="absolute inset-0 w-full">
-                        <HeroBackdrop />
-                        <FloatingOrbs />
-                    </div>
-                    <div className="relative grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-                        <div className="space-y-6">
-                            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900">
-                                Features built for real expense workflows
-                            </h1>
-                            <p className="text-xl text-gray-600">
-                                Everything from expense capture to approvals, balances, receipts, and audit trails—structured, secure, and organization-ready.
-                            </p>
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-                                <Button size="lg" onClick={() => navigate("/contact")} className="text-lg px-8">
-                                    Get Started
-                                    <ArrowRight className="ml-2 h-5 w-5" />
-                                </Button>
-                                <Button size="lg" variant="outline" onClick={() => navigate("/auth")} className="text-lg px-8">
-                                    Login
-                                </Button>
-                            </div>
-                        </div>
-                        <div className="relative w-full max-w-none lg:justify-self-end">
-                            <ReceiptChecklistIllustration />
-                        </div>
-                    </div>
-                </Section>
+      {/* Product Tour */}
+      <FullBleedBand variant="hero" className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            See it in action
+          </h2>
+          <p className="text-muted-foreground">Interactive previews of key workflows</p>
+        </ScrollReveal>
+        <StaggerContainer className="grid gap-8 md:grid-cols-3">
+          <StaggerItem>
+            <p className="mb-4 text-center text-sm font-medium text-muted-foreground">
+              Submit Expense
+            </p>
+            <MockExpenseForm onSubmit={(data) => setProductTourSubmittedExpense(data)} />
+          </StaggerItem>
+          <StaggerItem>
+            <p className="mb-4 text-center text-sm font-medium text-muted-foreground">
+              Track Approval
+            </p>
+            <MockApprovalTimeline submittedExpense={productTourSubmittedExpense} />
+          </StaggerItem>
+          <StaggerItem>
+            <p className="mb-4 text-center text-sm font-medium text-muted-foreground">
+              Manage Balances
+            </p>
+            <MockBalanceTransfer />
+          </StaggerItem>
+        </StaggerContainer>
+      </FullBleedBand>
 
-                {/* Product Tour */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Product Tour</h2>
-                    <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                        <Card className="hover:shadow-lg transition-all hover:-translate-y-1">
-                            <CardHeader>
-                                <div className="h-32 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg mb-4 flex items-center justify-center">
-                                    <FileText className="h-12 w-12 text-blue-600" />
-                                </div>
-                                <CardTitle>Expense Creation</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <CardDescription>Create structured expense reports with all required fields</CardDescription>
-                            </CardContent>
-                        </Card>
-                        <Card className="hover:shadow-lg transition-all hover:-translate-y-1">
-                            <CardHeader>
-                                <div className="h-32 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg mb-4 flex items-center justify-center">
-                                    <Clock className="h-12 w-12 text-green-600" />
-                                </div>
-                                <CardTitle>Approval Timeline</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <CardDescription>Track every step from submission to approval</CardDescription>
-                            </CardContent>
-                        </Card>
-                        <Card className="hover:shadow-lg transition-all hover:-translate-y-1">
-                            <CardHeader>
-                                <div className="h-32 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg mb-4 flex items-center justify-center">
-                                    <Wallet className="h-12 w-12 text-purple-600" />
-                                </div>
-                                <CardTitle>Balance Transfer</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <CardDescription>Seamless fund transfers with complete history</CardDescription>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </SectionBand>
+      {/* Use Cases */}
+      <FullBleedBand className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            Built for your use case
+          </h2>
+        </ScrollReveal>
+        <StaggerContainer className="grid gap-6 md:grid-cols-3">
+          {useCases.map((uc, i) => {
+            const Icon = uc.icon;
+            return (
+              <StaggerItem key={i}>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-soft card-hover h-full">
+                  <div className="h-12 w-12 rounded-xl bg-accent/10 flex items-center justify-center mb-4">
+                    <Icon className="h-6 w-6 text-accent" />
+                  </div>
+                  <h3 className="text-base font-semibold text-foreground mb-2">{uc.title}</h3>
+                  <p className="text-sm text-muted-foreground">{uc.description}</p>
+                </div>
+              </StaggerItem>
+            );
+          })}
+        </StaggerContainer>
+      </FullBleedBand>
 
-                {/* Expense Management */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Expense Management</h2>
-                    <p className="text-center text-gray-600 mb-8">
-                        See how our <a href="/how-it-works" className="text-blue-600 hover:underline font-medium">expense workflow</a> processes these features in practice.
-                    </p>
+      {/* FAQ */}
+      <FullBleedBand variant="soft" className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            Frequently Asked Questions
+          </h2>
+        </ScrollReveal>
+        <ScrollReveal delay={0.1}>
+          <div className="max-w-3xl mx-auto">
+            <FAQAccordion items={faqItems} />
+          </div>
+        </ScrollReveal>
+      </FullBleedBand>
 
-                    <div className="space-y-12">
-                        <div className="grid md:grid-cols-2 gap-8 items-center">
-                            <div>
-                                <h3 className="text-2xl font-semibold text-gray-900 mb-4">Expense Reports (Fast + structured)</h3>
-                                <p className="text-gray-700 mb-4">
-                                    Create an expense with: Title, Destination/Vendor, Date, Amount, Category
-                                </p>
-                                <p className="text-gray-600 mb-4">Optional: Purpose / Notes</p>
-                                <p className="text-gray-600">Save as Draft and edit before submitting</p>
-                            </div>
-                            <FeatureIllustration type="receipt" />
-                        </div>
+      {/* Testimonials */}
+      <FullBleedBand>
+        <ScrollReveal>
+          <Testimonials />
+        </ScrollReveal>
+      </FullBleedBand>
 
-                        <div className="grid md:grid-cols-2 gap-8 items-center">
-                            <FeatureIllustration type="filecheck" />
-                            <div>
-                                <h3 className="text-2xl font-semibold text-gray-900 mb-4">Receipt Uploads (Proof-ready)</h3>
-                                <ul className="space-y-2 text-gray-700">
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Upload PDF / PNG / JPG</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Stored securely (org-isolated)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Preview/download anytime</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Supports single or multiple attachments per expense.</span>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        <div className="grid md:grid-cols-2 gap-8 items-center">
-                            <div>
-                                <h3 className="text-2xl font-semibold text-gray-900 mb-4">Status Tracking (clear stages)</h3>
-                                <p className="text-gray-700 mb-4">
-                                    "Draft → Submitted → Under Review → Verified → Approved / Rejected"
-                                </p>
-                                <p className="text-gray-600">Each stage shows: who acted, when it happened, comments (if provided)</p>
-                            </div>
-                            <FeatureIllustration type="workflow" />
-                        </div>
-                    </div>
-                </Section>
-
-                {/* Use Cases */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Use Cases</h2>
-                    <div className="grid md:grid-cols-3 gap-6">
-                        <Card className="hover:shadow-lg transition-all hover:-translate-y-1">
-                            <CardHeader>
-                                <Building2 className="h-12 w-12 text-blue-600 mb-4" />
-                                <CardTitle>Office Petty Cash</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <CardDescription>Manage daily office expenses, supplies, and small purchases with automated approvals</CardDescription>
-                            </CardContent>
-                        </Card>
-                        <Card className="hover:shadow-lg transition-all hover:-translate-y-1">
-                            <CardHeader>
-                                <Users className="h-12 w-12 text-blue-600 mb-4" />
-                                <CardTitle>Travel Reimbursements</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <CardDescription>Streamline travel expense claims with receipt uploads and multi-level verification</CardDescription>
-                            </CardContent>
-                        </Card>
-                        <Card className="hover:shadow-lg transition-all hover:-translate-y-1">
-                            <CardHeader>
-                                <Building2 className="h-12 w-12 text-blue-600 mb-4" />
-                                <CardTitle>Site Operations Expenses</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <CardDescription>Track field expenses, contractor payments, and operational costs across locations</CardDescription>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </SectionBand>
-
-                {/* Approval Workflow */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Approval Workflow</h2>
-                    <div className="grid sm:grid-cols-2 gap-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Employee Submission</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Submit for review, read-only after submit</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Engineer Verification (Optional)</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Verify, comments, approve within limit or forward</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Admin Final Approval</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Approve triggers balance deduction; reject returns with reason</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Approval Limits</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Configurable per org, auto routing if &gt; limit</p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </Section>
-
-                {/* Balance Management */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Balance Management</h2>
-                    <div className="space-y-4 text-gray-700 max-w-3xl mx-auto">
-                        <p>Real-time balances update on funds added / approval deduction / transfers</p>
-                        <p>Fund addition by cashier adjusts cashier balance and logs it</p>
-                        <p>Transfers/adjustments supported with history</p>
-                    </div>
-                </SectionBand>
-
-                {/* Multi-Organization Support */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Multi-Organization Support</h2>
-                    <div className="space-y-4 text-gray-700 max-w-3xl mx-auto">
-                        <p>Strict separation by organization_id, users only see their org</p>
-                        <p>Custom categories + optional locations + cashier assignment (mention as optional)</p>
-                    </div>
-                </Section>
-
-                {/* Dashboard & Analytics */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Dashboard & Analytics</h2>
-                    <div className="grid sm:grid-cols-2 gap-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Employee</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Personal expenses, pending, approved, balance</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Engineer</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Pending verifications, team overview, stats</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Admin</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Org analytics, balances overview, compliance visibility</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Cashier</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-gray-600">Funds added, returns, transfer history</p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                    <div className="mt-8 text-center">
-                        <p className="text-gray-700">Reports & export: filter + CSV export (admin)</p>
-                    </div>
-                </SectionBand>
-
-                {/* Audit & Compliance */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Audit & Compliance</h2>
-                    <div className="text-gray-700 max-w-3xl mx-auto">
-                        <p>Logs for submissions, decisions, balance changes, receipt events; traceable to user + timestamp</p>
-                        <p className="mt-4 text-center">
-                            Learn more about our <a href="/security" className="text-blue-600 hover:underline font-medium">security and compliance</a> measures.
-                        </p>
-                    </div>
-                </SectionBand>
-
-                {/* Testimonials */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">What teams are saying</h2>
-                    <TestimonialCards />
-                </Section>
-
-                {/* FAQ Section */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Frequently Asked Questions</h2>
-                    <div className="max-w-3xl mx-auto">
-                        <Accordion type="single" collapsible className="w-full">
-                            <AccordionItem value="item-1">
-                                <AccordionTrigger>What expense management features does PesoWise offer?</AccordionTrigger>
-                                <AccordionContent>
-                                    PesoWise offers expense tracking, receipt uploads, multi-step approval workflows, real-time balance tracking, multi-organization support, role-based dashboards, custom categories, audit logs, and CSV export capabilities.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-2">
-                                <AccordionTrigger>Can PesoWise handle multiple organizations?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, PesoWise supports multi-organization expense management with strict data isolation. Each organization has separate categories, locations, balances, and user access.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-3">
-                                <AccordionTrigger>How does the expense approval workflow work?</AccordionTrigger>
-                                <AccordionContent>
-                                    Employees submit expenses, engineers can verify and approve within limits, and admins provide final approval. Approved expenses automatically update balances, while rejected expenses can be edited and resubmitted.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-4">
-                                <AccordionTrigger>What file types are supported for receipt uploads?</AccordionTrigger>
-                                <AccordionContent>
-                                    PesoWise supports PDF, PNG, and JPG file formats for receipt uploads. Receipts are stored securely with organization-level isolation and can be previewed or downloaded anytime.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-5">
-                                <AccordionTrigger>Does PesoWise provide audit trails?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, PesoWise maintains comprehensive audit logs for all expense submissions, approval decisions, balance changes, and receipt events. Each action is traceable to the user and timestamp for compliance.
-                                </AccordionContent>
-                            </AccordionItem>
-                        </Accordion>
-                    </div>
-                </SectionBand>
-
-                {/* SEO Reinforcement */}
-                <Section className="py-12">
-                    <div className="max-w-4xl mx-auto text-center">
-                        <p className="text-gray-700 text-lg leading-relaxed">
-                            PesoWise provides comprehensive expense management and petty cash software features including receipt management systems, automated approval workflows, and real-time balance tracking. Our multi-organization expense management platform ensures audit-ready records for compliance and financial reporting.
-                        </p>
-                    </div>
-                </Section>
-
-                {/* Bottom CTA */}
-                <SectionBand className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-20">
-                    <div className="text-center">
-                        <h2 className="text-3xl font-bold mb-8">
-                            Want PesoWise customized for your org workflow?
-                        </h2>
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <Button size="lg" variant="secondary" onClick={() => navigate("/contact")} className="text-lg px-8">
-                                Contact Us
-                            </Button>
-                            <Button size="lg" variant="outline" onClick={() => navigate("/contact")} className="text-lg px-8 border-2 border-white text-white hover:bg-white/10">
-                                Request a Demo
-                            </Button>
-                        </div>
-                    </div>
-                </SectionBand>
-            </MarketingLayout>
-        </>
-    );
+      {/* CTA */}
+      <FullBleedBand className="py-20">
+        <ScrollReveal variant="scale">
+          <CTASection />
+        </ScrollReveal>
+      </FullBleedBand>
+    </MarketingShell>
+  );
 }
-

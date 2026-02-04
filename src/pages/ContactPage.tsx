@@ -1,466 +1,414 @@
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
+import { ContactIllustration } from "@/components/marketing/contact";
+import { DemoMotionPanel } from "@/components/marketing/mocks";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Checkbox } from "@/components/ui/checkbox";
-import { MarketingLayout } from "@/components/marketing/MarketingLayout";
-import { Section, SectionBand } from "@/components/marketing/Section";
-import { HeroBackdrop } from "@/components/marketing/HeroBackdrop";
-import { FloatingOrbs } from "@/components/marketing/FloatingOrbs";
-import { ContactIllustration } from "@/components/marketing/PageIllustrations";
-import { SEOHead } from "@/components/SEOHead";
 import { useToast } from "@/hooks/use-toast";
 import {
-    CheckCircle2,
-    Mail,
-    Phone,
-    MapPin,
-    ArrowRight,
-    MessageCircle
+  Mail,
+  MessageSquare,
+  MapPin,
+  CheckCircle2,
+  Send,
+  Phone,
 } from "lucide-react";
 
+const CONTACT_LEADS_KEY = "pesowise_contact_leads";
+const CONSENT_VERSION = 1;
+
+/* text-base on mobile prevents iOS zoom on focus; sm:text-sm for compact desktop */
+const inputClass =
+  "w-full rounded-lg border border-border bg-background px-4 py-2.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary touch-manipulation";
+const labelClass = "mb-2 block text-sm font-medium text-foreground";
+
+const benefits = [
+  "Guided setup and onboarding",
+  "Custom workflow configuration",
+  "Team training sessions",
+  "Dedicated support contact",
+  "Data migration assistance",
+];
+
 export default function ContactPage() {
-    const navigate = useNavigate();
-    const { toast } = useToast();
-    const [formData, setFormData] = useState({
-        fullName: "",
-        workEmail: "",
-        companyName: "",
-        phone: "",
-        role: "",
-        teamSize: "",
-        approvalType: "",
-        balanceManagement: "",
-        multiLocation: "",
-        receiptRequired: "",
-        message: "",
-        preferredTime: "",
-        timezone: ""
-    });
-    const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [consentPrivacy, setConsentPrivacy] = useState(false);
+  const [consentMarketing, setConsentMarketing] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setSubmitting(true);
-
-        try {
-            // POST to API endpoint
-            const response = await fetch('/api/contact', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(formData),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to submit form');
-            }
-
-            toast({
-                title: "Thank you!",
-                description: data.message || "We've received your request and will respond within 24 hours.",
-            });
-
-            // Reset form
-            setFormData({
-                fullName: "",
-                workEmail: "",
-                companyName: "",
-                phone: "",
-                role: "",
-                teamSize: "",
-                approvalType: "",
-                balanceManagement: "",
-                multiLocation: "",
-                receiptRequired: "",
-                message: "",
-                preferredTime: "",
-                timezone: ""
-            });
-
-        } catch (error: any) {
-            console.error('Contact form error:', error);
-            toast({
-                variant: "destructive",
-                title: "Error",
-                description: error.message || "Failed to submit form. Please try again or email support@unimisk.com directly.",
-            });
-        } finally {
-            setSubmitting(false);
-        }
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!consentPrivacy) {
+      toast({
+        variant: "destructive",
+        title: "Consent required",
+        description: "Please agree to the Privacy Policy to submit the form.",
+      });
+      return;
+    }
+    setIsSubmitting(true);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const payload: Record<string, unknown> = {
+      fullName: fd.get("fullName") ?? "",
+      workEmail: fd.get("workEmail") ?? "",
+      company: fd.get("company") ?? "",
+      phone: fd.get("phone") ?? "",
+      role: fd.get("role") ?? "",
+      teamSize: fd.get("teamSize") ?? "",
+      multiLevel: fd.get("multiLevel") === "on",
+      balance: fd.get("balance") === "on",
+      multiLocation: fd.get("multiLocation") === "on",
+      receipts: fd.get("receipts") === "on",
+      message: fd.get("message") ?? "",
+      consent_privacy: true,
+      consent_marketing: consentMarketing,
+      consent_timestamp: new Date().toISOString(),
+      consent_version: CONSENT_VERSION,
     };
+    try {
+      const raw = localStorage.getItem(CONTACT_LEADS_KEY);
+      const leads: unknown[] = raw ? JSON.parse(raw) : [];
+      leads.push(payload);
+      localStorage.setItem(CONTACT_LEADS_KEY, JSON.stringify(leads));
+    } catch {
+      // ignore
+    }
+    setTimeout(() => {
+      setIsSubmitting(false);
+      toast({
+        title: "Message received (demo)",
+        description: "Connect backend to enable email sending.",
+      });
+    }, 1000);
+  };
 
-    const breadcrumbSchema = {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {
-                "@type": "ListItem",
-                "position": 1,
-                "name": "Home",
-                "item": "https://pesowise.com/"
-            },
-            {
-                "@type": "ListItem",
-                "position": 2,
-                "name": "Contact",
-                "item": "https://pesowise.com/contact"
-            }
-        ]
-    };
-
-    return (
-        <>
-            <SEOHead
-                title="Contact PesoWise – Get Started with Expense Management"
-                description="Contact the PesoWise team to set up your expense management workflow or request a demo."
-                canonicalUrl="https://pesowise.com/contact"
-                structuredData={breadcrumbSchema}
-            />
-            <MarketingLayout>
-                {/* Hero */}
-                <Section className="relative py-20 overflow-hidden">
-                    <div className="absolute inset-0 w-full">
-                        <HeroBackdrop />
-                        <FloatingOrbs />
+  return (
+    <MarketingShell>
+      {/* Hero */}
+      <FullBleedBand variant="hero" className="py-12 sm:py-20">
+        <div className="grid items-center gap-12 lg:grid-cols-2">
+          <ScrollReveal variant="fade-up">
+            <h1 className="mb-6 text-4xl font-bold leading-tight text-foreground md:text-5xl">
+              Get started with PesoWise
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Tell us about your organization. We'll set up the right workflow and get you live quickly.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal variant="fade-left" delay={0.2}>
+            <div className="relative flex items-center justify-center overflow-hidden min-w-0">
+              <ContactIllustration className="h-40 sm:h-48 w-auto max-w-full" />
+              <div className="absolute bottom-0 right-0 max-w-[200px] sm:-bottom-4">
+                <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Mail className="h-4 w-4 text-primary" />
+                      <span className="text-xs text-muted-foreground">support@unimisk.com</span>
                     </div>
-                    <div className="relative grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-                        <div className="space-y-6">
-                            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900">
-                                Get started with PesoWise
-                            </h1>
-                            <p className="text-xl text-gray-600">
-                                Tell us about your organization. We'll set up the right workflow and get you live quickly.
-                            </p>
-                            <Button variant="outline" onClick={() => navigate("/auth")} className="mt-4">
-                                Login
-                            </Button>
-                        </div>
-                        <div className="relative w-full max-w-none lg:justify-self-end">
-                            <ContactIllustration />
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className="h-4 w-4 text-accent" />
+                      <span className="text-xs text-muted-foreground">WhatsApp Support</span>
                     </div>
-                </Section>
-
-                {/* Main Content */}
-                <SectionBand>
-                    <div className="grid lg:grid-cols-2 gap-12">
-                        {/* Contact Form */}
-                        <div>
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Request a Demo</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <form onSubmit={handleSubmit} className="space-y-6" aria-label="Contact form to request a PesoWise demo">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="fullName">Full Name *</Label>
-                                            <Input
-                                                id="fullName"
-                                                name="fullName"
-                                                required
-                                                aria-required="true"
-                                                value={formData.fullName}
-                                                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="workEmail">Work Email *</Label>
-                                            <Input
-                                                id="workEmail"
-                                                name="workEmail"
-                                                type="email"
-                                                required
-                                                aria-required="true"
-                                                value={formData.workEmail}
-                                                onChange={(e) => setFormData({ ...formData, workEmail: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="companyName">Company / Organization Name *</Label>
-                                            <Input
-                                                id="companyName"
-                                                required
-                                                value={formData.companyName}
-                                                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="phone">Phone / WhatsApp *</Label>
-                                            <Input
-                                                id="phone"
-                                                required
-                                                value={formData.phone}
-                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="role">Role *</Label>
-                                            <Select required value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                                                <SelectTrigger id="role">
-                                                    <SelectValue placeholder="Select your role" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="admin">Admin</SelectItem>
-                                                    <SelectItem value="finance">Finance</SelectItem>
-                                                    <SelectItem value="ops">Ops</SelectItem>
-                                                    <SelectItem value="founder">Founder</SelectItem>
-                                                    <SelectItem value="other">Other</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="teamSize">Team Size *</Label>
-                                            <Select required value={formData.teamSize} onValueChange={(value) => setFormData({ ...formData, teamSize: value })}>
-                                                <SelectTrigger id="teamSize">
-                                                    <SelectValue placeholder="Select team size" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="1-10">1–10</SelectItem>
-                                                    <SelectItem value="11-50">11–50</SelectItem>
-                                                    <SelectItem value="51-200">51–200</SelectItem>
-                                                    <SelectItem value="200+">200+</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <Label>Workflow Needs</Label>
-                                            <div className="space-y-3">
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-normal">Expense approvals</Label>
-                                                    <RadioGroup value={formData.approvalType} onValueChange={(value) => setFormData({ ...formData, approvalType: value })}>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="admin-only" id="admin-only" />
-                                                            <Label htmlFor="admin-only" className="font-normal">Admin only</Label>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="engineer-admin" id="engineer-admin" />
-                                                            <Label htmlFor="engineer-admin" className="font-normal">Engineer + Admin</Label>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-normal">Balance management required</Label>
-                                                    <RadioGroup value={formData.balanceManagement} onValueChange={(value) => setFormData({ ...formData, balanceManagement: value })}>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="yes" id="balance-yes" />
-                                                            <Label htmlFor="balance-yes" className="font-normal">Yes</Label>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="no" id="balance-no" />
-                                                            <Label htmlFor="balance-no" className="font-normal">No</Label>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-normal">Multi-location</Label>
-                                                    <RadioGroup value={formData.multiLocation} onValueChange={(value) => setFormData({ ...formData, multiLocation: value })}>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="yes" id="location-yes" />
-                                                            <Label htmlFor="location-yes" className="font-normal">Yes</Label>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="no" id="location-no" />
-                                                            <Label htmlFor="location-no" className="font-normal">No</Label>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-normal">Receipt attachments required always?</Label>
-                                                    <RadioGroup value={formData.receiptRequired} onValueChange={(value) => setFormData({ ...formData, receiptRequired: value })}>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="yes" id="receipt-yes" />
-                                                            <Label htmlFor="receipt-yes" className="font-normal">Yes</Label>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                            <RadioGroupItem value="no" id="receipt-no" />
-                                                            <Label htmlFor="receipt-no" className="font-normal">No</Label>
-                                                        </div>
-                                                    </RadioGroup>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label htmlFor="message">Message</Label>
-                                            <Textarea
-                                                id="message"
-                                                placeholder="What problem are you solving? Any current system (Excel/Tally/manual)?"
-                                                rows={4}
-                                                value={formData.message}
-                                                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                                            />
-                                        </div>
-
-                                        <div className="grid sm:grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="preferredTime">Preferred Time (Optional)</Label>
-                                                <Select value={formData.preferredTime} onValueChange={(value) => setFormData({ ...formData, preferredTime: value })}>
-                                                    <SelectTrigger id="preferredTime">
-                                                        <SelectValue placeholder="Select time" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="morning">Morning</SelectItem>
-                                                        <SelectItem value="afternoon">Afternoon</SelectItem>
-                                                        <SelectItem value="evening">Evening</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="timezone">Timezone (Optional)</Label>
-                                                <Input
-                                                    id="timezone"
-                                                    placeholder="e.g., IST, EST"
-                                                    value={formData.timezone}
-                                                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <Button type="submit" className="w-full" disabled={submitting}>
-                                            {submitting ? "Submitting..." : "Request a Demo"}
-                                        </Button>
-                                        <p className="text-xs text-gray-500 text-center">
-                                            We typically respond within 24 hours.
-                                        </p>
-                                        <p className="text-xs text-gray-500 text-center mt-2">
-                                            Having trouble? Email us at <a href="mailto:support@unimisk.com" className="text-blue-600 hover:underline">support@unimisk.com</a>
-                                        </p>
-                                    </form>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* Trust Card */}
-                        <div>
-                            <Card className="sticky top-24">
-                                <CardHeader>
-                                    <CardTitle>What you'll get</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-start gap-3">
-                                        <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <div>
-                                            <p className="font-medium text-gray-900">Quick setup</p>
-                                            <p className="text-sm text-gray-600">Get started in minutes</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-3">
-                                        <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <div>
-                                            <p className="font-medium text-gray-900">Custom workflow</p>
-                                            <p className="text-sm text-gray-600">Tailored to your organization</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-3">
-                                        <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <div>
-                                            <p className="font-medium text-gray-900">Dedicated support</p>
-                                            <p className="text-sm text-gray-600">We're here to help</p>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <MapPin className="h-4 w-4 text-warning" />
+                      <span className="text-xs text-muted-foreground">Philippines</span>
                     </div>
-                </SectionBand>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
+      </FullBleedBand>
 
-                {/* Contact Options */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Contact Options</h2>
-                    <div className="grid sm:grid-cols-3 gap-6">
-                        <Card className="text-center">
-                            <CardContent className="pt-6">
-                                <Mail className="h-8 w-8 text-blue-600 mx-auto mb-4" />
-                                <p className="font-medium text-gray-900 mb-2">Email</p>
-                                <a href="mailto:info@unimisk.com" className="text-blue-600 hover:underline">info@unimisk.com</a>
-                            </CardContent>
-                        </Card>
-                        <Card className="text-center">
-                            <CardContent className="pt-6">
-                                <Phone className="h-8 w-8 text-blue-600 mx-auto mb-4" />
-                                <p className="font-medium text-gray-900 mb-2">Phone / WhatsApp</p>
-                                <div className="text-sm text-gray-600 space-y-1">
-                                    <p>+91 9426049048</p>
-                                    <p>+91 8160325372</p>
-                                    <p>+91 80008 45035</p>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card className="text-center">
-                            <CardContent className="pt-6">
-                                <MapPin className="h-8 w-8 text-blue-600 mx-auto mb-4" />
-                                <p className="font-medium text-gray-900 mb-2">Location</p>
-                                <p className="text-sm text-gray-600">
-                                    10th Floor, Stratum@Venus Ground, Nr. Janshi Rani Statue, C-1008, West wing, Nehru Nagar, Ahmedabad, Gujarat 380015
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </Section>
+      {/* Contact Form Section */}
+      <FullBleedBand className="py-12 sm:py-20">
+        <div className="grid gap-12 lg:grid-cols-2">
+          {/* Form Card (Left) */}
+          <ScrollReveal variant="fade-right">
+            <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-soft min-w-0">
+              <h2 className="mb-6 text-xl font-bold text-foreground">
+                Tell us about your organization
+              </h2>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="fullName" className={labelClass}>
+                      Full Name
+                    </label>
+                    <input
+                      id="fullName"
+                      name="fullName"
+                      type="text"
+                      placeholder="Juan Dela Cruz"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="workEmail" className={labelClass}>
+                      Work Email
+                    </label>
+                    <input
+                      id="workEmail"
+                      name="workEmail"
+                      type="email"
+                      placeholder="juan@company.com"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="company" className={labelClass}>
+                      Company
+                    </label>
+                    <input
+                      id="company"
+                      name="company"
+                      type="text"
+                      placeholder="ABC Corporation"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="phone" className={labelClass}>
+                      Phone / WhatsApp
+                    </label>
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      placeholder="+63 917 123 4567"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="role" className={labelClass}>
+                      Your Role
+                    </label>
+                    <select id="role" name="role" className={inputClass}>
+                      <option value="">Select role...</option>
+                      <option value="finance">Finance / Accounting</option>
+                      <option value="operations">Operations</option>
+                      <option value="admin">Administration</option>
+                      <option value="management">Management</option>
+                      <option value="it">IT / Technical</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="teamSize" className={labelClass}>
+                      Team Size
+                    </label>
+                    <select id="teamSize" name="teamSize" className={inputClass}>
+                      <option value="">Select size...</option>
+                      <option value="1-5">1-5 employees</option>
+                      <option value="6-15">6-15 employees</option>
+                      <option value="16-50">16-50 employees</option>
+                      <option value="51-100">51-100 employees</option>
+                      <option value="100+">100+ employees</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <span className="mb-3 block text-sm font-medium text-foreground">
+                    Workflow Needs
+                  </span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        name="multiLevel"
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-muted-foreground">Multi-level approvals</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        name="balance"
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-muted-foreground">Balance management</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        name="multiLocation"
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-muted-foreground">Multi-location/branch</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        name="receipts"
+                        className="rounded border-border text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-muted-foreground">Receipt uploads required</span>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="message" className={labelClass}>
+                    Message (optional)
+                  </label>
+                  <textarea
+                    id="message"
+                    name="message"
+                    rows={4}
+                    placeholder="Tell us more about your expense management needs..."
+                    className={`${inputClass} resize-none`}
+                  />
+                </div>
+                <div className="space-y-4">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={consentPrivacy}
+                      onChange={(e) => setConsentPrivacy(e.target.checked)}
+                      className="mt-0.5 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      I agree to the{" "}
+                      <Link to="/privacy" className="text-primary underline hover:no-underline">
+                        Privacy Policy
+                      </Link>{" "}
+                      and consent to PesoWise processing my information to respond to my request.
+                      I have read the{" "}
+                      <Link to="/toc" className="text-primary underline hover:no-underline">
+                        Terms &amp; Conditions
+                      </Link>
+                      .
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
+                    <input
+                      type="checkbox"
+                      checked={consentMarketing}
+                      onChange={(e) => setConsentMarketing(e.target.checked)}
+                      className="mt-0.5 rounded border-border text-primary focus:ring-primary"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      I agree to receive product updates and marketing communication. (optional)
+                    </span>
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll use your details only to contact you about PesoWise. You can request
+                  deletion anytime.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  This form is a demo; submissions are stored locally in your browser until backend
+                  is connected.
+                </p>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full btn-glow"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Sending..." : "Send Message"}
+                  {!isSubmitting && <Send className="ml-2 h-4 w-4" />}
+                </Button>
+              </form>
+            </div>
+          </ScrollReveal>
 
-                {/* Mini FAQ */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Frequently Asked Questions</h2>
-                    <div className="space-y-6 max-w-3xl mx-auto">
-                        <div>
-                            <h3 className="font-semibold text-gray-900 mb-2">Cloud-based?</h3>
-                            <p className="text-gray-600">Yes (secure SaaS)</p>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-gray-900 mb-2">Add users ourselves?</h3>
-                            <p className="text-gray-600">Admin controls user creation</p>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-gray-900 mb-2">Support receipts?</h3>
-                            <p className="text-gray-600">Yes (PDF/JPG/PNG)</p>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-gray-900 mb-2">Multiple companies?</h3>
-                            <p className="text-gray-600">Yes (multi-tenant)</p>
-                        </div>
-                    </div>
-                </SectionBand>
+          {/* Right Column */}
+          <div className="space-y-8">
+            <ScrollReveal variant="fade-left" delay={1}>
+              <div className="rounded-2xl border border-border bg-card p-8 shadow-soft">
+                <h3 className="mb-6 text-lg font-semibold text-foreground">What you'll get</h3>
+                <ul className="space-y-4">
+                  {benefits.map((benefit, i) => (
+                    <li key={i} className="flex items-center gap-3">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10">
+                        <CheckCircle2 className="h-4 w-4 text-accent" />
+                      </div>
+                      <span className="text-sm text-muted-foreground">{benefit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </ScrollReveal>
+            <ScrollReveal variant="fade-left" delay={2}>
+              <DemoMotionPanel />
+            </ScrollReveal>
+            <ScrollReveal variant="fade-left" delay={3}>
+              <div className="rounded-xl border border-border bg-muted/30 p-6">
+                <h4 className="mb-4 text-sm font-medium text-foreground">
+                  Other ways to reach us
+                </h4>
+                <div className="space-y-3">
+                  <a
+                    href="mailto:support@unimisk.com"
+                    className="flex items-center gap-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <Mail className="h-4 w-4 text-primary" />
+                    support@unimisk.com
+                  </a>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <MessageSquare className="h-4 w-4 text-accent" />
+                    WhatsApp available during business hours
+                  </div>
+                </div>
+              </div>
+            </ScrollReveal>
+          </div>
+        </div>
+      </FullBleedBand>
 
-                {/* SEO Reinforcement */}
-                <Section className="py-12">
-                    <div className="max-w-4xl mx-auto text-center">
-                        <p className="text-gray-700 text-lg leading-relaxed">
-                            Ready to streamline your expense management? Contact PesoWise to learn how our petty cash management software can help your team automate expense approvals, track balances, and maintain compliance-ready records.
-                        </p>
-                    </div>
-                </Section>
-
-                {/* Footer CTA */}
-                <SectionBand className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-12">
-                    <div className="text-center">
-                        <h2 className="text-2xl font-bold mb-4">
-                            Prefer WhatsApp instead of forms?
-                        </h2>
-                        <Button size="lg" variant="secondary" onClick={() => window.open("https://wa.me/919426049048", "_blank")} className="text-lg px-8" aria-label="Chat with PesoWise on WhatsApp">
-                            <MessageCircle className="mr-2 h-5 w-5" />
-                            Chat on WhatsApp
-                        </Button>
-                    </div>
-                </SectionBand>
-            </MarketingLayout>
-        </>
-    );
+      {/* Contact Options (three cards: Email, Phone/WhatsApp, Location) */}
+      <FullBleedBand variant="soft" className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="text-3xl font-bold text-foreground">
+            Contact Options
+          </h2>
+        </ScrollReveal>
+        <div className="grid gap-8 sm:grid-cols-3">
+          <ScrollReveal variant="fade-up" delay={0}>
+            <div className="rounded-2xl border border-border bg-card p-8 shadow-soft text-center">
+              <Mail className="h-10 w-10 text-primary mx-auto mb-4" />
+              <h3 className="font-bold text-foreground mb-3">Email</h3>
+              <a
+                href="mailto:info@unimisk.com"
+                className="text-sm text-primary hover:underline"
+              >
+                info@unimisk.com
+              </a>
+            </div>
+          </ScrollReveal>
+          <ScrollReveal variant="fade-up" delay={1}>
+            <div className="rounded-2xl border border-border bg-card p-8 shadow-soft text-center">
+              <Phone className="h-10 w-10 text-primary mx-auto mb-4" />
+              <h3 className="font-bold text-foreground mb-3">Phone / WhatsApp</h3>
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p>+91 9426049048</p>
+                <p>+91 8160325372</p>
+                <p>+91 80008 45035</p>
+              </div>
+            </div>
+          </ScrollReveal>
+          <ScrollReveal variant="fade-up" delay={2}>
+            <div className="rounded-2xl border border-border bg-card p-8 shadow-soft text-center">
+              <MapPin className="h-10 w-10 text-primary mx-auto mb-4" />
+              <h3 className="font-bold text-foreground mb-3">Location</h3>
+              <p className="text-sm text-muted-foreground text-left">
+                10th Floor, Stratum@Venus Ground, Nr. Janshi
+                <br />
+                Rani Statue, C-1008, West wing, Nehru Nagar,
+                <br />
+                Ahmedabad, Gujarat 380015
+              </p>
+            </div>
+          </ScrollReveal>
+        </div>
+      </FullBleedBand>
+    </MarketingShell>
+  );
 }

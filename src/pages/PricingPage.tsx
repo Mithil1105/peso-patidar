@@ -1,395 +1,217 @@
-import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
+import StaggerContainer, { StaggerItem } from "@/components/marketing/StaggerContainer";
+import { FAQAccordion } from "@/components/marketing/sections";
+import { PricingIllustration, MockCompareTable } from "@/components/marketing/pricing";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { MarketingLayout } from "@/components/marketing/MarketingLayout";
-import { Section, SectionBand } from "@/components/marketing/Section";
-import { HeroBackdrop } from "@/components/marketing/HeroBackdrop";
-import { FloatingOrbs } from "@/components/marketing/FloatingOrbs";
-import { PricingCardsIllustration } from "@/components/marketing/PageIllustrations";
-import { SEOHead } from "@/components/SEOHead";
-import {
-    CheckCircle2,
-    ArrowRight,
-    Zap,
-    TrendingUp,
-    Building2
-} from "lucide-react";
+import { Check, Star, ArrowRight } from "lucide-react";
+import type { FAQItem } from "@/components/marketing/sections";
+
+/* Pricing plans */
+const plans = [
+  {
+    name: "Starter",
+    description: "For small teams getting started",
+    price: "Contact us",
+    popular: false,
+    cta: "Contact Sales",
+    features: [
+      "Up to 5 users",
+      "Expense reports & receipts",
+      "Basic approval workflow",
+      "Balance management",
+      "Basic analytics dashboard",
+      "Email support",
+    ],
+  },
+  {
+    name: "Growth",
+    description: "For growing organizations",
+    price: "Contact us",
+    popular: true,
+    cta: "Contact Sales",
+    features: [
+      "Up to 25 users",
+      "Everything in Starter",
+      "Advanced approval workflow",
+      "Engineer verification",
+      "Multi-organization support",
+      "Custom categories",
+      "Advanced analytics",
+      "CSV export",
+      "90-day audit logs",
+      "Priority support",
+    ],
+  },
+  {
+    name: "Enterprise",
+    description: "For large organizations",
+    price: "Contact us",
+    popular: false,
+    cta: "Contact Sales",
+    features: [
+      "Unlimited users",
+      "Everything in Growth",
+      "Custom approval workflows",
+      "Custom analytics dashboard",
+      "Unlimited audit logs",
+      "Dedicated support",
+      "Custom integrations",
+      "SLA guarantee",
+    ],
+  },
+];
+
+const pricingFaqItems: FAQItem[] = [
+  {
+    question: "How does pricing work?",
+    answer:
+      "We offer flexible pricing based on your organization's size and needs. Contact our sales team for a customized quote that fits your requirements.",
+  },
+  {
+    question: "Can I change plans later?",
+    answer:
+      "Yes, you can upgrade or adjust your plan at any time. Our team will help you transition smoothly as your organization grows.",
+  },
+  {
+    question: "Is there a free trial?",
+    answer:
+      "We offer a guided demo and pilot program for organizations to experience PesoWise before committing. Contact us to get started.",
+  },
+  {
+    question: "What payment methods do you accept?",
+    answer:
+      "We accept bank transfers, credit cards, and can accommodate various payment arrangements for enterprise clients.",
+  },
+  {
+    question: "Do you offer discounts for annual billing?",
+    answer:
+      "Yes, we offer discounts for annual commitments. Contact our sales team to discuss the best option for your organization.",
+  },
+];
 
 export default function PricingPage() {
-    const navigate = useNavigate();
-    const [showStickyCTA, setShowStickyCTA] = useState(false);
+  return (
+    <MarketingShell>
+      {/* Hero */}
+      <FullBleedBand variant="hero" className="py-20">
+        <ScrollReveal className="text-center">
+          <h1 className="mb-6 text-4xl font-bold leading-tight text-foreground md:text-5xl">
+            Pricing that scales with your organization
+          </h1>
+          <p className="mx-auto max-w-2xl text-lg text-muted-foreground mb-8">
+            Choose the plan that fits your team. All plans include core expense management features with options to grow.
+          </p>
+          <div className="flex justify-center">
+            <PricingIllustration className="h-24 w-auto" />
+          </div>
+        </ScrollReveal>
+      </FullBleedBand>
 
-    useEffect(() => {
-        const handleScroll = () => {
-            setShowStickyCTA(window.scrollY > 400);
-        };
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    const faqSchema = {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-            {
-                "@type": "Question",
-                "name": "Does PesoWise support multiple organizations?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, all plans support multiple organizations with complete data isolation."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Can we control expense approvals?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, you can configure roles and approval limits. Growth and Enterprise plans include engineer verification stages."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Do balances update automatically?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, balances update automatically when expenses are approved. No manual calculations needed."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Do you provide invoices and onboarding?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Growth and Enterprise plans include dedicated onboarding and can provide invoices. Contact us for details."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Can we migrate from spreadsheets?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, we provide onboarding support to help migrate your existing data from spreadsheets or other systems."
-                }
-            }
-        ]
-    };
-
-    const breadcrumbSchema = {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {
-                "@type": "ListItem",
-                "position": 1,
-                "name": "Home",
-                "item": "https://pesowise.com/"
-            },
-            {
-                "@type": "ListItem",
-                "position": 2,
-                "name": "Pricing",
-                "item": "https://pesowise.com/pricing"
-            }
-        ]
-    };
-
-    return (
-        <>
-            <SEOHead
-                title="Pricing & Plans for Expense Management Software | PesoWise"
-                description="View PesoWise pricing plans for teams of all sizes. Scalable expense management with approvals, analytics, and compliance."
-                canonicalUrl="https://pesowise.com/pricing"
-                faqSchema={faqSchema}
-                structuredData={breadcrumbSchema}
-            />
-            <MarketingLayout>
-                {/* Hero */}
-                <Section className="relative py-20 overflow-hidden">
-                    <div className="absolute inset-0 w-full">
-                        <HeroBackdrop />
-                        <FloatingOrbs />
-                    </div>
-                    <div className="relative grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-                        <div className="space-y-6">
-                            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900">
-                                Pricing that scales with your organization
-                            </h1>
-                            <p className="text-xl text-gray-600">
-                                Start simple, upgrade when you need more controls, approvals, and analytics.
-                            </p>
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-                                <Button size="lg" onClick={() => navigate("/contact")} className="text-lg px-8">
-                                    Contact Sales
-                                    <ArrowRight className="ml-2 h-5 w-5" />
-                                </Button>
-                                <Button size="lg" variant="outline" onClick={() => navigate("/auth")} className="text-lg px-8">
-                                    Login
-                                </Button>
-                            </div>
-                        </div>
-                        <div className="relative w-full max-w-none lg:justify-self-end">
-                            <PricingCardsIllustration />
-                        </div>
-                    </div>
-                </Section>
-
-                {/* Sticky CTA (Desktop only) */}
-                {showStickyCTA && (
-                    <div className="hidden lg:block fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50 py-4">
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-                            <div>
-                                <p className="font-semibold text-gray-900">Need a tailored plan?</p>
-                                <p className="text-sm text-gray-600">Contact us for custom pricing</p>
-                            </div>
-                            <Button onClick={() => navigate("/contact")} className="bg-blue-600 hover:bg-blue-700">
-                                Contact Sales
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
+      {/* Pricing Cards */}
+      <FullBleedBand className="py-20">
+        <StaggerContainer className="grid gap-8 lg:grid-cols-3">
+          {plans.map((plan, i) => (
+            <StaggerItem key={i}>
+              <div
+                className={`relative rounded-2xl border bg-card p-8 card-hover h-full flex flex-col ${
+                  plan.popular ? "border-primary shadow-glow" : "border-border shadow-soft"
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary px-4 py-1 text-sm font-medium text-primary-foreground">
+                      <Star className="h-3 w-3 fill-current" />
+                      Most Popular
+                    </span>
+                  </div>
                 )}
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-foreground">{plan.name}</h3>
+                  <p className="text-sm text-muted-foreground">{plan.description}</p>
+                </div>
+                <div className="mb-6">
+                  <span className="text-3xl font-bold text-foreground">{plan.price}</span>
+                </div>
+                <ul className="mb-8 space-y-3 flex-grow">
+                  {plan.features.map((feature, j) => (
+                    <li key={j} className="flex items-start gap-3">
+                      <Check
+                        className={`h-5 w-5 flex-shrink-0 ${
+                          plan.popular ? "text-primary" : "text-accent"
+                        }`}
+                      />
+                      <span className="text-sm text-muted-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  asChild
+                  variant={plan.popular ? "default" : "outline"}
+                  className={plan.popular ? "btn-glow w-full" : "w-full"}
+                >
+                  <Link to="/contact">
+                    {plan.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </StaggerItem>
+          ))}
+        </StaggerContainer>
+      </FullBleedBand>
 
-                {/* Pricing Cards */}
-                <Section>
-                    <p className="text-center text-gray-600 mb-8">
-                        Compare our <a href="/features" className="text-blue-600 hover:underline font-medium">expense management features</a> across plans.
-                    </p>
-                    <div className="grid md:grid-cols-3 gap-8">
-                        {/* Starter */}
-                        <Card className="border-2 hover:shadow-lg transition-shadow">
-                            <CardHeader>
-                                <CardTitle className="text-2xl">Starter</CardTitle>
-                                <CardDescription className="text-base">Best for: small teams & simple approvals</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <ul className="space-y-3 text-gray-700">
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Expense submission + receipts</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Basic workflow</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Role dashboards</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Standard categories</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Multi-org support</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Email support</span>
-                                    </li>
-                                </ul>
-                                <Button className="w-full mt-6" onClick={() => navigate("/contact")}>
-                                    Get Started
-                                </Button>
-                            </CardContent>
-                        </Card>
+      {/* Compare Plans */}
+      <FullBleedBand variant="soft" className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            Compare Plans
+          </h2>
+          <p className="text-muted-foreground">See all features side by side</p>
+        </ScrollReveal>
+        <ScrollReveal delay={0.1}>
+          <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0" style={{ WebkitOverflowScrolling: "touch" }}>
+            <MockCompareTable />
+          </div>
+        </ScrollReveal>
+      </FullBleedBand>
 
-                        {/* Growth */}
-                        <Card className="border-2 border-blue-500 hover:shadow-lg transition-shadow relative">
-                            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                                <span className="bg-blue-600 text-white px-4 py-1 rounded-full text-sm font-semibold">Popular</span>
-                            </div>
-                            <CardHeader>
-                                <CardTitle className="text-2xl">Growth</CardTitle>
-                                <CardDescription className="text-base">Best for: multi-department teams</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <p className="text-sm text-gray-600 mb-4">Everything in Starter +</p>
-                                <ul className="space-y-3 text-gray-700">
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Engineer verification stage</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Approval limits</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Advanced analytics</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>CSV export</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Location support</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Priority support</span>
-                                    </li>
-                                </ul>
-                                <Button className="w-full mt-6 bg-blue-600 hover:bg-blue-700" onClick={() => navigate("/contact")}>
-                                    Request Demo
-                                </Button>
-                            </CardContent>
-                        </Card>
+      {/* FAQ */}
+      <FullBleedBand className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            Pricing FAQs
+          </h2>
+        </ScrollReveal>
+        <ScrollReveal delay={0.1}>
+          <div className="max-w-3xl mx-auto">
+            <FAQAccordion items={pricingFaqItems} />
+          </div>
+        </ScrollReveal>
+      </FullBleedBand>
 
-                        {/* Enterprise */}
-                        <Card className="border-2 hover:shadow-lg transition-shadow">
-                            <CardHeader>
-                                <CardTitle className="text-2xl">Enterprise</CardTitle>
-                                <CardDescription className="text-base">Best for: strict compliance + scale</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <p className="text-sm text-gray-600 mb-4">Everything in Growth +</p>
-                                <ul className="space-y-3 text-gray-700">
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Dedicated onboarding</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>SLA + compliance docs</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                        <span>Future: white-label + integrations <span className="text-xs text-gray-500">(Roadmap)</span></span>
-                                    </li>
-                                </ul>
-                                <Button className="w-full mt-6" onClick={() => navigate("/contact")}>
-                                    Talk to Us
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </Section>
+      {/* Sticky CTA (desktop only) */}
+      <div className="hidden lg:block fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-8 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <span className="text-sm font-medium text-foreground">Need a tailored plan?</span>
+              <span className="ml-2 text-sm text-muted-foreground">
+                Let&apos;s discuss your requirements.
+              </span>
+            </div>
+            <Button asChild>
+              <Link to="/contact">
+                Contact Sales
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
 
-                {/* Compare Plans Table */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Compare Plans</h2>
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse">
-                            <thead>
-                                <tr className="border-b-2 border-gray-300">
-                                    <th className="text-left p-4 font-semibold text-gray-900">Feature</th>
-                                    <th className="text-center p-4 font-semibold text-gray-900">Starter</th>
-                                    <th className="text-center p-4 font-semibold text-gray-900 bg-blue-50">Growth</th>
-                                    <th className="text-center p-4 font-semibold text-gray-900">Enterprise</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr className="border-b border-gray-200">
-                                    <td className="p-4 text-gray-700">Expense submission</td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                    <td className="p-4 text-center bg-blue-50"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                </tr>
-                                <tr className="border-b border-gray-200">
-                                    <td className="p-4 text-gray-700">Engineer verification</td>
-                                    <td className="p-4 text-center">-</td>
-                                    <td className="p-4 text-center bg-blue-50"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                </tr>
-                                <tr className="border-b border-gray-200">
-                                    <td className="p-4 text-gray-700">Advanced analytics</td>
-                                    <td className="p-4 text-center">-</td>
-                                    <td className="p-4 text-center bg-blue-50"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                </tr>
-                                <tr className="border-b border-gray-200">
-                                    <td className="p-4 text-gray-700">CSV export</td>
-                                    <td className="p-4 text-center">-</td>
-                                    <td className="p-4 text-center bg-blue-50"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                </tr>
-                                <tr className="border-b border-gray-200">
-                                    <td className="p-4 text-gray-700">Dedicated onboarding</td>
-                                    <td className="p-4 text-center">-</td>
-                                    <td className="p-4 text-center bg-blue-50">-</td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                </tr>
-                                <tr className="border-b border-gray-200">
-                                    <td className="p-4 text-gray-700">SLA + compliance docs</td>
-                                    <td className="p-4 text-center">-</td>
-                                    <td className="p-4 text-center bg-blue-50">-</td>
-                                    <td className="p-4 text-center"><CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" /></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </SectionBand>
-
-                {/* Pricing FAQ */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Pricing FAQ</h2>
-                    <div className="max-w-3xl mx-auto">
-                        <Accordion type="single" collapsible className="w-full">
-                            <AccordionItem value="item-1">
-                                <AccordionTrigger>Does PesoWise support multiple organizations?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, all plans support multiple organizations with complete data isolation.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-2">
-                                <AccordionTrigger>Can we control expense approvals?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, you can configure roles and approval limits. Growth and Enterprise plans include engineer verification stages.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-3">
-                                <AccordionTrigger>Do balances update automatically?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, balances update automatically when expenses are approved. No manual calculations needed.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-4">
-                                <AccordionTrigger>Do you provide invoices and onboarding?</AccordionTrigger>
-                                <AccordionContent>
-                                    Growth and Enterprise plans include dedicated onboarding and can provide invoices. Contact us for details.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-5">
-                                <AccordionTrigger>Can we migrate from spreadsheets?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, we provide onboarding support to help migrate your existing data from spreadsheets or other systems.
-                                </AccordionContent>
-                            </AccordionItem>
-                        </Accordion>
-                    </div>
-                </Section>
-
-                {/* SEO Reinforcement */}
-                <SectionBand className="py-12">
-                    <div className="max-w-4xl mx-auto text-center">
-                        <p className="text-gray-700 text-lg leading-relaxed">
-                            PesoWise offers scalable pricing for expense management software that grows with your organization. From small teams needing basic expense tracking to enterprises requiring advanced analytics and compliance features, our plans provide the right level of expense approval workflow automation and audit-ready reporting.
-                        </p>
-                    </div>
-                </SectionBand>
-
-                {/* Bottom CTA */}
-                <SectionBand className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-20">
-                    <div className="text-center">
-                        <h2 className="text-3xl font-bold mb-8">
-                            Ready to get started?
-                        </h2>
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <Button size="lg" variant="secondary" onClick={() => navigate("/contact")} className="text-lg px-8">
-                                Contact Sales
-                                <ArrowRight className="ml-2 h-5 w-5" />
-                            </Button>
-                            <Button size="lg" variant="outline" onClick={() => navigate("/auth")} className="text-lg px-8 border-2 border-white text-white hover:bg-white/10">
-                                Login
-                            </Button>
-                        </div>
-                    </div>
-                </SectionBand>
-            </MarketingLayout>
-        </>
-    );
+      {/* Spacer (desktop only) */}
+      <div className="hidden lg:block h-20" aria-hidden />
+    </MarketingShell>
+  );
 }

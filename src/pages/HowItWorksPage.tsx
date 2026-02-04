@@ -1,355 +1,251 @@
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { MarketingLayout } from "@/components/marketing/MarketingLayout";
-import { Section, SectionBand } from "@/components/marketing/Section";
-import { HeroBackdrop } from "@/components/marketing/HeroBackdrop";
-import { FloatingOrbs } from "@/components/marketing/FloatingOrbs";
-import { FlowDiagramIllustration } from "@/components/marketing/PageIllustrations";
-import { SEOHead } from "@/components/SEOHead";
+import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
+import StaggerContainer, { StaggerItem } from "@/components/marketing/StaggerContainer";
+import { CTASection, FAQAccordion } from "@/components/marketing/sections";
+import { WorkflowIllustration, WorkflowLivePanel } from "@/components/marketing/how-it-works";
 import {
-    FileText,
-    Send,
-    CheckCircle2,
-    ArrowRight,
-    Users,
-    BarChart3,
-    Wallet,
-    Clock,
-    MessageSquare,
-    Bell
+  FileText,
+  Search,
+  ThumbsUp,
+  Wallet,
+  ClipboardCheck,
+  User,
+  Wrench,
+  Shield,
+  Coins,
+  CheckCircle2,
 } from "lucide-react";
+import type { FAQItem } from "@/components/marketing/sections";
+
+/* Workflow steps */
+const workflowSteps = [
+  {
+    label: "Submit",
+    description: "Employee creates expense report with details and receipts",
+    icon: FileText,
+    color: "bg-primary text-primary-foreground",
+  },
+  {
+    label: "Verify",
+    description: "Engineer reviews and verifies on-site (optional)",
+    icon: Search,
+    color: "bg-warning text-warning-foreground",
+  },
+  {
+    label: "Approve",
+    description: "Admin provides final approval with full context",
+    icon: ThumbsUp,
+    color: "bg-accent text-accent-foreground",
+  },
+  {
+    label: "Balance Update",
+    description: "Petty cash balance deducted automatically",
+    icon: Wallet,
+    color: "bg-info text-info-foreground",
+  },
+  {
+    label: "Audit",
+    description: "Complete trail logged for compliance",
+    icon: ClipboardCheck,
+    color: "bg-primary text-primary-foreground",
+  },
+];
+
+/* Role snapshots */
+const roles = [
+  {
+    role: "Employee",
+    icon: User,
+    color: "bg-primary/10 text-primary",
+    responsibilities: [
+      "Create and submit expense reports",
+      "Upload receipts and documentation",
+      "Track expense status in real-time",
+    ],
+    mockAction: "Submit Expense Report",
+  },
+  {
+    role: "Engineer",
+    icon: Wrench,
+    color: "bg-warning/10 text-warning",
+    responsibilities: [
+      "Verify expenses on-site when required",
+      "Add verification notes and comments",
+      "Forward verified expenses for approval",
+    ],
+    mockAction: "Verify & Forward",
+  },
+  {
+    role: "Admin",
+    icon: Shield,
+    color: "bg-accent/10 text-accent",
+    responsibilities: [
+      "Final approval with complete visibility",
+      "Manage approval limits and thresholds",
+      "Access comprehensive reports and exports",
+    ],
+    mockAction: "Approve Expense",
+  },
+  {
+    role: "Cashier",
+    icon: Coins,
+    color: "bg-info/10 text-info",
+    responsibilities: [
+      "Manage petty cash balances",
+      "Process fund additions and transfers",
+      "Handle return requests",
+    ],
+    mockAction: "Add Funds",
+  },
+];
+
+const workflowFaqItems: FAQItem[] = [
+  {
+    question: "Is engineer verification always required?",
+    answer:
+      "No, engineer verification is optional and can be configured based on your organization's needs. Some expense types may require verification while others can go directly to admin approval.",
+  },
+  {
+    question: "What happens if an expense is rejected?",
+    answer:
+      "Rejected expenses are returned to the employee with feedback. The employee can revise and resubmit the expense report with corrections or additional documentation.",
+  },
+  {
+    question: "Can I set approval limits?",
+    answer:
+      "Yes, you can configure approval thresholds so that expenses above certain amounts require additional review or higher-level approval.",
+  },
+  {
+    question: "How are balances updated after approval?",
+    answer:
+      "Once an expense is approved, the corresponding petty cash balance is automatically deducted. This happens in real-time and is logged for audit purposes.",
+  },
+];
 
 export default function HowItWorksPage() {
-    const navigate = useNavigate();
+  return (
+    <MarketingShell>
+      {/* Hero */}
+      <FullBleedBand variant="hero" className="py-20">
+        <div className="grid items-center gap-12 lg:grid-cols-2">
+          <ScrollReveal variant="fade-up">
+            <h1 className="mb-6 text-4xl font-bold leading-tight text-foreground md:text-5xl">
+              From receipt upload to approval—fully streamlined
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              A structured workflow that ensures every expense is properly documented, verified, and approved with complete transparency.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal variant="fade-left" delay={0.2}>
+            <div className="relative flex items-center justify-center min-h-[14rem] overflow-hidden min-w-0">
+              <WorkflowIllustration className="h-40 sm:h-48 w-auto max-w-full" />
+              <div className="absolute bottom-0 right-0">
+                <WorkflowLivePanel />
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
+      </FullBleedBand>
 
-    const faqSchema = {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-            {
-                "@type": "Question",
-                "name": "What is PesoWise used for?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "PesoWise is used to manage petty cash and employee expenses with approval workflows, receipt tracking, and balance management."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "How does the expense submission process work?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Employees create expense reports with details and receipts, save as draft if needed, then submit for review. The expense enters an approval pipeline where engineers verify and admins provide final approval."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Can engineers approve expenses?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes, engineers can approve expenses within their configured approval limit. Expenses exceeding the limit are automatically forwarded to admins for final approval."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "What happens when an expense is rejected?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "When an expense is rejected, the employee receives a notification with the reason. They can then edit and resubmit the expense, or create a new one."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Are receipts required for expenses?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Receipts are optional but highly recommended for audit purposes. Organizations can configure whether receipts are mandatory for certain expense types or amounts."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "How do balances update in PesoWise?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Balances update automatically when expenses are approved. Cashiers can add funds, and transfers between accounts are tracked with complete history. All balance changes are logged for audit purposes."
-                }
-            }
-        ]
-    };
-
-    const breadcrumbSchema = {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {
-                "@type": "ListItem",
-                "position": 1,
-                "name": "Home",
-                "item": "https://pesowise.com/"
-            },
-            {
-                "@type": "ListItem",
-                "position": 2,
-                "name": "How It Works",
-                "item": "https://pesowise.com/how-it-works"
-            }
-        ]
-    };
-
-    return (
-        <>
-            <SEOHead
-                title="How PesoWise Works – Expense & Petty Cash Workflow Explained"
-                description="Learn how PesoWise streamlines petty cash and expense management with structured roles, approvals, and real-time balance tracking."
-                canonicalUrl="https://pesowise.com/how-it-works"
-                faqSchema={faqSchema}
-                structuredData={breadcrumbSchema}
-            />
-            <MarketingLayout>
-                {/* Hero */}
-                <Section className="relative py-20 overflow-hidden">
-                    <div className="absolute inset-0 w-full">
-                        <HeroBackdrop />
-                        <FloatingOrbs />
+      {/* Workflow Diagram */}
+      <FullBleedBand variant="soft" className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            The PesoWise Workflow
+          </h2>
+          <p className="text-muted-foreground">
+            Five simple steps from expense creation to audit-ready records
+          </p>
+        </ScrollReveal>
+        <div className="relative">
+          <div className="absolute top-8 left-0 right-0 h-0.5 bg-border hidden lg:block" aria-hidden />
+          <StaggerContainer className="grid gap-6 md:grid-cols-3 lg:grid-cols-5">
+            {workflowSteps.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <StaggerItem key={i}>
+                  <div className="relative flex flex-col items-center text-center">
+                    <div
+                      className={`relative z-10 mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-soft ${step.color}`}
+                    >
+                      <Icon className="h-8 w-8" />
                     </div>
-                    <div className="relative grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-                        <div className="space-y-6">
-                            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900">
-                                From receipt upload to approval—fully streamlined
-                            </h1>
-                            <p className="text-xl text-gray-600">
-                                PesoWise maps exactly to how teams handle petty cash in real life, with structured roles and clean steps.
-                            </p>
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-                                <Button size="lg" onClick={() => navigate("/contact")} className="text-lg px-8">
-                                    Contact Us
-                                    <ArrowRight className="ml-2 h-5 w-5" />
-                                </Button>
-                                <Button size="lg" variant="outline" onClick={() => navigate("/auth")} className="text-lg px-8">
-                                    Login
-                                </Button>
-                            </div>
-                        </div>
-                        <div className="relative w-full max-w-none lg:justify-self-end">
-                            <FlowDiagramIllustration />
-                        </div>
-                    </div>
-                </Section>
+                    {i < workflowSteps.length - 1 && (
+                      <div className="absolute top-8 left-full hidden lg:flex w-full justify-center pointer-events-none -translate-x-1/2">
+                        <div className="w-4 h-4 rotate-45 border-t-2 border-r-2 border-primary/30 -mt-2" />
+                      </div>
+                    )}
+                    <h3 className="text-base font-semibold text-foreground mb-2">{step.label}</h3>
+                    <p className="text-sm text-muted-foreground">{step.description}</p>
+                  </div>
+                </StaggerItem>
+              );
+            })}
+          </StaggerContainer>
+        </div>
+      </FullBleedBand>
 
-                {/* 4-step Overview */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">How It Works</h2>
-                    <p className="text-center text-gray-600 mb-8">
-                        Explore our complete <a href="/features" className="text-blue-600 hover:underline font-medium">expense management features</a> that power this workflow.
-                    </p>
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <Card className="text-center">
-                            <CardHeader>
-                                <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-2xl font-bold text-blue-600">1</span>
-                                </div>
-                                <CardTitle>Create & Draft</CardTitle>
-                            </CardHeader>
-                        </Card>
-                        <Card className="text-center">
-                            <CardHeader>
-                                <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-2xl font-bold text-green-600">2</span>
-                                </div>
-                                <CardTitle>Submit for Review</CardTitle>
-                            </CardHeader>
-                        </Card>
-                        <Card className="text-center">
-                            <CardHeader>
-                                <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-2xl font-bold text-purple-600">3</span>
-                                </div>
-                                <CardTitle>Verify & Approve</CardTitle>
-                            </CardHeader>
-                        </Card>
-                        <Card className="text-center">
-                            <CardHeader>
-                                <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-2xl font-bold text-orange-600">4</span>
-                                </div>
-                                <CardTitle>Balance Updates + Records Stored</CardTitle>
-                            </CardHeader>
-                        </Card>
+      {/* Role Snapshots */}
+      <FullBleedBand className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            Role-based Experience
+          </h2>
+          <p className="text-muted-foreground">
+            Each role sees exactly what they need to do their job effectively
+          </p>
+        </ScrollReveal>
+        <StaggerContainer className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {roles.map((role, i) => {
+            const Icon = role.icon;
+            return (
+              <StaggerItem key={i}>
+                <div className="rounded-xl border border-border bg-card p-6 shadow-soft card-hover h-full">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${role.color}`}>
+                      <Icon className="h-5 w-5" />
                     </div>
-                </SectionBand>
+                    <h3 className="text-base font-semibold text-foreground">{role.role}</h3>
+                  </div>
+                  <ul className="mb-4 space-y-2">
+                    {role.responsibilities.map((resp, j) => (
+                      <li key={j} className="flex items-start gap-2">
+                        <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-accent mt-0.5" />
+                        <span className="text-xs text-muted-foreground">{resp}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="pt-4 border-t border-border">
+                    <div className="rounded-lg bg-muted/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">
+                      {role.mockAction}
+                    </div>
+                  </div>
+                </div>
+              </StaggerItem>
+            );
+          })}
+        </StaggerContainer>
+      </FullBleedBand>
 
-                {/* Employee Flow */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Employee Flow</h2>
-                    <div className="space-y-6 max-w-3xl mx-auto">
-                        <div className="flex items-start gap-4">
-                            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-blue-600 font-semibold">1</span>
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-gray-900 mb-2">Login → Dashboard</h3>
-                                <p className="text-gray-600">See balance + recent statuses</p>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-4">
-                            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-blue-600 font-semibold">2</span>
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-gray-900 mb-2">Create an expense</h3>
-                                <p className="text-gray-600">Fields + receipt</p>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-4">
-                            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-blue-600 font-semibold">3</span>
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-gray-900 mb-2">Submit</h3>
-                                <p className="text-gray-600">Status Submitted, enters pipeline</p>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-4">
-                            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-blue-600 font-semibold">4</span>
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-gray-900 mb-2">Track progress</h3>
-                                <p className="text-gray-600">See notes, resubmit on reject</p>
-                            </div>
-                        </div>
-                    </div>
-                </Section>
+      {/* FAQ */}
+      <FullBleedBand variant="soft" className="py-20">
+        <ScrollReveal className="text-center mb-12">
+          <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
+            Workflow FAQs
+          </h2>
+        </ScrollReveal>
+        <ScrollReveal delay={0.1}>
+          <div className="max-w-3xl mx-auto">
+            <FAQAccordion items={workflowFaqItems} />
+          </div>
+        </ScrollReveal>
+      </FullBleedBand>
 
-                {/* Engineer Flow */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Engineer Flow</h2>
-                    <div className="space-y-6 max-w-3xl mx-auto">
-                        <p className="text-gray-700">Pending reviews, validate receipts/details, add comments examples:</p>
-                        <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-2">
-                            <p className="text-sm text-gray-600">• Receipt unclear</p>
-                            <p className="text-sm text-gray-600">• Amount mismatch</p>
-                            <p className="text-sm text-gray-600">• Vendor missing</p>
-                        </div>
-                        <p className="text-gray-700 pt-4">Routing: within limit approve, beyond forward to admin</p>
-                    </div>
-                </SectionBand>
-
-                {/* Admin Flow */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Admin Flow</h2>
-                    <div className="space-y-6 max-w-3xl mx-auto">
-                        <div>
-                            <h3 className="font-semibold text-gray-900 mb-2">Dashboard includes:</h3>
-                            <ul className="space-y-2 text-gray-600">
-                                <li>• Pending approvals</li>
-                                <li>• Total balances</li>
-                                <li>• Trends</li>
-                                <li>• Activity overview</li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-gray-900 mb-2">Admin actions:</h3>
-                            <ul className="space-y-2 text-gray-600">
-                                <li>• Create/manage users</li>
-                                <li>• Approve/reject</li>
-                                <li>• Set limits/rules</li>
-                                <li>• Categories/locations</li>
-                                <li>• Export CSV</li>
-                            </ul>
-                        </div>
-                    </div>
-                </Section>
-
-                {/* Cashier Flow */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Cashier Flow</h2>
-                    <div className="space-y-4 text-gray-700 max-w-3xl mx-auto">
-                        <p>Add funds, process return requests, view history, track movement</p>
-                    </div>
-                </SectionBand>
-
-                {/* Timeline + Notifications */}
-                <Section>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Timeline + Notifications</h2>
-                    <div className="space-y-6 max-w-3xl mx-auto">
-                        <p className="text-gray-700">Timeline entries for each status change</p>
-                        <div className="flex items-start gap-3">
-                            <Bell className="h-6 w-6 text-blue-600 flex-shrink-0 mt-0.5" />
-                            <p className="text-gray-700">Notifications: in-app real-time + optional email</p>
-                        </div>
-                    </div>
-                </Section>
-
-                {/* FAQ */}
-                <SectionBand>
-                    <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">Frequently Asked Questions</h2>
-                    <div className="max-w-3xl mx-auto">
-                        <Accordion type="single" collapsible className="w-full">
-                            <AccordionItem value="item-1">
-                                <AccordionTrigger>What is PesoWise used for?</AccordionTrigger>
-                                <AccordionContent>
-                                    PesoWise is used to manage petty cash and employee expenses with approval workflows, receipt tracking, and balance management.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-2">
-                                <AccordionTrigger>How does the expense submission process work?</AccordionTrigger>
-                                <AccordionContent>
-                                    Employees create expense reports with details and receipts, save as draft if needed, then submit for review. The expense enters an approval pipeline where engineers verify and admins provide final approval.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-3">
-                                <AccordionTrigger>Can engineers approve expenses?</AccordionTrigger>
-                                <AccordionContent>
-                                    Yes, engineers can approve expenses within their configured approval limit. Expenses exceeding the limit are automatically forwarded to admins for final approval.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-4">
-                                <AccordionTrigger>What happens when an expense is rejected?</AccordionTrigger>
-                                <AccordionContent>
-                                    When an expense is rejected, the employee receives a notification with the reason. They can then edit and resubmit the expense, or create a new one.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-5">
-                                <AccordionTrigger>Are receipts required for expenses?</AccordionTrigger>
-                                <AccordionContent>
-                                    Receipts are optional but highly recommended for audit purposes. Organizations can configure whether receipts are mandatory for certain expense types or amounts.
-                                </AccordionContent>
-                            </AccordionItem>
-                            <AccordionItem value="item-6">
-                                <AccordionTrigger>How do balances update in PesoWise?</AccordionTrigger>
-                                <AccordionContent>
-                                    Balances update automatically when expenses are approved. Cashiers can add funds, and transfers between accounts are tracked with complete history. All balance changes are logged for audit purposes.
-                                </AccordionContent>
-                            </AccordionItem>
-                        </Accordion>
-                    </div>
-                </SectionBand>
-
-                {/* SEO Reinforcement */}
-                <Section className="py-12">
-                    <div className="max-w-4xl mx-auto text-center">
-                        <p className="text-gray-700 text-lg leading-relaxed">
-                            PesoWise streamlines the expense approval workflow from submission to final approval. Our employee expense tracking system automates the entire process, ensuring balances update in real-time and maintaining complete audit trails for compliance.
-                        </p>
-                    </div>
-                </Section>
-
-                {/* Bottom CTA */}
-                <SectionBand className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-20">
-                    <div className="text-center">
-                        <h2 className="text-3xl font-bold mb-8">
-                            Want to see the workflow on your real use-case?
-                        </h2>
-                        <Button size="lg" variant="secondary" onClick={() => navigate("/contact")} className="text-lg px-8">
-                            Book a Demo
-                            <ArrowRight className="ml-2 h-5 w-5" />
-                        </Button>
-                    </div>
-                </SectionBand>
-            </MarketingLayout>
-        </>
-    );
+      {/* CTA */}
+      <FullBleedBand className="py-20">
+        <ScrollReveal variant="scale">
+          <CTASection />
+        </ScrollReveal>
+      </FullBleedBand>
+    </MarketingShell>
+  );
 }
