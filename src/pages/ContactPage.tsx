@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
 import { ContactIllustration } from "@/components/marketing/contact";
 import { DemoMotionPanel } from "@/components/marketing/mocks";
@@ -14,7 +15,6 @@ import {
   Phone,
 } from "lucide-react";
 
-const CONTACT_LEADS_KEY = "pesowise_contact_leads";
 const CONSENT_VERSION = 1;
 
 /* text-base on mobile prevents iOS zoom on focus; sm:text-sm for compact desktop */
@@ -36,7 +36,7 @@ export default function ContactPage() {
   const [consentPrivacy, setConsentPrivacy] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!consentPrivacy) {
       toast({
@@ -49,38 +49,43 @@ export default function ContactPage() {
     setIsSubmitting(true);
     const form = e.currentTarget;
     const fd = new FormData(form);
-    const payload: Record<string, unknown> = {
-      fullName: fd.get("fullName") ?? "",
-      workEmail: fd.get("workEmail") ?? "",
-      company: fd.get("company") ?? "",
-      phone: fd.get("phone") ?? "",
-      role: fd.get("role") ?? "",
-      teamSize: fd.get("teamSize") ?? "",
-      multiLevel: fd.get("multiLevel") === "on",
+    const payload = {
+      full_name: String(fd.get("fullName") ?? "").trim(),
+      work_email: String(fd.get("workEmail") ?? "").trim(),
+      company: String(fd.get("company") ?? "").trim(),
+      phone: String(fd.get("phone") ?? "").trim(),
+      role: String(fd.get("role") ?? "").trim() || null,
+      team_size: String(fd.get("teamSize") ?? "").trim() || null,
+      multi_level: fd.get("multiLevel") === "on",
       balance: fd.get("balance") === "on",
-      multiLocation: fd.get("multiLocation") === "on",
+      multi_location: fd.get("multiLocation") === "on",
       receipts: fd.get("receipts") === "on",
-      message: fd.get("message") ?? "",
+      message: String(fd.get("message") ?? "").trim() || null,
       consent_privacy: true,
       consent_marketing: consentMarketing,
       consent_timestamp: new Date().toISOString(),
       consent_version: CONSENT_VERSION,
     };
     try {
-      const raw = localStorage.getItem(CONTACT_LEADS_KEY);
-      const leads: unknown[] = raw ? JSON.parse(raw) : [];
-      leads.push(payload);
-      localStorage.setItem(CONTACT_LEADS_KEY, JSON.stringify(leads));
-    } catch {
-      // ignore
-    }
-    setTimeout(() => {
-      setIsSubmitting(false);
+      const { error } = await supabase.from("contact_leads").insert(payload);
+      if (error) throw error;
       toast({
-        title: "Message received (demo)",
-        description: "Connect backend to enable email sending.",
+        title: "Message sent",
+        description: "We'll be in touch within 24 hours.",
       });
-    }, 1000);
+      form.reset();
+      setConsentPrivacy(false);
+      setConsentMarketing(false);
+    } catch (err: unknown) {
+      console.error("Contact form error:", err);
+      toast({
+        variant: "destructive",
+        title: "Could not send",
+        description: "Please try again or email support@unimisk.com directly.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -301,10 +306,6 @@ export default function ContactPage() {
                 <p className="text-xs text-muted-foreground">
                   We&apos;ll use your details only to contact you about PesoWise. You can request
                   deletion anytime.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  This form is a demo; submissions are stored locally in your browser until backend
-                  is connected.
                 </p>
                 <Button
                   type="submit"

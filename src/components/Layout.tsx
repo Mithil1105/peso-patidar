@@ -54,6 +54,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         return 'Employee';
       case 'cashier':
         return 'Cashier';
+      case 'master_admin':
+        return 'Master Admin';
       default:
         return 'User';
     }
@@ -260,8 +262,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       }}
                       title={userRole === 'admin' ? 'Click to edit organization name' : ''}
                     >
-                      {organization?.name || 'Organization'}
-                </h1>
+                      {userRole === 'master_admin' ? 'Master Admin' : (organization?.name || 'Organization')}
+                    </h1>
                     {userRole === 'admin' && (
                       <Pencil className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     )}

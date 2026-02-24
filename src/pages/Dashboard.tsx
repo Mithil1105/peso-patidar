@@ -40,6 +40,15 @@ interface Notification {
 
 export default function Dashboard() {
   const { user, userRole } = useAuth();
+  const navigate = useNavigate();
+
+  // Master admins use the dedicated Master Admin Dashboard
+  useEffect(() => {
+    if (userRole === "master_admin") {
+      navigate("/master", { replace: true });
+    }
+  }, [userRole, navigate]);
+
   const [stats, setStats] = useState<DashboardStats>({
     totalExpenses: 0,
     pendingAmount: 0,
@@ -61,10 +70,10 @@ export default function Dashboard() {
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [returnRequests, setReturnRequests] = useState<any[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
+    if (userRole === "master_admin") return; // redirecting to /master
     if (user) {
       try {
         fetchStats();

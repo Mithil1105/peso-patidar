@@ -197,6 +197,8 @@ export type Database = {
           cashier_assigned_engineer_id: string | null
           assigned_cashier_id: string | null
           cashier_assigned_location_id: string | null
+          organization_id: string | null
+          is_master_admin: boolean | null
         }
         Insert: {
           created_at?: string | null
@@ -211,6 +213,8 @@ export type Database = {
           cashier_assigned_engineer_id?: string | null
           assigned_cashier_id?: string | null
           cashier_assigned_location_id?: string | null
+          organization_id?: string | null
+          is_master_admin?: boolean | null
         }
         Update: {
           created_at?: string | null
@@ -225,6 +229,161 @@ export type Database = {
           cashier_assigned_engineer_id?: string | null
           assigned_cashier_id?: string | null
           cashier_assigned_location_id?: string | null
+          organization_id?: string | null
+          is_master_admin?: boolean | null
+        }
+        Relationships: []
+      }
+      master_admin_memberships: {
+        Row: {
+          id: string
+          user_id: string
+          is_active: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      organization_memberships: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          role: string
+          is_active: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          role: string
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          role?: string
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      organizations: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          plan: string | null
+          logo_url: string | null
+          payment_status: string | null
+          is_blocked: boolean | null
+          last_activity_at: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          plan?: string | null
+          logo_url?: string | null
+          payment_status?: string | null
+          is_blocked?: boolean | null
+          last_activity_at?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          plan?: string | null
+          logo_url?: string | null
+          payment_status?: string | null
+          is_blocked?: boolean | null
+          last_activity_at?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      contact_leads: {
+        Row: {
+          id: string
+          full_name: string
+          work_email: string
+          company: string
+          phone: string | null
+          role: string | null
+          team_size: string | null
+          multi_level: boolean
+          balance: boolean
+          multi_location: boolean
+          receipts: boolean
+          message: string | null
+          consent_privacy: boolean
+          consent_marketing: boolean | null
+          consent_timestamp: string | null
+          consent_version: number | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          full_name: string
+          work_email: string
+          company: string
+          phone?: string | null
+          role?: string | null
+          team_size?: string | null
+          multi_level?: boolean
+          balance?: boolean
+          multi_location?: boolean
+          receipts?: boolean
+          message?: string | null
+          consent_privacy?: boolean
+          consent_marketing?: boolean | null
+          consent_timestamp?: string | null
+          consent_version?: number | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          full_name?: string
+          work_email?: string
+          company?: string
+          phone?: string | null
+          role?: string | null
+          team_size?: string | null
+          multi_level?: boolean
+          balance?: boolean
+          multi_location?: boolean
+          receipts?: boolean
+          message?: string | null
+          consent_privacy?: boolean
+          consent_marketing?: boolean | null
+          consent_timestamp?: string | null
+          consent_version?: number | null
+          created_at?: string | null
         }
         Relationships: []
       }
@@ -491,9 +650,13 @@ export type Database = {
         }
         Returns: string | null
       }
+      get_storage_metrics: {
+        Args: Record<string, never>
+        Returns: Json
+      }
     }
     Enums: {
-      app_role: "admin" | "engineer" | "employee" | "cashier"
+      app_role: "admin" | "engineer" | "employee" | "cashier" | "master_admin"
       expense_category: "travel" | "lodging" | "food" | "other"
       expense_status:
         | "draft"

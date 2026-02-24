@@ -3,7 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { cacheOrganization } from "@/lib/organizationCache";
 
-type AppRole = "admin" | "engineer" | "employee" | "cashier";
+type AppRole = "admin" | "engineer" | "employee" | "cashier" | "master_admin";
 
 interface UserProfile {
   id: string;
@@ -86,16 +86,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserRole = async (userId: string) => {
     try {
-      // Get role from organization_memberships instead of user_roles
-      const { data, error } = await supabase
+      // Master admins: check profile first
+      const { data: profile } = await (supabase as any)
+        .from("profiles")
+        .select("is_master_admin")
+        .eq("user_id", userId)
+        .maybeSingle() as { data: { is_master_admin?: boolean } | null };
+
+      if (profile?.is_master_admin === true) {
+        setUserRole("master_admin");
+        return;
+      }
+
+      // Also check master_admin_memberships (alternative source)
+      const { data: membership } = await (supabase as any)
+        .from("master_admin_memberships")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle() as { data: { id?: string } | null };
+
+      if (membership) {
+        setUserRole("master_admin");
+        return;
+      }
+
+      // Get role from organization_memberships
+      const { data, error } = await (supabase as any)
         .from("organization_memberships")
         .select("role")
         .eq("user_id", userId)
         .eq("is_active", true)
-        .maybeSingle();
+        .maybeSingle() as { data: { role?: string } | null; error: Error | null };
 
       if (error) throw error;
-      setUserRole(data?.role || null);
+      setUserRole((data?.role as AppRole) || null);
     } catch (error) {
       console.error("Error fetching user role:", error);
     }
@@ -103,16 +128,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("profiles")
         .select("id, name, email, organization_id")
         .eq("user_id", userId)
-        .single();
+        .single() as { data: UserProfile | null; error: Error | null };
 
       if (error) throw error;
       setUserProfile(data);
+      // Master admins may have null organization_id
       if (data?.organization_id) {
         setOrganizationId(data.organization_id);
+      } else {
+        setOrganizationId(null);
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);
@@ -123,30 +151,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchOrganization = async (userId: string) => {
     try {
+      // Master admins don't have an organization
+      const { data: profile } = await (supabase as any)
+        .from("profiles")
+        .select("is_master_admin")
+        .eq("user_id", userId)
+        .maybeSingle() as { data: { is_master_admin?: boolean } | null };
+      if (profile?.is_master_admin === true) {
+        setOrganization(null);
+        setOrganizationId(null);
+        return;
+      }
+
       // Get organization via organization_memberships
-      const { data: membership, error: membershipError } = await supabase
+      const { data: membership, error: membershipError } = await (supabase as any)
         .from("organization_memberships")
         .select("organization_id")
         .eq("user_id", userId)
         .eq("is_active", true)
-        .maybeSingle();
+        .maybeSingle() as { data: { organization_id?: string } | null; error: Error | null };
 
       if (membershipError) throw membershipError;
       if (!membership?.organization_id) return;
 
       // Fetch organization details
-      const { data: orgData, error: orgError } = await supabase
+      const { data: orgData, error: orgError } = await (supabase as any)
         .from("organizations")
         .select("id, name, slug, plan, logo_url")
         .eq("id", membership.organization_id)
-        .single();
+        .single() as { data: Organization | null; error: Error | null };
 
       if (orgError) throw orgError;
-      setOrganization(orgData);
-      setOrganizationId(orgData.id);
+      if (orgData) {
+        setOrganization(orgData);
+        setOrganizationId(orgData.id);
+      }
       
       // Cache organization data for login page logo display
-      // Get user email from session or current user
       try {
         const { data: { user: currentUser } } = await supabase.auth.getUser();
         if (currentUser?.email && orgData) {
@@ -157,7 +198,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } catch (cacheError) {
-        // Non-critical error, just log it
         console.warn('Could not cache organization:', cacheError);
       }
     } catch (error) {

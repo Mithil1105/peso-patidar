@@ -34,6 +34,7 @@ import Settings from "./pages/Settings";
 import NotificationSettings from "./pages/NotificationSettings";
 import CashierTransactions from "./pages/CashierTransactions";
 import CashTransferHistory from "./pages/CashTransferHistory";
+import MasterAdminDashboard from "./pages/MasterAdminDashboard";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,16 @@ const App = () => (
               <ProtectedRoute>
                 <Layout>
                   <Dashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/master"
+            element={
+              <ProtectedRoute allowedRoles={["master_admin"]}>
+                <Layout>
+                  <MasterAdminDashboard />
                 </Layout>
               </ProtectedRoute>
             }

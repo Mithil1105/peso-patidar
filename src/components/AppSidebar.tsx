@@ -10,6 +10,7 @@ import {
   Tag,
   Settings as SettingsIcon,
   Clock,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -70,7 +71,13 @@ export function AppSidebar() {
     { title: "Settings", url: "/settings", icon: SettingsIcon },
   ];
 
-  const items = 
+  const masterAdminItems = [
+    { title: "Master Dashboard", url: "/master", icon: ShieldCheck },
+    { title: "Settings", url: "/settings", icon: SettingsIcon },
+  ];
+
+  const items =
+    userRole === "master_admin" ? masterAdminItems :
     userRole === "admin" ? adminItems :
     userRole === "engineer" ? engineerItems :
     userRole === "cashier" ? cashierItems :
