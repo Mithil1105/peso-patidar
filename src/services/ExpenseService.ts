@@ -681,8 +681,8 @@ export class ExpenseService {
       }
     }
     
-    if (isAdmin && expense.status !== "submitted" && expense.status !== "verified" && expense.status !== "under_review") {
-      throw new Error("Admins can only approve submitted, verified, or under_review expenses");
+    if (isAdmin && expense.status !== "submitted" && expense.status !== "verified") {
+      throw new Error("Admins can only approve submitted or verified expenses");
     }
     
     // If admin is approving a submitted expense, auto-verify it first

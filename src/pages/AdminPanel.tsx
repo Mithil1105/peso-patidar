@@ -856,7 +856,7 @@ export default function AdminPanel() {
 
   const getStats = () => {
     const totalExpenses = expenses.length;
-    const pendingExpenses = expenses.filter(e => ["submitted", "verified", "under_review"].includes(e.status)).length;
+    const pendingExpenses = expenses.filter(e => ["submitted", "verified"].includes(e.status)).length;
     const approvedExpenses = expenses.filter(e => e.status === "approved").length;
     const totalAmount = expenses.reduce((sum, e) => sum + e.total_amount, 0);
 
@@ -1055,7 +1055,7 @@ export default function AdminPanel() {
                         <TableHead className="font-semibold min-w-[80px] whitespace-nowrap">Txn #</TableHead>
                         <TableHead className="font-semibold min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
                         <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Title</TableHead>
-                        <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Destination</TableHead>
+                        <TableHead className="font-semibold w-[140px] max-w-[140px] hidden sm:table-cell">Destination</TableHead>
                         <TableHead className="font-semibold min-w-[90px] whitespace-nowrap">Amount</TableHead>
                         <TableHead className="font-semibold min-w-[90px] hidden md:table-cell">Balance</TableHead>
                         <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Status</TableHead>
@@ -1083,12 +1083,12 @@ export default function AdminPanel() {
                           <TableCell className="font-medium text-xs sm:text-sm hidden sm:table-cell">
                             <div className="line-clamp-2 break-words">{expense.title}</div>
                           </TableCell>
-                          <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell">{expense.destination}</TableCell>
+                          <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell max-w-[140px]" title={expense.destination}>{expense.destination}</TableCell>
                           <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
                           <TableCell className="text-xs sm:text-sm hidden md:table-cell">
                             <div className={`font-medium whitespace-nowrap ${expense.user_balance >= expense.total_amount
-                                ? 'text-green-600'
-                                : 'text-red-600'
+                              ? 'text-green-600'
+                              : 'text-red-600'
                               }`}>
                               {formatINR(expense.user_balance)}
                             </div>
@@ -1229,7 +1229,7 @@ export default function AdminPanel() {
                                               className="mt-1"
                                             />
                                           </div>
-                                        ) : selectedExpense.status === "verified" || selectedExpense.status === "under_review" ? (
+                                        ) : selectedExpense.status === "verified" ? (
                                           <div>
                                             <label className="text-sm font-medium">Admin Comment (Optional)</label>
                                             <Textarea
@@ -1446,7 +1446,7 @@ export default function AdminPanel() {
                                             Approve
                                           </Button>
                                         </>
-                                      ) : selectedExpense?.status === "verified" || selectedExpense?.status === "under_review" ? (
+                                      ) : selectedExpense?.status === "verified" ? (
                                         <>
                                           <Button
                                             variant="destructive"

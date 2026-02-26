@@ -746,7 +746,7 @@ export default function ManagerReview() {
                       <TableHead className="min-w-[80px] whitespace-nowrap">Txn #</TableHead>
                       <TableHead className="min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
                       <TableHead className="min-w-[100px] hidden sm:table-cell">Title</TableHead>
-                      <TableHead className="min-w-[100px] hidden sm:table-cell">Destination</TableHead>
+                      <TableHead className="w-[140px] max-w-[140px] hidden sm:table-cell">Destination</TableHead>
                       <TableHead className="min-w-[90px] whitespace-nowrap">Amount</TableHead>
                       <TableHead className="min-w-[100px] hidden sm:table-cell">Status</TableHead>
                       <TableHead className="min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Created</TableHead>
@@ -773,7 +773,7 @@ export default function ManagerReview() {
                     <TableCell className="font-medium text-xs sm:text-sm hidden sm:table-cell">
                       <div className="line-clamp-2 break-words">{expense.title}</div>
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell">{expense.destination}</TableCell>
+                    <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell max-w-[140px]" title={expense.destination}>{expense.destination}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {(expense as any).isResubmitted && expense.status === "submitted" ? (

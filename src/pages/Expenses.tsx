@@ -660,7 +660,7 @@ export default function Expenses() {
                     <TableRow>
                         <TableHead className="min-w-[80px] whitespace-nowrap">Txn #</TableHead>
                         <TableHead className="min-w-[140px] sm:min-w-[140px]">Title / Destination</TableHead>
-                        <TableHead className="min-w-[100px] hidden sm:table-cell">Destination</TableHead>
+                        <TableHead className="w-[140px] max-w-[140px] hidden sm:table-cell">Destination</TableHead>
                         <TableHead className="min-w-[100px] hidden sm:table-cell">Trip Start</TableHead>
                         <TableHead className="min-w-[90px] whitespace-nowrap">Amount</TableHead>
                         <TableHead className="min-w-[100px] hidden sm:table-cell">Status</TableHead>
@@ -684,7 +684,7 @@ export default function Expenses() {
                         {format(new Date(expense.created_at), "MMM d, yyyy")}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm hidden sm:table-cell">{expense.destination}</TableCell>
+                    <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell max-w-[140px]" title={expense.destination}>{expense.destination}</TableCell>
                     <TableCell className="text-xs sm:text-sm hidden sm:table-cell">
                       {format(new Date(expense.trip_start), "MMM d, yyyy")}
                     </TableCell>
