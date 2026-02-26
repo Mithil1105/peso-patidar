@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type ExpenseStatus = "submitted" | "verified" | "approved" | "rejected";
+type ExpenseStatus = "submitted" | "verified" | "under_review" | "approved" | "rejected";
 
 interface StatusBadgeProps {
   status: ExpenseStatus | string;
@@ -12,6 +12,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success"; bgColor?: string }> = {
     submitted: { label: "Submitted", variant: "default" as const },
     verified: { label: "Verified", variant: "default" as const, bgColor: "bg-green-100 text-green-800 border-green-200" },
+    under_review: { label: "Under Review", variant: "default" as const, bgColor: "bg-blue-100 text-blue-800 border-blue-200" },
     approved: { label: "Approved", variant: "default" as const, bgColor: "bg-green-100 text-green-800 border-green-200" },
     rejected: { label: "Rejected", variant: "destructive" as const, bgColor: "bg-red-100 text-red-800 border-red-200" },
   };

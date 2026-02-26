@@ -856,7 +856,7 @@ export default function AdminPanel() {
 
   const getStats = () => {
     const totalExpenses = expenses.length;
-    const pendingExpenses = expenses.filter(e => ["submitted", "verified"].includes(e.status)).length;
+    const pendingExpenses = expenses.filter(e => ["submitted", "verified", "under_review"].includes(e.status)).length;
     const approvedExpenses = expenses.filter(e => e.status === "approved").length;
     const totalAmount = expenses.reduce((sum, e) => sum + e.total_amount, 0);
 
@@ -1229,7 +1229,7 @@ export default function AdminPanel() {
                                               className="mt-1"
                                             />
                                           </div>
-                                        ) : selectedExpense.status === "verified" ? (
+                                        ) : selectedExpense.status === "verified" || selectedExpense.status === "under_review" ? (
                                           <div>
                                             <label className="text-sm font-medium">Admin Comment (Optional)</label>
                                             <Textarea
@@ -1446,7 +1446,7 @@ export default function AdminPanel() {
                                             Approve
                                           </Button>
                                         </>
-                                      ) : selectedExpense?.status === "verified" ? (
+                                      ) : selectedExpense?.status === "verified" || selectedExpense?.status === "under_review" ? (
                                         <>
                                           <Button
                                             variant="destructive"

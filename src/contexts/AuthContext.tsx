@@ -68,41 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    // THEN check for existing session and validate with server (fixes 403 on stale tokens in some browsers)
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session?.user) {
-        setSession(null);
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      try {
-        const { data: { user: validatedUser }, error } = await supabase.auth.getUser();
-        if (error || !validatedUser) {
-          // Token invalid or rejected (e.g. 403) — clear session so user can re-login
-          await supabase.auth.signOut();
-          setSession(null);
-          setUser(null);
-          setUserRole(null);
-          setUserProfile(null);
-          setOrganization(null);
-          setOrganizationId(null);
-          setLoading(false);
-          return;
-        }
-        setSession(session);
-        setUser(session.user);
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
         fetchUserRole(session.user.id);
         fetchUserProfile(session.user.id);
         fetchOrganization(session.user.id);
-      } catch {
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        setUserRole(null);
-        setUserProfile(null);
-        setOrganization(null);
-        setOrganizationId(null);
+      } else {
         setLoading(false);
       }
     });
