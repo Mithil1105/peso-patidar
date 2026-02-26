@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         // Fetch user role, profile, and organization when session changes
         if (session?.user) {
           setTimeout(() => {
@@ -68,15 +68,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
+    // THEN check for existing session and validate with server (fixes 403 on stale tokens in some browsers)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session?.user) {
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      try {
+        const { data: { user: validatedUser }, error } = await supabase.auth.getUser();
+        if (error || !validatedUser) {
+          // Token invalid or rejected (e.g. 403) — clear session so user can re-login
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setUserRole(null);
+          setUserProfile(null);
+          setOrganization(null);
+          setOrganizationId(null);
+          setLoading(false);
+          return;
+        }
+        setSession(session);
+        setUser(session.user);
         fetchUserRole(session.user.id);
         fetchUserProfile(session.user.id);
         fetchOrganization(session.user.id);
-      } else {
+      } catch {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setUserRole(null);
+        setUserProfile(null);
+        setOrganization(null);
+        setOrganizationId(null);
         setLoading(false);
       }
     });
@@ -186,7 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setOrganization(orgData);
         setOrganizationId(orgData.id);
       }
-      
+
       // Cache organization data for login page logo display
       try {
         const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -221,15 +247,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      session, 
-      userRole, 
-      userProfile, 
+    <AuthContext.Provider value={{
+      user,
+      session,
+      userRole,
+      userProfile,
       organization,
       organizationId,
-      loading, 
-      signOut, 
+      loading,
+      signOut,
       refreshUserProfile,
       refreshOrganization
     }}>

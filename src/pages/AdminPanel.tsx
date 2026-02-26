@@ -7,20 +7,20 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
-import { 
-  Users, 
-  Receipt, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
+import {
+  Users,
+  Receipt,
+  CheckCircle,
+  XCircle,
+  Clock,
   Coins,
   Eye,
   UserPlus,
@@ -78,7 +78,7 @@ interface Expense {
 export default function AdminPanel() {
   const { user, userRole, organizationId } = useAuth();
   const { toast } = useToast();
-  
+
   const [users, setUsers] = useState<User[]>([]);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -95,7 +95,7 @@ export default function AdminPanel() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<Array<{action: string; user_name: string; comment?: string; created_at: string}>>([]);
+  const [auditLogs, setAuditLogs] = useState<Array<{ action: string; user_name: string; comment?: string; created_at: string }>>([]);
   const [formFieldValues, setFormFieldValues] = useState<Array<{
     template_id: string;
     template_name: string;
@@ -108,7 +108,7 @@ export default function AdminPanel() {
     console.log("🔄 [AdminPanel] userRole:", userRole);
     console.log("🔄 [AdminPanel] organizationId:", organizationId);
     console.log("🔄 [AdminPanel] user:", user?.id);
-    
+
     if (userRole === "admin" && organizationId) {
       console.log("✅ [AdminPanel] Conditions met, calling fetchData");
       fetchData();
@@ -123,7 +123,7 @@ export default function AdminPanel() {
     console.log("  - expenses.length:", expenses.length);
     console.log("  - expenses:", expenses);
     console.log("  - filteredExpenses.length:", expenses.filter(e => {
-      const matchesSearch = searchTerm === "" || 
+      const matchesSearch = searchTerm === "" ||
         e.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         e.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
         e.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -208,7 +208,7 @@ export default function AdminPanel() {
   const fetchAttachments = async (expenseId: string) => {
     try {
       if (!organizationId) return;
-      
+
       const { data, error } = await supabase
         .from("attachments")
         .select("id, filename, content_type, file_url, created_at")
@@ -240,7 +240,7 @@ export default function AdminPanel() {
   const fetchAuditLogs = async (expenseId: string) => {
     try {
       if (!organizationId) return;
-      
+
       const { data: logsData, error: logsError } = await supabase
         .from("audit_logs")
         .select("user_id, action, comment, created_at")
@@ -258,7 +258,7 @@ export default function AdminPanel() {
             .select("name")
             .eq("user_id", log.user_id)
             .single();
-          
+
           return {
             ...log,
             user_name: profileData?.name || "Unknown User"
@@ -288,7 +288,7 @@ export default function AdminPanel() {
   const fetchFormFieldValues = async (expenseId: string) => {
     try {
       if (!organizationId) return;
-      
+
       const { data: fieldValuesData, error: fieldValuesError } = await supabase
         .from("expense_form_field_values")
         .select(`
@@ -315,7 +315,7 @@ export default function AdminPanel() {
 
   const fetchUsers = async () => {
     if (!organizationId) return;
-    
+
     // First get profiles (filtered by organization_id)
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
@@ -356,12 +356,12 @@ export default function AdminPanel() {
     console.log("🔍 [AdminPanel] fetchExpenses called");
     console.log("🔍 [AdminPanel] organizationId:", organizationId);
     console.log("🔍 [AdminPanel] user:", user?.id);
-    
+
     if (!organizationId) {
       console.error("❌ [AdminPanel] No organizationId, returning early");
       return;
     }
-    
+
     // Admin should see ALL expenses in their organization
     // First, let's check if there are ANY expenses at all (without org filter for debugging)
     console.log("🔍 [AdminPanel] Checking total expenses in database (no filter)...");
@@ -370,7 +370,7 @@ export default function AdminPanel() {
       .select("id, title, organization_id, user_id, status, created_at")
       .order("created_at", { ascending: false })
       .limit(10);
-    
+
     console.log("🔍 [AdminPanel] All expenses (no filter):", allExpensesNoFilter);
     console.log("🔍 [AdminPanel] All expenses count:", allExpensesNoFilter?.length || 0);
     if (allExpensesNoFilter && allExpensesNoFilter.length > 0) {
@@ -389,7 +389,7 @@ export default function AdminPanel() {
     console.log("  - Data:", allExpenses);
     console.log("  - Error:", expensesError);
     console.log("  - Count:", allExpenses?.length || 0);
-    
+
     // Also try without RLS to see if that's the issue
     console.log("🔍 [AdminPanel] Checking RLS - trying to fetch with service role...");
     if (expensesError) {
@@ -419,7 +419,7 @@ export default function AdminPanel() {
     // Get user profiles for the expenses
     const userIds = [...new Set(expensesData.map(e => e.user_id))];
     console.log("🔍 [AdminPanel] Fetching profiles for user IDs:", userIds);
-    
+
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
       .select("user_id, name, email, balance")
@@ -446,7 +446,7 @@ export default function AdminPanel() {
         .in("expense_id", expenseIds)
         .eq("action", "expense_resubmitted")
         .eq("organization_id", organizationId);
-      
+
       resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
     }
 
@@ -473,7 +473,7 @@ export default function AdminPanel() {
 
   const fetchEngineers = async () => {
     if (!organizationId) return;
-    
+
     // Get engineers from organization_memberships (filtered by organization_id)
     const { data: engineerMemberships, error: membershipsError } = await supabase
       .from("organization_memberships")
@@ -511,7 +511,7 @@ export default function AdminPanel() {
 
     try {
       await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
-      
+
       toast({
         title: "Expense Approved",
         description: "The expense has been approved successfully",
@@ -535,7 +535,7 @@ export default function AdminPanel() {
 
     try {
       await ExpenseService.assignToEngineer(selectedExpense.id, selectedEngineer, user.id);
-      
+
       toast({
         title: "Expense Assigned",
         description: "The expense has been assigned to a manager for review",
@@ -639,7 +639,7 @@ export default function AdminPanel() {
     try {
       // Use ExpenseService to approve (this handles balance deduction)
       await ExpenseService.approveExpense(selectedExpense.id, user.id, adminComment);
-      
+
       toast({
         title: "Expense Approved",
         description: `Expense approved and ${formatINR(selectedExpense.total_amount)} deducted from employee balance.`,
@@ -797,15 +797,15 @@ export default function AdminPanel() {
   // Filter and search functions
   const filteredExpenses = expenses.filter(expense => {
     console.log("🔍 [AdminPanel] Filtering expense:", expense.id, expense.title);
-    const matchesSearch = searchTerm === "" || 
+    const matchesSearch = searchTerm === "" ||
       expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ((expense as any).transaction_number || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = statusFilter === "all" || expense.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -972,548 +972,547 @@ export default function AdminPanel() {
 
       {/* Main Content */}
       <div className="space-y-4">
-          {/* Search and Filter Controls */}
-          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-            <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                  <Filter className="h-5 w-5" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl font-bold">Search & Filter Expenses</CardTitle>
-                  <CardDescription className="text-blue-100">Find and filter expenses by various criteria</CardDescription>
+        {/* Search and Filter Controls */}
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                <Filter className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold">Search & Filter Expenses</CardTitle>
+                <CardDescription className="text-blue-100">Find and filter expenses by various criteria</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+                <label className="text-xs sm:text-sm font-medium text-gray-700">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by title, destination, employee, transaction #..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm"
+                  />
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-2 sm:col-span-2 lg:col-span-1">
-                  <label className="text-xs sm:text-sm font-medium text-gray-700">Search</label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search by title, destination, employee, transaction #..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-xs sm:text-sm font-medium text-gray-700">Status Filter</label>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm">
-                      <SelectValue placeholder="All Statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="submitted">Submitted</SelectItem>
-                      <SelectItem value="verified">Verified</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-xs sm:text-sm font-medium text-gray-700">Actions</label>
-                  <Button 
-                    onClick={exportExpenses}
-                    className="w-full h-10 sm:h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    <span className="hidden sm:inline">Export CSV</span>
-                    <span className="sm:hidden">Export</span>
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
-                Showing {filteredExpenses.length} of {expenses.length} expenses
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-            <CardHeader className="p-4 sm:p-6">
-              <CardTitle className="text-lg sm:text-xl font-bold">All Expenses</CardTitle>
-              <CardDescription className="text-xs sm:text-sm">Review and manage expense submissions from all users</CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              {loading ? (
-                <div className="min-h-[400px] flex items-center justify-center">
-                  <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="ml-2 text-gray-600">Loading expenses...</span>
-                </div>
-              ) : (
-                <div className="overflow-x-auto -mx-4 sm:mx-0">
-                  <div className="inline-block min-w-full align-middle">
-                    <Table className="min-w-full">
+              <div className="space-y-2">
+                <label className="text-xs sm:text-sm font-medium text-gray-700">Status Filter</label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="submitted">Submitted</SelectItem>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs sm:text-sm font-medium text-gray-700">Actions</label>
+                <Button
+                  onClick={exportExpenses}
+                  className="w-full h-10 sm:h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Export CSV</span>
+                  <span className="sm:hidden">Export</span>
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
+              Showing {filteredExpenses.length} of {expenses.length} expenses
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl font-bold">All Expenses</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Review and manage expense submissions from all users</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6">
+            {loading ? (
+              <div className="min-h-[400px] flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="ml-2 text-gray-600">Loading expenses...</span>
+              </div>
+            ) : (
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <div className="inline-block min-w-full align-middle">
+                  <Table className="min-w-full">
                     <TableHeader>
                       <TableRow className="border-gray-200">
-                          <TableHead className="font-semibold min-w-[80px] whitespace-nowrap">Txn #</TableHead>
-                          <TableHead className="font-semibold min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
-                          <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Title</TableHead>
-                          <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Destination</TableHead>
-                          <TableHead className="font-semibold min-w-[90px] whitespace-nowrap">Amount</TableHead>
-                          <TableHead className="font-semibold min-w-[90px] hidden md:table-cell">Balance</TableHead>
-                          <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Status</TableHead>
-                          <TableHead className="font-semibold min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Created</TableHead>
-                          <TableHead className="text-right font-semibold min-w-[120px]">Status / Actions</TableHead>
+                        <TableHead className="font-semibold min-w-[80px] whitespace-nowrap">Txn #</TableHead>
+                        <TableHead className="font-semibold min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
+                        <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Title</TableHead>
+                        <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Destination</TableHead>
+                        <TableHead className="font-semibold min-w-[90px] whitespace-nowrap">Amount</TableHead>
+                        <TableHead className="font-semibold min-w-[90px] hidden md:table-cell">Balance</TableHead>
+                        <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Status</TableHead>
+                        <TableHead className="font-semibold min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Created</TableHead>
+                        <TableHead className="text-right font-semibold min-w-[120px]">Status / Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredExpenses.map((expense) => (
-                      <TableRow key={expense.id}>
-                        <TableCell className="text-xs sm:text-sm font-mono font-semibold text-blue-600 whitespace-nowrap">
-                          {(expense as any).transaction_number || '-'}
-                        </TableCell>
-                        <TableCell className="text-xs sm:text-sm">
-                          <div>
-                            <div className="font-medium truncate">{expense.user_name}</div>
-                            <div className="text-xs text-muted-foreground truncate sm:hidden">{expense.user_email}</div>
-                            <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
-                            <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
-                            <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                              {format(new Date(expense.created_at), "MMM d, yyyy")}
+                        <TableRow key={expense.id}>
+                          <TableCell className="text-xs sm:text-sm font-mono font-semibold text-blue-600 whitespace-nowrap">
+                            {(expense as any).transaction_number || '-'}
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            <div>
+                              <div className="font-medium truncate">{expense.user_name}</div>
+                              <div className="text-xs text-muted-foreground truncate sm:hidden">{expense.user_email}</div>
+                              <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
+                              <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
+                              <div className="text-xs text-muted-foreground sm:hidden mt-1">
+                                {format(new Date(expense.created_at), "MMM d, yyyy")}
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium text-xs sm:text-sm hidden sm:table-cell">
-                          <div className="line-clamp-2 break-words">{expense.title}</div>
-                        </TableCell>
-                        <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell">{expense.destination}</TableCell>
-                        <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
-                        <TableCell className="text-xs sm:text-sm hidden md:table-cell">
-                          <div className={`font-medium whitespace-nowrap ${
-                            expense.user_balance >= expense.total_amount 
-                              ? 'text-green-600' 
-                              : 'text-red-600'
-                          }`}>
-                            {formatINR(expense.user_balance)}
-                          </div>
-                          {expense.user_balance < expense.total_amount && (
-                            <div className="text-xs text-red-500 whitespace-nowrap">
-                              Insufficient balance
+                          </TableCell>
+                          <TableCell className="font-medium text-xs sm:text-sm hidden sm:table-cell">
+                            <div className="line-clamp-2 break-words">{expense.title}</div>
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell">{expense.destination}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
+                          <TableCell className="text-xs sm:text-sm hidden md:table-cell">
+                            <div className={`font-medium whitespace-nowrap ${expense.user_balance >= expense.total_amount
+                                ? 'text-green-600'
+                                : 'text-red-600'
+                              }`}>
+                              {formatINR(expense.user_balance)}
                             </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">
-                          {(expense as any).isResubmitted && expense.status === "submitted" ? (
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                              Resubmitted
-                            </Badge>
-                          ) : (
-                            <StatusBadge status={expense.status as any} />
-                          )}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
-                          {format(new Date(expense.created_at), "MMM d, yyyy")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
-                            <div className="sm:hidden mb-2">
-                              {(expense as any).isResubmitted && expense.status === "submitted" ? (
-                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                                  Resubmitted
-                                </Badge>
-                              ) : (
-                                <StatusBadge status={expense.status as any} />
-                              )}
-                            </div>
-                          <div className="flex justify-end">
-                              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                                <DialogTrigger asChild>
-                                  <Button
-                                  variant={expense.status === "approved" || expense.status === "rejected" ? "secondary" : "default"}
-                                    size="sm"
-                                  className={expense.status === "approved" || expense.status === "rejected"
-                                    ? "h-8 px-2 text-xs font-normal whitespace-nowrap"
-                                    : "h-8 px-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
-                                  }
-                                    onClick={async () => {
-                                      setSelectedExpense(expense);
-                                      setDialogOpen(true);
-                                      // Fetch attachments when opening dialog
-                                      if (expense.id) {
-                                        const { data: attData } = await supabase
-                                          .from("attachments")
-                                          .select("*")
-                                          .eq("expense_id", expense.id)
-                                          .order("created_at", { ascending: false });
-                                        setAttachments(attData || []);
+                            {expense.user_balance < expense.total_amount && (
+                              <div className="text-xs text-red-500 whitespace-nowrap">
+                                Insufficient balance
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                Resubmitted
+                              </Badge>
+                            ) : (
+                              <StatusBadge status={expense.status as any} />
+                            )}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
+                            {format(new Date(expense.created_at), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
+                              <div className="sm:hidden mb-2">
+                                {(expense as any).isResubmitted && expense.status === "submitted" ? (
+                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                    Resubmitted
+                                  </Badge>
+                                ) : (
+                                  <StatusBadge status={expense.status as any} />
+                                )}
+                              </div>
+                              <div className="flex justify-end">
+                                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                                  <DialogTrigger asChild>
+                                    <Button
+                                      variant={expense.status === "approved" || expense.status === "rejected" ? "secondary" : "default"}
+                                      size="sm"
+                                      className={expense.status === "approved" || expense.status === "rejected"
+                                        ? "h-8 px-2 text-xs font-normal whitespace-nowrap"
+                                        : "h-8 px-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
                                       }
-                                    }}
-                                  >
-                                  {expense.status === "approved" || expense.status === "rejected" ? "View" : "View/Approve"}
-                                  </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
-                              <DialogHeader>
-                                <DialogTitle>Review and manage this expense submission</DialogTitle>
-                              </DialogHeader>
-                              
-                              {selectedExpense && (
-                                <div className="space-y-4">
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                      <label className="text-sm font-medium">Employee</label>
-                                      <p className="text-sm">{selectedExpense.user_name}</p>
-                                      <p className="text-xs text-muted-foreground">{selectedExpense.user_email}</p>
-                                    </div>
-                                    <div>
-                                      <label className="text-sm font-medium">Amount</label>
-                                      <p className="text-lg font-semibold">{formatINR(selectedExpense.total_amount)}</p>
-                                    </div>
-                                  </div>
+                                      onClick={async () => {
+                                        setSelectedExpense(expense);
+                                        setDialogOpen(true);
+                                        // Fetch attachments when opening dialog
+                                        if (expense.id) {
+                                          const { data: attData } = await supabase
+                                            .from("attachments")
+                                            .select("*")
+                                            .eq("expense_id", expense.id)
+                                            .order("created_at", { ascending: false });
+                                          setAttachments(attData || []);
+                                        }
+                                      }}
+                                    >
+                                      {expense.status === "approved" || expense.status === "rejected" ? "View" : "View/Approve"}
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
+                                    <DialogHeader>
+                                      <DialogTitle>Review and manage this expense submission</DialogTitle>
+                                    </DialogHeader>
 
-                                  <div>
-                                    <label className="text-sm font-medium">Title</label>
-                                    <p className="text-sm">{selectedExpense.title}</p>
-                                  </div>
-
-                                  <div>
-                                    <label className="text-sm font-medium">Destination</label>
-                                    <p className="text-sm">{selectedExpense.destination}</p>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                      <label className="text-sm font-medium">Trip Start</label>
-                                      <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
-                                    </div>
-                                    <div>
-                                      <label className="text-sm font-medium">Trip End</label>
-                                      <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <label className="text-sm font-medium">Current Status</label>
-                                    <div className="mt-1">
-                                      <StatusBadge status={selectedExpense.status as any} />
-                                    </div>
-                                  </div>
-
-                                  {/* Form Field Values */}
-                                  {formFieldValues.length > 0 && (
-                                    <div className="space-y-3 pt-2 border-t">
-                                      <label className="text-sm font-medium">Additional Information</label>
-                                      {formFieldValues.map((field) => (
-                                        <div key={field.template_id} className="space-y-1">
-                                          <div className="text-xs text-muted-foreground">
-                                            {field.template_name}
+                                    {selectedExpense && (
+                                      <div className="space-y-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                          <div>
+                                            <label className="text-sm font-medium">Employee</label>
+                                            <p className="text-sm">{selectedExpense.user_name}</p>
+                                            <p className="text-xs text-muted-foreground">{selectedExpense.user_email}</p>
                                           </div>
-                                          <div className="text-sm">
-                                            {field.field_type === 'checkbox' ? (
-                                              <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
-                                                {field.field_value === 'true' ? 'Yes' : 'No'}
-                                              </Badge>
-                                            ) : (
-                                              <span className="font-medium">{field.field_value}</span>
-                                            )}
+                                          <div>
+                                            <label className="text-sm font-medium">Amount</label>
+                                            <p className="text-lg font-semibold">{formatINR(selectedExpense.total_amount)}</p>
                                           </div>
                                         </div>
-                                      ))}
-                                    </div>
-                                  )}
 
-                                  {/* For submitted expenses, show both Verify and Approve buttons */}
-                                  {selectedExpense.status === "submitted" ? (
-                                    <div>
-                                      <label className="text-sm font-medium">Admin Comment (Optional)</label>
-                                      <Textarea
-                                        value={adminComment}
-                                        onChange={(e) => setAdminComment(e.target.value)}
-                                        placeholder="Add a comment about this expense..."
-                                        className="mt-1"
-                                      />
-                                    </div>
-                                  ) : selectedExpense.status === "verified" ? (
-                                    <div>
-                                      <label className="text-sm font-medium">Admin Comment (Optional)</label>
-                                      <Textarea
-                                        value={adminComment}
-                                        onChange={(e) => setAdminComment(e.target.value)}
-                                        placeholder="Add a comment about this expense..."
-                                        className="mt-1"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <div>
-                                        <label className="text-sm font-medium">Update Status</label>
-                                        <Select 
-                                          value={selectedStatus} 
-                                          onValueChange={setSelectedStatus}
-                                          disabled={selectedExpense.status === 'approved'}
-                                        >
-                                          <SelectTrigger className="mt-1">
-                                            <SelectValue placeholder="Select new status" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="submitted">Submitted</SelectItem>
-                                            <SelectItem value="verified">Verified</SelectItem>
-                                            <SelectItem value="approved">Approved</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
+                                        <div>
+                                          <label className="text-sm font-medium">Title</label>
+                                          <p className="text-sm">{selectedExpense.title}</p>
+                                        </div>
 
-                                      <div>
-                                        <label className="text-sm font-medium">Admin Comment</label>
-                                        <Textarea
-                                          value={adminComment}
-                                          onChange={(e) => setAdminComment(e.target.value)}
-                                          placeholder="Add a comment about this expense..."
-                                          className="mt-1"
-                                        />
-                                      </div>
-                                    </>
-                                  )}
+                                        <div>
+                                          <label className="text-sm font-medium">Destination</label>
+                                          <p className="text-sm">{selectedExpense.destination}</p>
+                                        </div>
 
-                                  {attachments.length > 0 && (
-                                    <div className="space-y-2">
-                                      <label className="text-sm font-medium">Receipts & Attachments</label>
-                                      <div className="space-y-2">
-                                        {attachments.map((a) => (
-                                          <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                            <div className="flex items-center gap-3">
-                                              {a.content_type?.startsWith("image/") ? (
-                                                <img 
-                                                  src={a.file_url} 
-                                                  alt={a.filename} 
-                                                  className="h-14 w-14 object-cover rounded"
-                                                  onError={(e) => {
-                                                    console.error("❌ [AdminPanel] Image failed to load:", a.file_url);
-                                                    console.error("❌ [AdminPanel] Error event:", e);
-                                                  }}
-                                                  onLoad={() => {
-                                                    console.log("✅ [AdminPanel] Image loaded successfully:", a.file_url);
-                                                  }}
-                                                />
-                                              ) : (
-                                                <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
-                                              )}
-                                              <div>
-                                                <p className="font-medium text-sm">{a.filename}</p>
-                                                <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
-                                              </div>
-                                            </div>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => {
-                                                console.log("🖼️ [AdminPanel] Setting image preview URL:", a.file_url);
-                                                setImagePreviewUrl(a.file_url);
-                                                setPreviewContentType(a.content_type);
-                                                setImagePreviewOpen(true);
-                                              }}
-                                            >
-                                              View
-                                            </Button>
+                                        <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                            <label className="text-sm font-medium">Trip Start</label>
+                                            <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
                                           </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
+                                          <div>
+                                            <label className="text-sm font-medium">Trip End</label>
+                                            <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
+                                          </div>
+                                        </div>
 
-                                  {/* Expense Timeline */}
-                                  {auditLogs.length > 0 && (
-                                    <div className="space-y-2 border-t pt-4 mt-4">
-                                      <label className="text-sm font-medium">Expense Timeline</label>
-                                      <div className="space-y-3 mt-2">
-                                        {auditLogs.map((log, index) => {
-                                          // Determine colors based on action type
-                                          const getStatusColors = (action: string) => {
-                                            const actionLower = action.toLowerCase();
-                                            if (actionLower.includes('approved')) {
-                                              return {
-                                                dot: 'bg-green-500',
-                                                line: 'bg-green-200',
-                                                text: 'text-green-700',
-                                                bg: 'bg-green-50',
-                                                border: 'border-green-200'
-                                              };
-                                            } else if (actionLower.includes('verified')) {
-                                              return {
-                                                dot: 'bg-yellow-500',
-                                                line: 'bg-yellow-200',
-                                                text: 'text-yellow-700',
-                                                bg: 'bg-yellow-50',
-                                                border: 'border-yellow-200'
-                                              };
-                                            } else if (actionLower.includes('rejected')) {
-                                              return {
-                                                dot: 'bg-red-500',
-                                                line: 'bg-red-200',
-                                                text: 'text-red-700',
-                                                bg: 'bg-red-50',
-                                                border: 'border-red-200'
-                                              };
-                                            } else if (actionLower.includes('resubmitted')) {
-                                              return {
-                                                dot: 'bg-blue-500',
-                                                line: 'bg-blue-200',
-                                                text: 'text-blue-700',
-                                                bg: 'bg-blue-50',
-                                                border: 'border-blue-200'
-                                              };
-                                            } else if (actionLower.includes('submitted')) {
-                                              return {
-                                                dot: 'bg-indigo-500',
-                                                line: 'bg-indigo-200',
-                                                text: 'text-indigo-700',
-                                                bg: 'bg-indigo-50',
-                                                border: 'border-indigo-200'
-                                              };
-                                            } else if (actionLower.includes('created')) {
-                                              return {
-                                                dot: 'bg-gray-500',
-                                                line: 'bg-gray-200',
-                                                text: 'text-gray-700',
-                                                bg: 'bg-gray-50',
-                                                border: 'border-gray-200'
-                                              };
-                                            } else {
-                                              return {
-                                                dot: 'bg-purple-500',
-                                                line: 'bg-purple-200',
-                                                text: 'text-purple-700',
-                                                bg: 'bg-purple-50',
-                                                border: 'border-purple-200'
-                                              };
-                                            }
-                                          };
+                                        <div>
+                                          <label className="text-sm font-medium">Current Status</label>
+                                          <div className="mt-1">
+                                            <StatusBadge status={selectedExpense.status as any} />
+                                          </div>
+                                        </div>
 
-                                          const colors = getStatusColors(log.action);
-                                          const displayText = log.action === "expense_resubmitted" 
-                                            ? "Expense Resubmitted" 
-                                            : log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
-                                          
-                                          return (
-                                            <div key={index} className={`flex gap-3 p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
-                                              <div className="flex flex-col items-center">
-                                                <div className={`w-3 h-3 ${colors.dot} rounded-full ring-2 ring-white shadow-sm`}></div>
-                                                {index < auditLogs.length - 1 && (
-                                                  <div className={`w-0.5 h-10 ${colors.line} mt-2`}></div>
-                                                )}
+                                        {/* Form Field Values */}
+                                        {formFieldValues.length > 0 && (
+                                          <div className="space-y-3 pt-2 border-t">
+                                            <label className="text-sm font-medium">Additional Information</label>
+                                            {formFieldValues.map((field) => (
+                                              <div key={field.template_id} className="space-y-1">
+                                                <div className="text-xs text-muted-foreground">
+                                                  {field.template_name}
+                                                </div>
+                                                <div className="text-sm">
+                                                  {field.field_type === 'checkbox' ? (
+                                                    <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
+                                                      {field.field_value === 'true' ? 'Yes' : 'No'}
+                                                    </Badge>
+                                                  ) : (
+                                                    <span className="font-medium">{field.field_value}</span>
+                                                  )}
+                                                </div>
                                               </div>
-                                              <div className="flex-1 space-y-1">
-                                                <p className={`text-sm font-semibold ${colors.text}`}>
-                                                  {displayText}
-                                                </p>
-                                                {log.comment && (
-                                                  <p className={`text-xs ${colors.text} opacity-80`}>{log.comment}</p>
-                                                )}
-                                                <p className="text-xs text-muted-foreground">
-                                                  by <span className="font-medium">{log.user_name}</span> • {format(new Date(log.created_at), "MMM d, h:mm a")}
-                                                </p>
-                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+
+                                        {/* For submitted expenses, show both Verify and Approve buttons */}
+                                        {selectedExpense.status === "submitted" ? (
+                                          <div>
+                                            <label className="text-sm font-medium">Admin Comment (Optional)</label>
+                                            <Textarea
+                                              value={adminComment}
+                                              onChange={(e) => setAdminComment(e.target.value)}
+                                              placeholder="Add a comment about this expense..."
+                                              className="mt-1"
+                                            />
+                                          </div>
+                                        ) : selectedExpense.status === "verified" ? (
+                                          <div>
+                                            <label className="text-sm font-medium">Admin Comment (Optional)</label>
+                                            <Textarea
+                                              value={adminComment}
+                                              onChange={(e) => setAdminComment(e.target.value)}
+                                              placeholder="Add a comment about this expense..."
+                                              className="mt-1"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <div>
+                                              <label className="text-sm font-medium">Update Status</label>
+                                              <Select
+                                                value={selectedStatus}
+                                                onValueChange={setSelectedStatus}
+                                                disabled={selectedExpense.status === 'approved'}
+                                              >
+                                                <SelectTrigger className="mt-1">
+                                                  <SelectValue placeholder="Select new status" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="submitted">Submitted</SelectItem>
+                                                  <SelectItem value="verified">Verified</SelectItem>
+                                                  <SelectItem value="approved">Approved</SelectItem>
+                                                </SelectContent>
+                                              </Select>
                                             </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
 
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => {
-                                  setDialogOpen(false);
-                                  setSelectedExpense(null);
-                                  setAdminComment("");
-                                  setSelectedStatus("");
-                                }}>
-                                  Cancel
-                                </Button>
-                                {selectedExpense?.status === "rejected" ? (
-                                  // No action buttons for rejected expenses - they are final
-                                  null
-                                ) : selectedExpense?.status === "submitted" ? (
-                                  <>
-                                    <Button 
-                                      variant="destructive" 
-                                      onClick={rejectExpense}
-                                      disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
-                                    >
-                                      Reject
-                                    </Button>
-                                    <Button variant="outline" onClick={verifyExpense}>
-                                      Verify
-                                    </Button>
-                                    <Button onClick={approveExpenseDirect}>
-                                      Approve
-                                    </Button>
-                                  </>
-                                ) : selectedExpense?.status === "verified" ? (
-                                  <>
-                                    <Button 
-                                      variant="destructive" 
-                                      onClick={rejectExpense}
-                                      disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
-                                    >
-                                      Reject
-                                    </Button>
-                                    <Button onClick={approveExpenseDirect}>
-                                      Approve
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <Button 
-                                    onClick={updateExpenseStatus} 
-                                    disabled={!selectedStatus || selectedExpense?.status === 'approved'}
-                                  >
-                                    Update Status
-                                  </Button>
-                                )}
-                              </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
+                                            <div>
+                                              <label className="text-sm font-medium">Admin Comment</label>
+                                              <Textarea
+                                                value={adminComment}
+                                                onChange={(e) => setAdminComment(e.target.value)}
+                                                placeholder="Add a comment about this expense..."
+                                                className="mt-1"
+                                              />
+                                            </div>
+                                          </>
+                                        )}
+
+                                        {attachments.length > 0 && (
+                                          <div className="space-y-2">
+                                            <label className="text-sm font-medium">Receipts & Attachments</label>
+                                            <div className="space-y-2">
+                                              {attachments.map((a) => (
+                                                <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                                  <div className="flex items-center gap-3">
+                                                    {a.content_type?.startsWith("image/") ? (
+                                                      <img
+                                                        src={a.file_url}
+                                                        alt={a.filename}
+                                                        className="h-14 w-14 object-cover rounded"
+                                                        onError={(e) => {
+                                                          console.error("❌ [AdminPanel] Image failed to load:", a.file_url);
+                                                          console.error("❌ [AdminPanel] Error event:", e);
+                                                        }}
+                                                        onLoad={() => {
+                                                          console.log("✅ [AdminPanel] Image loaded successfully:", a.file_url);
+                                                        }}
+                                                      />
+                                                    ) : (
+                                                      <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
+                                                    )}
+                                                    <div>
+                                                      <p className="font-medium text-sm">{a.filename}</p>
+                                                      <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
+                                                    </div>
+                                                  </div>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                      console.log("🖼️ [AdminPanel] Setting image preview URL:", a.file_url);
+                                                      setImagePreviewUrl(a.file_url);
+                                                      setPreviewContentType(a.content_type);
+                                                      setImagePreviewOpen(true);
+                                                    }}
+                                                  >
+                                                    View
+                                                  </Button>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Expense Timeline */}
+                                        {auditLogs.length > 0 && (
+                                          <div className="space-y-2 border-t pt-4 mt-4">
+                                            <label className="text-sm font-medium">Expense Timeline</label>
+                                            <div className="space-y-3 mt-2">
+                                              {auditLogs.map((log, index) => {
+                                                // Determine colors based on action type
+                                                const getStatusColors = (action: string) => {
+                                                  const actionLower = action.toLowerCase();
+                                                  if (actionLower.includes('approved')) {
+                                                    return {
+                                                      dot: 'bg-green-500',
+                                                      line: 'bg-green-200',
+                                                      text: 'text-green-700',
+                                                      bg: 'bg-green-50',
+                                                      border: 'border-green-200'
+                                                    };
+                                                  } else if (actionLower.includes('verified')) {
+                                                    return {
+                                                      dot: 'bg-yellow-500',
+                                                      line: 'bg-yellow-200',
+                                                      text: 'text-yellow-700',
+                                                      bg: 'bg-yellow-50',
+                                                      border: 'border-yellow-200'
+                                                    };
+                                                  } else if (actionLower.includes('rejected')) {
+                                                    return {
+                                                      dot: 'bg-red-500',
+                                                      line: 'bg-red-200',
+                                                      text: 'text-red-700',
+                                                      bg: 'bg-red-50',
+                                                      border: 'border-red-200'
+                                                    };
+                                                  } else if (actionLower.includes('resubmitted')) {
+                                                    return {
+                                                      dot: 'bg-blue-500',
+                                                      line: 'bg-blue-200',
+                                                      text: 'text-blue-700',
+                                                      bg: 'bg-blue-50',
+                                                      border: 'border-blue-200'
+                                                    };
+                                                  } else if (actionLower.includes('submitted')) {
+                                                    return {
+                                                      dot: 'bg-indigo-500',
+                                                      line: 'bg-indigo-200',
+                                                      text: 'text-indigo-700',
+                                                      bg: 'bg-indigo-50',
+                                                      border: 'border-indigo-200'
+                                                    };
+                                                  } else if (actionLower.includes('created')) {
+                                                    return {
+                                                      dot: 'bg-gray-500',
+                                                      line: 'bg-gray-200',
+                                                      text: 'text-gray-700',
+                                                      bg: 'bg-gray-50',
+                                                      border: 'border-gray-200'
+                                                    };
+                                                  } else {
+                                                    return {
+                                                      dot: 'bg-purple-500',
+                                                      line: 'bg-purple-200',
+                                                      text: 'text-purple-700',
+                                                      bg: 'bg-purple-50',
+                                                      border: 'border-purple-200'
+                                                    };
+                                                  }
+                                                };
+
+                                                const colors = getStatusColors(log.action);
+                                                const displayText = log.action === "expense_resubmitted"
+                                                  ? "Expense Resubmitted"
+                                                  : log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+
+                                                return (
+                                                  <div key={index} className={`flex gap-3 p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
+                                                    <div className="flex flex-col items-center">
+                                                      <div className={`w-3 h-3 ${colors.dot} rounded-full ring-2 ring-white shadow-sm`}></div>
+                                                      {index < auditLogs.length - 1 && (
+                                                        <div className={`w-0.5 h-10 ${colors.line} mt-2`}></div>
+                                                      )}
+                                                    </div>
+                                                    <div className="flex-1 space-y-1">
+                                                      <p className={`text-sm font-semibold ${colors.text}`}>
+                                                        {displayText}
+                                                      </p>
+                                                      {log.comment && (
+                                                        <p className={`text-xs ${colors.text} opacity-80`}>{log.comment}</p>
+                                                      )}
+                                                      <p className="text-xs text-muted-foreground">
+                                                        by <span className="font-medium">{log.user_name}</span> • {format(new Date(log.created_at), "MMM d, h:mm a")}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    <DialogFooter>
+                                      <Button variant="outline" onClick={() => {
+                                        setDialogOpen(false);
+                                        setSelectedExpense(null);
+                                        setAdminComment("");
+                                        setSelectedStatus("");
+                                      }}>
+                                        Cancel
+                                      </Button>
+                                      {selectedExpense?.status === "rejected" ? (
+                                        // No action buttons for rejected expenses - they are final
+                                        null
+                                      ) : selectedExpense?.status === "submitted" ? (
+                                        <>
+                                          <Button
+                                            variant="destructive"
+                                            onClick={rejectExpense}
+                                            disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
+                                          >
+                                            Reject
+                                          </Button>
+                                          <Button variant="outline" onClick={verifyExpense}>
+                                            Verify
+                                          </Button>
+                                          <Button onClick={approveExpenseDirect}>
+                                            Approve
+                                          </Button>
+                                        </>
+                                      ) : selectedExpense?.status === "verified" ? (
+                                        <>
+                                          <Button
+                                            variant="destructive"
+                                            onClick={rejectExpense}
+                                            disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
+                                          >
+                                            Reject
+                                          </Button>
+                                          <Button onClick={approveExpenseDirect}>
+                                            Approve
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <Button
+                                          onClick={updateExpenseStatus}
+                                          disabled={!selectedStatus || selectedExpense?.status === 'approved'}
+                                        >
+                                          Update Status
+                                        </Button>
+                                      )}
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          {/* Image/PDF Preview Dialog - outside the table */}
-          <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              {imagePreviewUrl && (
-                previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
-                  <div className="w-full" style={{ height: '80vh' }}>
-                    <iframe 
-                      src={imagePreviewUrl} 
-                      className="w-full h-full rounded border" 
-                      title="PDF Preview"
-                      style={{ minHeight: '600px' }}
-                    />
-                  </div>
-                ) : (
-                  <img 
-                    src={imagePreviewUrl} 
-                    alt="Attachment preview" 
-                    className="w-full h-auto rounded"
-                    onError={(e) => {
-                      console.error("❌ [AdminPanel] Preview image failed to load:", imagePreviewUrl);
-                      console.error("❌ [AdminPanel] Error event:", e);
-                    }}
-                    onLoad={() => {
-                      console.log("✅ [AdminPanel] Preview image loaded successfully:", imagePreviewUrl);
-                    }}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        {/* Image/PDF Preview Dialog - outside the table */}
+        <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            {imagePreviewUrl && (
+              previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
+                <div className="w-full" style={{ height: '80vh' }}>
+                  <iframe
+                    src={imagePreviewUrl}
+                    className="w-full h-full rounded border"
+                    title="PDF Preview"
+                    style={{ minHeight: '600px' }}
                   />
-                )
-              )}
-            </DialogContent>
-          </Dialog>
                 </div>
+              ) : (
+                <img
+                  src={imagePreviewUrl}
+                  alt="Attachment preview"
+                  className="w-full h-auto rounded"
+                  onError={(e) => {
+                    console.error("❌ [AdminPanel] Preview image failed to load:", imagePreviewUrl);
+                    console.error("❌ [AdminPanel] Error event:", e);
+                  }}
+                  onLoad={() => {
+                    console.log("✅ [AdminPanel] Preview image loaded successfully:", imagePreviewUrl);
+                  }}
+                />
+              )
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }
