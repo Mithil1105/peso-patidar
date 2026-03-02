@@ -9,13 +9,14 @@ import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { notifyBalanceAdded } from "@/services/NotificationService";
-import { Search, Users, History, Download, RefreshCw } from "lucide-react";
+import { Search, Users, History, Download, RefreshCw, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 interface ProfileRow {
   user_id: string;
@@ -47,6 +48,22 @@ export default function Balances() {
   const [transferSearchTerm, setTransferSearchTerm] = useState("");
   const [transferFilterType, setTransferFilterType] = useState<string>("all");
   const [transferFilterRole, setTransferFilterRole] = useState<string>("all");
+
+  // Edit transfer date (backdate) - admin only
+  const [editTransferModalOpen, setEditTransferModalOpen] = useState(false);
+  const [editTransferRow, setEditTransferRow] = useState<{
+    id: string;
+    transferrer_name: string;
+    recipient_name: string;
+    amount: number;
+    transferred_at: string;
+    transferred_at_original?: string | null;
+    transferred_at_edited_at?: string | null;
+    edited_by_name?: string | null;
+    date_edited?: boolean;
+  } | null>(null);
+  const [editTransferNewDate, setEditTransferNewDate] = useState<string>("");
+  const [editTransferSaving, setEditTransferSaving] = useState(false);
 
   const canEdit = userRole === "admin" || userRole === "cashier";
 
@@ -848,6 +865,7 @@ export default function Balances() {
       typedTransfers.forEach((t) => {
         userIds.add(t.transferrer_id);
         userIds.add(t.recipient_id);
+        if (t.transferred_at_edited_by) userIds.add(t.transferred_at_edited_by);
       });
 
       if (userIds.size > 0) {
@@ -870,6 +888,11 @@ export default function Balances() {
           transfer_type: t.transfer_type,
           transferred_at: t.transferred_at,
           notes: t.notes || undefined,
+          transferred_at_original: t.transferred_at_original ?? undefined,
+          transferred_at_edited_at: t.transferred_at_edited_at ?? undefined,
+          transferred_at_edited_by: t.transferred_at_edited_by ?? undefined,
+          date_edited: !!t.date_edited,
+          edited_by_name: t.transferred_at_edited_by ? (nameMap.get(t.transferred_at_edited_by) || "Unknown") : undefined,
         }));
 
         setTransfers(transfersWithNames);
@@ -899,9 +922,69 @@ export default function Balances() {
     return labels[type] || type;
   };
 
+  const openEditTransferDateModal = (transfer: (typeof transfers)[0]) => {
+    setEditTransferRow(transfer);
+    setEditTransferNewDate(format(new Date(transfer.transferred_at), "yyyy-MM-dd'T'HH:mm"));
+    setEditTransferModalOpen(true);
+  };
+
+  const saveEditTransferDate = async () => {
+    if (!editTransferRow || !user?.id || !editTransferNewDate) return;
+    const newDate = new Date(editTransferNewDate);
+    if (isNaN(newDate.getTime())) {
+      toast({ variant: "destructive", title: "Invalid date", description: "Please select a valid date and time." });
+      return;
+    }
+    if (newDate > new Date()) {
+      toast({ variant: "destructive", title: "Invalid date", description: "Transfer date cannot be in the future." });
+      return;
+    }
+    try {
+      setEditTransferSaving(true);
+      const originalAt = editTransferRow.transferred_at_original || editTransferRow.transferred_at;
+      const originalDate = new Date(originalAt);
+      const { data: adminProfile } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("user_id", user.id)
+        .single();
+      const editorName = adminProfile?.name || "Admin";
+      const editTime = format(new Date(), "MMM d, yyyy h:mm a");
+      const auditNotes = `Date edited from ${format(originalDate, "MMM d, yyyy h:mm a")} to ${format(newDate, "MMM d, yyyy h:mm a")} by ${editorName} on ${editTime}.`;
+
+      const updatePayload: Record<string, unknown> = {
+        transferred_at: newDate.toISOString(),
+        transferred_at_edited_at: new Date().toISOString(),
+        transferred_at_edited_by: user.id,
+        date_edited: true,
+        notes: auditNotes,
+      };
+      if (!editTransferRow.transferred_at_original) {
+        updatePayload.transferred_at_original = new Date(editTransferRow.transferred_at).toISOString();
+      }
+
+      const { error } = await supabase
+        .from("cash_transfer_history")
+        .update(updatePayload)
+        .eq("id", editTransferRow.id);
+
+      if (error) throw error;
+      toast({ title: "Date updated", description: "Transfer date has been updated. Original date is stored for audit." });
+      setEditTransferModalOpen(false);
+      setEditTransferRow(null);
+      setEditTransferNewDate("");
+      fetchTransferHistory();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to update transfer date.";
+      toast({ variant: "destructive", title: "Error", description: message });
+    } finally {
+      setEditTransferSaving(false);
+    }
+  };
+
   const exportTransferHistoryToCSV = () => {
     const csvRows = [
-      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Notes"].join(","),
+      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Notes", "Original Date", "Edited Date", "Edited By"].join(","),
       ...filteredTransfers.map((t) => {
         const row = [
           format(new Date(t.transferred_at), "yyyy-MM-dd HH:mm:ss"),
@@ -912,6 +995,9 @@ export default function Balances() {
           t.amount,
           getTransferTypeLabel(t.transfer_type),
           t.notes ? `"${t.notes.replace(/"/g, '""')}"` : "",
+          t.date_edited && t.transferred_at_original ? format(new Date(t.transferred_at_original), "yyyy-MM-dd HH:mm:ss") : "",
+          t.date_edited && t.transferred_at_edited_at ? format(new Date(t.transferred_at_edited_at), "yyyy-MM-dd HH:mm:ss") : "",
+          t.date_edited && t.edited_by_name ? `"${String(t.edited_by_name).replace(/"/g, '""')}"` : "",
         ];
         return row.join(",");
       }),
@@ -1492,53 +1578,132 @@ export default function Balances() {
                         <TableHead className="whitespace-nowrap">Amount</TableHead>
                         <TableHead className="whitespace-nowrap">Type</TableHead>
                         <TableHead className="whitespace-nowrap">Notes</TableHead>
+                        {userRole === "admin" && <TableHead className="whitespace-nowrap text-right">Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredTransfers.map((transfer) => (
-                        <TableRow key={transfer.id}>
-                          <TableCell className="whitespace-nowrap">
-                            {format(new Date(transfer.transferred_at), "MMM d, yyyy h:mm a")}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium truncate max-w-[150px]">
-                                {transfer.transferrer_name || "Unknown"}
+                      <TooltipProvider>
+                        {filteredTransfers.map((transfer) => (
+                          <TableRow key={transfer.id}>
+                            <TableCell className="whitespace-nowrap">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span>{format(new Date(transfer.transferred_at), "MMM d, yyyy h:mm a")}</span>
+                                {transfer.date_edited && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="secondary" className="text-xs cursor-help">
+                                        Edited
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p className="font-medium">Date was backdated</p>
+                                      {transfer.transferred_at_original && (
+                                        <p className="text-xs mt-1">Original: {format(new Date(transfer.transferred_at_original), "MMM d, yyyy h:mm a")}</p>
+                                      )}
+                                      {transfer.edited_by_name && transfer.transferred_at_edited_at && (
+                                        <p className="text-xs mt-0.5">By {transfer.edited_by_name} on {format(new Date(transfer.transferred_at_edited_at), "MMM d, yyyy h:mm a")}</p>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                               </div>
-                              <Badge variant="outline" className="text-xs mt-1">
-                                {transfer.transferrer_role}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium truncate max-w-[150px]">
-                                {transfer.recipient_name || "Unknown"}
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium truncate max-w-[150px]">
+                                  {transfer.transferrer_name || "Unknown"}
+                                </div>
+                                <Badge variant="outline" className="text-xs mt-1">
+                                  {transfer.transferrer_role}
+                                </Badge>
                               </div>
-                              <Badge variant="outline" className="text-xs mt-1">
-                                {transfer.recipient_role}
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium truncate max-w-[150px]">
+                                  {transfer.recipient_name || "Unknown"}
+                                </div>
+                                <Badge variant="outline" className="text-xs mt-1">
+                                  {transfer.recipient_role}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-semibold">
+                              {formatINR(transfer.amount)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">
+                                {getTransferTypeLabel(transfer.transfer_type)}
                               </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            {formatINR(transfer.amount)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">
-                              {getTransferTypeLabel(transfer.transfer_type)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-[200px] truncate">
-                            {transfer.notes || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate">
+                              {transfer.notes || "-"}
+                            </TableCell>
+                            {userRole === "admin" && (
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1"
+                                  onClick={() => openEditTransferDateModal(transfer)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Edit date
+                                </Button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TooltipProvider>
                     </TableBody>
                   </Table>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {/* Edit transfer date (backdate) modal - admin only */}
+          <Dialog open={editTransferModalOpen} onOpenChange={(open) => { if (!open) { setEditTransferModalOpen(false); setEditTransferRow(null); setEditTransferNewDate(""); } }}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Edit transfer date</DialogTitle>
+                <DialogDescription>
+                  Change the date shown for this transfer. Original date is stored for audit. New date cannot be in the future.
+                </DialogDescription>
+              </DialogHeader>
+              {editTransferRow && (
+                <div className="space-y-4 py-2">
+                  <div className="rounded-lg border p-3 text-sm">
+                    <p><span className="text-muted-foreground">From:</span> {editTransferRow.transferrer_name}</p>
+                    <p><span className="text-muted-foreground">To:</span> {editTransferRow.recipient_name}</p>
+                    <p><span className="text-muted-foreground">Amount:</span> {formatINR(editTransferRow.amount)}</p>
+                    <p><span className="text-muted-foreground">Current date:</span> {format(new Date(editTransferRow.transferred_at), "MMM d, yyyy h:mm a")}</p>
+                    {editTransferRow.date_edited && editTransferRow.transferred_at_original && (
+                      <p className="text-amber-600 text-xs mt-1">Original: {format(new Date(editTransferRow.transferred_at_original), "MMM d, yyyy h:mm a")}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-transfer-date">New date & time</Label>
+                    <Input
+                      id="edit-transfer-date"
+                      type="datetime-local"
+                      value={editTransferNewDate}
+                      onChange={(e) => setEditTransferNewDate(e.target.value)}
+                      max={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+                    />
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setEditTransferModalOpen(false); setEditTransferRow(null); setEditTransferNewDate(""); }}>
+                  Cancel
+                </Button>
+                <Button onClick={saveEditTransferDate} disabled={editTransferSaving || !editTransferNewDate}>
+                  {editTransferSaving ? "Saving..." : "Save date"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>
