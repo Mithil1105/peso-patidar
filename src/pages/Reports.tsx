@@ -8,10 +8,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Eye, FileText } from "lucide-react";
+import { Eye, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface ExpenseWithUser {
   id: string;
@@ -34,6 +38,14 @@ interface UserRow {
   email: string;
   balance: number;
   role: string;
+}
+
+interface AllocationRecord {
+  id: string;
+  transferred_at: string;
+  amount: number;
+  transfer_type: string;
+  transferrer_role: string;
 }
 
 export default function Reports() {
@@ -59,6 +71,9 @@ export default function Reports() {
   const [verificationExpenses, setVerificationExpenses] = useState<ExpenseWithUser[]>([]);
   const [approvalExpenses, setApprovalExpenses] = useState<ExpenseWithUser[]>([]);
   const [detailedExpenses, setDetailedExpenses] = useState<ExpenseWithUser[]>([]);
+  const [detailedAllocations, setDetailedAllocations] = useState<AllocationRecord[]>([]);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportTab, setExportTab] = useState<"verification" | "approval" | "detailed">("verification");
 
   useEffect(() => {
     if (userRole === "admin") {
@@ -75,6 +90,7 @@ export default function Reports() {
         void fetchApprovalExpenses();
       } else if (activeTab === "detailed") {
         void fetchDetailedExpenses();
+        void fetchDetailedAllocations();
       }
     }
   }, [userRole, activeTab, selectedEmployee, selectedCategory, engineerStatus, hoStatus, selectedYear, selectedMonth, selectedWeek, lpoNumber]);
@@ -289,6 +305,328 @@ export default function Reports() {
     }
   };
 
+  const fetchDetailedAllocations = async () => {
+    if (selectedEmployee === "all") {
+      setDetailedAllocations([]);
+      return;
+    }
+    try {
+      let query = supabase
+        .from("cash_transfer_history")
+        .select("id, transferred_at, amount, transfer_type, transferrer_role")
+        .eq("recipient_id", selectedEmployee)
+        .order("transferred_at", { ascending: true });
+
+      if (selectedYear) {
+        const yearStart = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
+        const yearEnd = new Date(`${selectedYear}-12-31T23:59:59.999Z`);
+        query = query
+          .gte("transferred_at", yearStart.toISOString())
+          .lte("transferred_at", yearEnd.toISOString());
+      }
+      if (selectedMonth !== "all" && selectedYear) {
+        const monthNum = parseInt(selectedMonth, 10);
+        const monthStart = new Date(parseInt(selectedYear, 10), monthNum - 1, 1);
+        const monthEnd = new Date(parseInt(selectedYear, 10), monthNum, 0, 23, 59, 59, 999);
+        query = query
+          .gte("transferred_at", monthStart.toISOString())
+          .lte("transferred_at", monthEnd.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        if (error.code === "PGRST205" || error.message?.includes("does not exist") || error.message?.includes("relation")) {
+          setDetailedAllocations([]);
+          return;
+        }
+        throw error;
+      }
+      setDetailedAllocations((data || []).map((r: any) => ({
+        id: r.id,
+        transferred_at: r.transferred_at,
+        amount: Number(r.amount ?? 0),
+        transfer_type: r.transfer_type ?? "",
+        transferrer_role: r.transferrer_role ?? "",
+      })));
+    } catch (e) {
+      console.error("Failed to fetch allocation history", e);
+      setDetailedAllocations([]);
+    }
+  };
+
+  const escapeCsv = (val: string | number): string => {
+    const s = String(val ?? "");
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const downloadBlob = (filename: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  type ExportFormat = "xlsx" | "csv" | "json" | "pdf";
+
+  const exportVerificationList = (format: ExportFormat) => {
+    const baseName = `claim-verification-list-${new Date().toISOString().slice(0, 10)}`;
+    const headers = ["Employee", "Expense Type", "LPO Number", "Bill Date (DD-MM-YYYY)", "Bill Amount", "Manager Approval", "HO Approval", "Submitted On (DD-MM-YYYY)"];
+    const rows = verificationExpenses.map((exp) => ({
+      Employee: exp.user_name,
+      "Expense Type": exp.category || "-",
+      "LPO Number": "-",
+      "Bill Date (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_start),
+      "Bill Amount": formatINR(Number(exp.total_amount || 0)),
+      "Manager Approval": "Verified",
+      "HO Approval": "Pending",
+      "Submitted On (DD-MM-YYYY)": formatDateDDMMYYYY(exp.created_at),
+    }));
+
+    if (format === "csv") {
+      const csv = [headers.map(escapeCsv).join(","), ...rows.map((r) => headers.map((h) => escapeCsv((r as Record<string, string>)[h])).join(","))].join("\n");
+      downloadBlob(`${baseName}.csv`, new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
+    } else if (format === "json") {
+      downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }));
+    } else if (format === "xlsx") {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Verification List");
+      XLSX.writeFile(wb, `${baseName}.xlsx`);
+    } else {
+      const doc = new jsPDF({ orientation: "landscape" });
+      doc.setFillColor(30, 58, 95);
+      doc.rect(0, 0, doc.internal.pageSize.getWidth(), 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("Claim Verification List", 14, 16);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`, 14, 24);
+      doc.setTextColor(0, 0, 0);
+      autoTable(doc, {
+        startY: 32,
+        head: [headers],
+        body: rows.map((r) => headers.map((h) => (r as Record<string, string>)[h])),
+        theme: "striped",
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 9 },
+        bodyStyles: { fontSize: 8, textColor: [33, 37, 41] },
+        alternateRowStyles: { fillColor: [248, 249, 250] },
+        margin: { left: 14, right: 14 },
+        columnStyles: { 4: { halign: "right" } },
+      });
+      doc.save(`${baseName}.pdf`);
+    }
+  };
+
+  const exportApprovalList = (format: ExportFormat) => {
+    const baseName = `claim-approval-list-${new Date().toISOString().slice(0, 10)}`;
+    const headers = ["Employee", "Expense Type", "LPO Number", "Bill Date (DD-MM-YYYY)", "Bill Amount", "Manager Approval", "HO Approval", "Submitted On (DD-MM-YYYY)"];
+    const rows = approvalExpenses.map((exp) => ({
+      Employee: exp.user_name,
+      "Expense Type": exp.category || "-",
+      "LPO Number": "-",
+      "Bill Date (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_start),
+      "Bill Amount": formatINR(Number(exp.total_amount || 0)),
+      "Manager Approval": "Verified",
+      "HO Approval": "Approved",
+      "Submitted On (DD-MM-YYYY)": formatDateDDMMYYYY(exp.created_at),
+    }));
+
+    if (format === "csv") {
+      const csv = [headers.map(escapeCsv).join(","), ...rows.map((r) => headers.map((h) => escapeCsv((r as Record<string, string>)[h])).join(","))].join("\n");
+      downloadBlob(`${baseName}.csv`, new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
+    } else if (format === "json") {
+      downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }));
+    } else if (format === "xlsx") {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Approval List");
+      XLSX.writeFile(wb, `${baseName}.xlsx`);
+    } else {
+      const doc = new jsPDF({ orientation: "landscape" });
+      doc.setFillColor(30, 58, 95);
+      doc.rect(0, 0, doc.internal.pageSize.getWidth(), 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("Claim Approval List", 14, 16);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`, 14, 24);
+      doc.setTextColor(0, 0, 0);
+      autoTable(doc, {
+        startY: 32,
+        head: [headers],
+        body: rows.map((r) => headers.map((h) => (r as Record<string, string>)[h])),
+        theme: "striped",
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 9 },
+        bodyStyles: { fontSize: 8, textColor: [33, 37, 41] },
+        alternateRowStyles: { fillColor: [248, 249, 250] },
+        margin: { left: 14, right: 14 },
+        columnStyles: { 4: { halign: "right" } },
+      });
+      doc.save(`${baseName}.pdf`);
+    }
+  };
+
+  const exportDetailedReport = (format: ExportFormat) => {
+    const employeeName = selectedUser?.name ?? "All";
+    const safeName = employeeName.replace(/[^a-zA-Z0-9-_]/g, "-");
+    const baseName = `detailed-expense-report-${safeName}-${selectedYear}-${new Date().toISOString().slice(0, 10)}`;
+
+    const headers = ["Bill Date", "Type of Expense", "Bill No", "LPO#", "Amount", "Notes", "Opening Balance", "Closing Balance"];
+    const detailRows = detailedListWithBalances.map((row) => ({
+      "Bill Date": formatDateDDMMYYYY(row.date),
+      "Type of Expense": row.category,
+      "Bill No": row.billNo,
+      "LPO#": row.lpo,
+      Amount: formatINR(row.amount),
+      Notes: row.notes,
+      "Opening Balance": formatINR(row.openingBalance),
+      "Closing Balance": formatINR(row.closingBalance),
+    }));
+
+    const summaryRows: Record<string, string>[] = [];
+    if (totalAllocationsInPeriod > 0) summaryRows.push({ Category: "Account Credited", Amount: formatINR(totalAllocationsInPeriod) });
+    Object.entries(detailedSummary).forEach(([category, amount]) => summaryRows.push({ Category: category, Amount: formatINR(amount) }));
+    summaryRows.push({ Category: "Total", Amount: formatINR(totalAmount) });
+
+    if (format === "csv") {
+      const lines: string[] = [headers.map(escapeCsv).join(",")];
+      if (selectedUser) {
+        lines.push(["", "", "", "", "", "Opening Balance", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)].map(escapeCsv).join(","));
+        detailedListWithBalances.forEach((row) => {
+          lines.push([formatDateDDMMYYYY(row.date), row.category, row.billNo, row.lpo, formatINR(row.amount), row.notes, formatINR(row.openingBalance), formatINR(row.closingBalance)].map(escapeCsv).join(","));
+        });
+        lines.push(["", "", "", "", "", "Closing Balance", formatINR(balanceInfo.closing), formatINR(balanceInfo.closing)].map(escapeCsv).join(","));
+        lines.push("");
+        lines.push(["Summary", ""].map(escapeCsv).join(","));
+        if (totalAllocationsInPeriod > 0) lines.push(["Account Credited", formatINR(totalAllocationsInPeriod)].map(escapeCsv).join(","));
+        Object.entries(detailedSummary).forEach(([category, amount]) => lines.push([category, formatINR(amount)].map(escapeCsv).join(",")));
+        lines.push(["Total", formatINR(totalAmount)].map(escapeCsv).join(","));
+      }
+      downloadBlob(`${baseName}.csv`, new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" }));
+    } else if (format === "json") {
+      const payload = {
+        employee: employeeName,
+        year: selectedYear,
+        openingBalance: balanceInfo.opening,
+        closingBalance: balanceInfo.closing,
+        detailedList: detailRows,
+        summary: summaryRows,
+      };
+      downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    } else if (format === "xlsx") {
+      const wb = XLSX.utils.book_new();
+      const wsDetail = XLSX.utils.json_to_sheet([
+        { "Bill Date": "", "Type of Expense": "Opening Balance", "Bill No": "", "LPO#": "", Amount: "", Notes: "", "Opening Balance": formatINR(balanceInfo.opening), "Closing Balance": formatINR(balanceInfo.opening) },
+        ...detailRows,
+        { "Bill Date": "", "Type of Expense": "Closing Balance", "Bill No": "", "LPO#": "", Amount: "", Notes: "", "Opening Balance": formatINR(balanceInfo.closing), "Closing Balance": formatINR(balanceInfo.closing) },
+      ]);
+      XLSX.utils.book_append_sheet(wb, wsDetail, "Detailed List");
+      const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+      XLSX.writeFile(wb, `${baseName}.xlsx`);
+    } else {
+      const doc = new jsPDF({ orientation: "landscape" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const margin = 14;
+
+      // Header block
+      doc.setFillColor(30, 58, 95);
+      doc.rect(0, 0, pageW, 36, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("Detailed Expense Report", margin, 16);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${employeeName}  •  Year ${selectedYear}`, margin, 26);
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`, pageW - margin, 26, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+
+      // Truncate long notes for table layout (max ~40 chars for landscape)
+      const truncate = (s: string, maxLen: number) => (s.length <= maxLen ? s : s.slice(0, maxLen - 2) + "…");
+
+      const detailBody: string[][] = [
+        ["", "Opening Balance", "", "", "", "", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)],
+        ...detailedListWithBalances.map((row) => [
+          formatDateDDMMYYYY(row.date),
+          row.category,
+          row.billNo,
+          row.lpo,
+          formatINR(row.amount),
+          truncate(row.notes, 42),
+          formatINR(row.openingBalance),
+          formatINR(row.closingBalance),
+        ]),
+        ["", "Closing Balance", "", "", "", "", formatINR(balanceInfo.opening), formatINR(balanceInfo.closing)],
+      ];
+      // Fix last row: closing balance row should show closing in both columns
+      const lastIdx = detailBody.length - 1;
+      detailBody[lastIdx] = ["", "Closing Balance", "", "", "", "", formatINR(balanceInfo.closing), formatINR(balanceInfo.closing)];
+
+      autoTable(doc, {
+        startY: 42,
+        head: [headers],
+        body: detailBody,
+        theme: "striped",
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 8 },
+        bodyStyles: { fontSize: 7, textColor: [33, 37, 41] },
+        alternateRowStyles: { fillColor: [248, 249, 250] },
+        margin: { left: margin, right: margin },
+        columnStyles: {
+          4: { halign: "right" },
+          6: { halign: "right" },
+          7: { halign: "right" },
+        },
+        didDrawTable: (data) => {
+          (doc as any).lastAutoTable = data;
+        },
+      });
+      const finalY = (doc as any).lastAutoTable?.finalY ?? 42;
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 58, 95);
+      doc.text("Summary", margin, finalY + 14);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+
+      autoTable(doc, {
+        startY: finalY + 18,
+        head: [["Category", "Amount"]],
+        body: summaryRows.map((r) => [r.Category, r.Amount]),
+        theme: "striped",
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 9 },
+        bodyStyles: { fontSize: 9, textColor: [33, 37, 41] },
+        alternateRowStyles: { fillColor: [248, 249, 250] },
+        margin: { left: margin, right: margin },
+        columnStyles: { 1: { halign: "right" } },
+      });
+
+      doc.save(`${baseName}.pdf`);
+    }
+  };
+
+  const openExportDialog = (tab: "verification" | "approval" | "detailed") => {
+    setExportTab(tab);
+    setExportDialogOpen(true);
+  };
+
+  const handleExportAs = (format: ExportFormat) => {
+    if (exportTab === "verification") exportVerificationList(format);
+    else if (exportTab === "approval") exportApprovalList(format);
+    else exportDetailedReport(format);
+    setExportDialogOpen(false);
+  };
+
   const formatDateDDMMYYYY = (dateString: string | null): string => {
     if (!dateString) return "-";
     try {
@@ -333,25 +671,75 @@ export default function Reports() {
     return users.find(u => u.user_id === selectedEmployee);
   }, [selectedEmployee, users]);
 
+  // Total allocations (money added to employee) in the report period
+  const totalAllocationsInPeriod = useMemo(() => {
+    return detailedAllocations.reduce((sum, a) => sum + a.amount, 0);
+  }, [detailedAllocations]);
+
+  // Total approved expenses (money spent/deducted) in the report period
+  const totalApprovedExpensesInPeriod = useMemo(() => {
+    return detailedExpenses
+      .filter((e) => e.status === "approved")
+      .reduce((sum, e) => sum + Number(e.total_amount || 0), 0);
+  }, [detailedExpenses]);
+
   // Calculate opening/closing balance for detailed report
   const balanceInfo = useMemo(() => {
     if (!selectedUser) return { opening: 0, allocated: 0, closing: 0 };
-    
-    const allocated = detailedExpenses.reduce((sum, exp) => {
-      // Only count approved expenses as allocated (these were deducted from balance)
-      if (exp.status === "approved") {
-        return sum + Number(exp.total_amount || 0);
-      }
-      return sum;
-    }, 0);
-    
-    // Opening balance = current balance + allocated (since allocated was deducted)
-    const opening = Number(selectedUser.balance) + allocated;
-    // Closing balance = current balance
     const closing = Number(selectedUser.balance);
-    
-    return { opening, allocated, closing };
-  }, [selectedUser, detailedExpenses]);
+    // Period opening = current - allocations added in period + expenses deducted in period
+    const opening = closing - totalAllocationsInPeriod + totalApprovedExpensesInPeriod;
+    return { opening, allocated: totalAllocationsInPeriod, closing };
+  }, [selectedUser, totalAllocationsInPeriod, totalApprovedExpensesInPeriod]);
+
+  // Combined list: allocations + expenses, sorted by date, with running opening/closing balance per row
+  const detailedListWithBalances = useMemo(() => {
+    if (!selectedUser) return [];
+
+    const allocationRows = detailedAllocations.map((a) => ({
+      id: `alloc-${a.id}`,
+      date: a.transferred_at,
+      type: "allocation" as const,
+      amount: a.amount,
+      notes: a.transferrer_role === "admin" ? "By Admin" : "By Cashier",
+      category: "Account Credited",
+      billNo: "-",
+      lpo: "-",
+      purpose: a.transferrer_role === "admin" ? "Account credited by Admin" : "Account credited by Cashier",
+    }));
+
+    const expenseRows = detailedExpenses.map((e) => ({
+      id: e.id,
+      date: e.trip_start,
+      type: "expense" as const,
+      amount: Number(e.total_amount || 0),
+      notes: e.purpose || "-",
+      category: e.category || "-",
+      billNo: "-",
+      lpo: "-",
+      purpose: e.purpose || "-",
+      isApproved: e.status === "approved",
+    }));
+
+    const combined = [...allocationRows, ...expenseRows].sort((a, b) => {
+      const da = new Date(a.date).getTime();
+      const db = new Date(b.date).getTime();
+      if (da !== db) return da - db;
+      // Same date: allocations before expenses
+      return a.type === "allocation" ? -1 : 1;
+    });
+
+    let running = balanceInfo.opening;
+    return combined.map((row) => {
+      const opening = running;
+      if (row.type === "allocation") {
+        running += row.amount;
+      } else {
+        if ((row as { isApproved?: boolean }).isApproved) running -= row.amount;
+      }
+      return { ...row, openingBalance: opening, closingBalance: running };
+    });
+  }, [selectedUser, detailedAllocations, detailedExpenses, balanceInfo.opening]);
 
   if (userRole !== "admin") {
     return (
@@ -429,6 +817,7 @@ export default function Reports() {
                 <div className="flex gap-2 pt-2">
                   <Button onClick={fetchVerificationExpenses} disabled={loading}>Submit</Button>
                   <Button variant="outline" onClick={clearFilters}>Clear</Button>
+                  <Button variant="outline" onClick={() => openExportDialog("verification")} disabled={loading || verificationExpenses.length === 0}>Export</Button>
                 </div>
               </div>
 
@@ -556,6 +945,7 @@ export default function Reports() {
                 <div className="flex gap-2 pt-2">
                   <Button onClick={fetchApprovalExpenses} disabled={loading}>Submit</Button>
                   <Button variant="outline" onClick={clearFilters}>Clear</Button>
+                  <Button variant="outline" onClick={() => openExportDialog("approval")} disabled={loading || approvalExpenses.length === 0}>Export</Button>
                 </div>
               </div>
 
@@ -707,10 +1097,7 @@ export default function Reports() {
                 <div className="flex gap-2 pt-2">
                   <Button onClick={fetchDetailedExpenses} disabled={loading}>Submit</Button>
                   <Button variant="outline" onClick={clearFilters}>Clear</Button>
-                  <Button variant="outline" onClick={() => {
-                    // Export functionality can be added here
-                    console.log("Export clicked");
-                  }}>Export</Button>
+                  <Button variant="outline" onClick={() => openExportDialog("detailed")} disabled={!selectedUser || loading}>Export</Button>
                 </div>
               </div>
 
@@ -734,56 +1121,55 @@ export default function Reports() {
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO#</th>
                           <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Notes</th>
+                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Opening Balance</th>
+                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Closing Balance</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {selectedUser && (
                           <>
-                            <tr className="bg-slate-50">
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3 font-medium">Opening Balance</td>
+                            <tr className="bg-slate-50 font-medium">
+                              <td className="px-4 py-3" colSpan={5}></td>
+                              <td className="px-4 py-3">Opening Balance</td>
                               <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
-                              <td className="px-4 py-3"></td>
+                              <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
                             </tr>
-                            <tr className="bg-slate-50">
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3 font-medium">Allocated Amount</td>
-                              <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.allocated)}</td>
-                              <td className="px-4 py-3"></td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3"></td>
-                              <td className="px-4 py-3 font-medium">Closing Balance</td>
-                              <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.closing)}</td>
-                              <td className="px-4 py-3"></td>
-                            </tr>
+                            {loading ? (
+                              <tr>
+                                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                              </tr>
+                            ) : detailedListWithBalances.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} className="px-4 py-6 text-center text-slate-500">No allocations or expenses in this period</td>
+                              </tr>
+                            ) : (
+                              detailedListWithBalances.map((row) => (
+                                <tr key={row.id} className="hover:bg-slate-50">
+                                  <td className="px-4 py-3">{formatDateDDMMYYYY(row.date)}</td>
+                                  <td className="px-4 py-3">{row.category}</td>
+                                  <td className="px-4 py-3">{row.billNo}</td>
+                                  <td className="px-4 py-3">{row.lpo}</td>
+                                  <td className="px-4 py-3 text-right font-medium">{formatINR(row.amount)}</td>
+                                  <td className="px-4 py-3">{row.notes}</td>
+                                  <td className="px-4 py-3 text-right">{formatINR(row.openingBalance)}</td>
+                                  <td className="px-4 py-3 text-right font-medium">{formatINR(row.closingBalance)}</td>
+                                </tr>
+                              ))
+                            )}
+                            {selectedUser && !loading && (
+                              <tr className="bg-slate-50 font-medium">
+                                <td className="px-4 py-3" colSpan={5}></td>
+                                <td className="px-4 py-3">Closing Balance</td>
+                                <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.closing)}</td>
+                                <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.closing)}</td>
+                              </tr>
+                            )}
                           </>
                         )}
-                        {loading ? (
+                        {!selectedUser && (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                            <td colSpan={8} className="px-4 py-8 text-center text-slate-500">Select an employee to view detailed report</td>
                           </tr>
-                        ) : detailedExpenses.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
-                          </tr>
-                        ) : (
-                          detailedExpenses.map(exp => (
-                            <tr key={exp.id} className="hover:bg-slate-50">
-                              <td className="px-4 py-3">{formatDateDDMMYYYY(exp.trip_start)}</td>
-                              <td className="px-4 py-3">{exp.category || "-"}</td>
-                              <td className="px-4 py-3">-</td>
-                              <td className="px-4 py-3">-</td>
-                              <td className="px-4 py-3 text-right font-medium">{formatINR(Number(exp.total_amount || 0))}</td>
-                              <td className="px-4 py-3">{exp.purpose || "-"}</td>
-                            </tr>
-                          ))
                         )}
                       </tbody>
                     </table>
@@ -801,6 +1187,12 @@ export default function Reports() {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
+                        {totalAllocationsInPeriod > 0 && (
+                          <tr className="hover:bg-slate-50">
+                            <td className="px-4 py-3">Account Credited</td>
+                            <td className="px-4 py-3 text-right font-medium">{formatINR(totalAllocationsInPeriod)}</td>
+                          </tr>
+                        )}
                         {Object.entries(detailedSummary).map(([category, amount]) => (
                           <tr key={category} className="hover:bg-slate-50">
                             <td className="px-4 py-3">{category}</td>
@@ -820,6 +1212,42 @@ export default function Reports() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export report</DialogTitle>
+            <DialogDescription>
+              Choose the format for your export. The {exportTab === "verification" ? "Claim Verification" : exportTab === "approval" ? "Claim Approval" : "Detailed Expense"} report will be downloaded.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-4">
+            <Button variant="outline" className="h-auto flex flex-col items-center gap-2 py-4" onClick={() => handleExportAs("xlsx")}>
+              <FileSpreadsheet className="h-8 w-8 text-green-600" />
+              <span>XLSX</span>
+              <span className="text-xs text-muted-foreground font-normal">Excel spreadsheet</span>
+            </Button>
+            <Button variant="outline" className="h-auto flex flex-col items-center gap-2 py-4" onClick={() => handleExportAs("csv")}>
+              <FileText className="h-8 w-8 text-slate-600" />
+              <span>CSV</span>
+              <span className="text-xs text-muted-foreground font-normal">Comma-separated values</span>
+            </Button>
+            <Button variant="outline" className="h-auto flex flex-col items-center gap-2 py-4" onClick={() => handleExportAs("json")}>
+              <FileJson className="h-8 w-8 text-amber-600" />
+              <span>JSON</span>
+              <span className="text-xs text-muted-foreground font-normal">Structured data</span>
+            </Button>
+            <Button variant="outline" className="h-auto flex flex-col items-center gap-2 py-4" onClick={() => handleExportAs("pdf")}>
+              <FileType className="h-8 w-8 text-red-600" />
+              <span>PDF</span>
+              <span className="text-xs text-muted-foreground font-normal">Portable document</span>
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setExportDialogOpen(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
