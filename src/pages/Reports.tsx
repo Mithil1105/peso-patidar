@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Eye, FileText, FileSpreadsheet, FileJson, FileType } from "lucide-react";
+import { Eye, FileText, FileSpreadsheet, FileJson, FileType, Printer } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
@@ -28,6 +27,7 @@ interface ExpenseWithUser {
   trip_end: string;
   category: string | null;
   purpose?: string | null;
+  destination?: string | null;
   user_name: string;
   user_email: string;
 }
@@ -63,7 +63,6 @@ export default function Reports() {
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedWeek, setSelectedWeek] = useState<string>("all");
-  const [lpoNumber, setLpoNumber] = useState<string>("");
   
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -93,7 +92,7 @@ export default function Reports() {
         void fetchDetailedAllocations();
       }
     }
-  }, [userRole, activeTab, selectedEmployee, selectedCategory, engineerStatus, hoStatus, selectedYear, selectedMonth, selectedWeek, lpoNumber]);
+  }, [userRole, activeTab, selectedEmployee, selectedCategory, engineerStatus, hoStatus, selectedYear, selectedMonth, selectedWeek]);
 
   const fetchUsers = async () => {
     try {
@@ -249,7 +248,7 @@ export default function Reports() {
       setLoading(true);
       let query = supabase
         .from("expenses")
-        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category, purpose");
+        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category, purpose, destination");
       
       if (selectedEmployee !== "all") query = query.eq("user_id", selectedEmployee);
       if (selectedCategory !== "all") query = query.eq("category", selectedCategory);
@@ -478,13 +477,14 @@ export default function Reports() {
     const safeName = employeeName.replace(/[^a-zA-Z0-9-_]/g, "-");
     const baseName = `detailed-expense-report-${safeName}-${selectedYear}-${new Date().toISOString().slice(0, 10)}`;
 
-    const headers = ["Bill Date", "Type of Expense", "Bill No", "LPO#", "Amount", "Notes", "Opening Balance", "Closing Balance"];
+    const headers = ["Bill Date", "Type of Expense", "Purpose", "Destination", "Credit", "Debit", "Notes", "Opening Balance", "Closing Balance"];
     const detailRows = detailedListWithBalances.map((row) => ({
       "Bill Date": formatDateDDMMYYYY(row.date),
       "Type of Expense": row.category,
-      "Bill No": row.billNo,
-      "LPO#": row.lpo,
-      Amount: formatINR(row.amount),
+      Purpose: row.purpose ?? "-",
+      Destination: row.destination ?? "-",
+      Credit: row.type === "allocation" ? formatINR(row.credit) : "",
+      Debit: row.type === "expense" ? formatINR(row.debit) : "",
       Notes: row.notes,
       "Opening Balance": formatINR(row.openingBalance),
       "Closing Balance": formatINR(row.closingBalance),
@@ -495,14 +495,18 @@ export default function Reports() {
     Object.entries(detailedSummary).forEach(([category, amount]) => summaryRows.push({ Category: category, Amount: formatINR(amount) }));
     summaryRows.push({ Category: "Total", Amount: formatINR(totalAmount) });
 
+    const reconstructedClosing = detailedListWithBalances.length > 0 ? detailedListWithBalances[detailedListWithBalances.length - 1].closingBalance : balanceInfo.closing;
+
     if (format === "csv") {
       const lines: string[] = [headers.map(escapeCsv).join(",")];
       if (selectedUser) {
-        lines.push(["", "", "", "", "", "Opening Balance", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)].map(escapeCsv).join(","));
+        lines.push(["", "", "", "", "", "", "Opening Balance", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)].map(escapeCsv).join(","));
         detailedListWithBalances.forEach((row) => {
-          lines.push([formatDateDDMMYYYY(row.date), row.category, row.billNo, row.lpo, formatINR(row.amount), row.notes, formatINR(row.openingBalance), formatINR(row.closingBalance)].map(escapeCsv).join(","));
+          const creditStr = row.type === "allocation" ? formatINR(row.credit) : "";
+          const debitStr = row.type === "expense" ? formatINR(row.debit) : "";
+          lines.push([formatDateDDMMYYYY(row.date), row.category, row.purpose ?? "-", row.destination ?? "-", creditStr, debitStr, row.notes, formatINR(row.openingBalance), formatINR(row.closingBalance)].map(escapeCsv).join(","));
         });
-        lines.push(["", "", "", "", "", "Closing Balance", formatINR(balanceInfo.closing), formatINR(balanceInfo.closing)].map(escapeCsv).join(","));
+        lines.push(["", "", "", "", "", "", "Closing Balance", formatINR(reconstructedClosing), formatINR(reconstructedClosing)].map(escapeCsv).join(","));
         lines.push("");
         lines.push(["Summary", ""].map(escapeCsv).join(","));
         if (totalAllocationsInPeriod > 0) lines.push(["Account Credited", formatINR(totalAllocationsInPeriod)].map(escapeCsv).join(","));
@@ -515,18 +519,16 @@ export default function Reports() {
         employee: employeeName,
         year: selectedYear,
         openingBalance: balanceInfo.opening,
-        closingBalance: balanceInfo.closing,
+        closingBalance: reconstructedClosing,
         detailedList: detailRows,
         summary: summaryRows,
       };
       downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     } else if (format === "xlsx") {
       const wb = XLSX.utils.book_new();
-      const wsDetail = XLSX.utils.json_to_sheet([
-        { "Bill Date": "", "Type of Expense": "Opening Balance", "Bill No": "", "LPO#": "", Amount: "", Notes: "", "Opening Balance": formatINR(balanceInfo.opening), "Closing Balance": formatINR(balanceInfo.opening) },
-        ...detailRows,
-        { "Bill Date": "", "Type of Expense": "Closing Balance", "Bill No": "", "LPO#": "", Amount: "", Notes: "", "Opening Balance": formatINR(balanceInfo.closing), "Closing Balance": formatINR(balanceInfo.closing) },
-      ]);
+      const openingRow: Record<string, string> = { "Bill Date": "", "Type of Expense": "Opening Balance", Purpose: "", Destination: "", Credit: "", Debit: "", Notes: "", "Opening Balance": formatINR(balanceInfo.opening), "Closing Balance": formatINR(balanceInfo.opening) };
+      const closingRow: Record<string, string> = { "Bill Date": "", "Type of Expense": "Closing Balance", Purpose: "", Destination: "", Credit: "", Debit: "", Notes: "", "Opening Balance": formatINR(reconstructedClosing), "Closing Balance": formatINR(reconstructedClosing) };
+      const wsDetail = XLSX.utils.json_to_sheet([openingRow, ...detailRows, closingRow]);
       XLSX.utils.book_append_sheet(wb, wsDetail, "Detailed List");
       const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
       XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
@@ -554,22 +556,20 @@ export default function Reports() {
       const truncate = (s: string, maxLen: number) => (s.length <= maxLen ? s : s.slice(0, maxLen - 2) + "…");
 
       const detailBody: string[][] = [
-        ["", "Opening Balance", "", "", "", "", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)],
+        ["", "Opening Balance", "", "", "", "", "", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)],
         ...detailedListWithBalances.map((row) => [
           formatDateDDMMYYYY(row.date),
           row.category,
-          row.billNo,
-          row.lpo,
-          formatINR(row.amount),
+          truncate(row.purpose ?? "-", 30),
+          truncate(row.destination ?? "-", 20),
+          row.type === "allocation" ? formatINR(row.credit) : "",
+          row.type === "expense" ? formatINR(row.debit) : "",
           truncate(row.notes, 42),
           formatINR(row.openingBalance),
           formatINR(row.closingBalance),
         ]),
-        ["", "Closing Balance", "", "", "", "", formatINR(balanceInfo.opening), formatINR(balanceInfo.closing)],
+        ["", "Closing Balance", "", "", "", "", "", formatINR(reconstructedClosing), formatINR(reconstructedClosing)],
       ];
-      // Fix last row: closing balance row should show closing in both columns
-      const lastIdx = detailBody.length - 1;
-      detailBody[lastIdx] = ["", "Closing Balance", "", "", "", "", formatINR(balanceInfo.closing), formatINR(balanceInfo.closing)];
 
       autoTable(doc, {
         startY: 42,
@@ -582,8 +582,9 @@ export default function Reports() {
         margin: { left: margin, right: margin },
         columnStyles: {
           4: { halign: "right" },
-          6: { halign: "right" },
+          5: { halign: "right" },
           7: { halign: "right" },
+          8: { halign: "right" },
         },
         didDrawTable: (data) => {
           (doc as any).lastAutoTable = data;
@@ -648,7 +649,6 @@ export default function Reports() {
     setSelectedYear(new Date().getFullYear().toString());
     setSelectedMonth("all");
     setSelectedWeek("all");
-    setLpoNumber("");
   };
 
   // Calculate summary for detailed report
@@ -701,11 +701,13 @@ export default function Reports() {
       date: a.transferred_at,
       type: "allocation" as const,
       amount: a.amount,
+      credit: a.amount,
+      debit: 0,
       notes: a.transferrer_role === "admin" ? "By Admin" : "By Cashier",
       category: "Account Credited",
-      billNo: "-",
-      lpo: "-",
       purpose: a.transferrer_role === "admin" ? "Account credited by Admin" : "Account credited by Cashier",
+      destination: "-",
+      isApproved: true,
     }));
 
     const expenseRows = detailedExpenses.map((e) => ({
@@ -713,11 +715,12 @@ export default function Reports() {
       date: e.trip_start,
       type: "expense" as const,
       amount: Number(e.total_amount || 0),
+      credit: 0,
+      debit: Number(e.total_amount || 0),
       notes: e.purpose || "-",
       category: e.category || "-",
-      billNo: "-",
-      lpo: "-",
       purpose: e.purpose || "-",
+      destination: e.destination || "-",
       isApproved: e.status === "approved",
     }));
 
@@ -729,14 +732,11 @@ export default function Reports() {
       return a.type === "allocation" ? -1 : 1;
     });
 
+    // Running balance: apply every credit and debit in the list so balances are consistent and can go negative
     let running = balanceInfo.opening;
     return combined.map((row) => {
       const opening = running;
-      if (row.type === "allocation") {
-        running += row.amount;
-      } else {
-        if ((row as { isApproved?: boolean }).isApproved) running -= row.amount;
-      }
+      running += row.credit - row.debit;
       return { ...row, openingBalance: opening, closingBalance: running };
     });
   }, [selectedUser, detailedAllocations, detailedExpenses, balanceInfo.opening]);
@@ -1048,10 +1048,6 @@ export default function Reports() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>LPO Number</Label>
-                    <Input value={lpoNumber} onChange={(e) => setLpoNumber(e.target.value)} placeholder="Enter LPO number" />
-                  </div>
-                  <div className="space-y-2">
                     <Label>Year</Label>
                     <Select value={selectedYear} onValueChange={setSelectedYear}>
                       <SelectTrigger>
@@ -1098,6 +1094,10 @@ export default function Reports() {
                   <Button onClick={fetchDetailedExpenses} disabled={loading}>Submit</Button>
                   <Button variant="outline" onClick={clearFilters}>Clear</Button>
                   <Button variant="outline" onClick={() => openExportDialog("detailed")} disabled={!selectedUser || loading}>Export</Button>
+                  <Button variant="outline" onClick={() => window.print()} disabled={!selectedUser || loading} className="print:inline-flex print:visible">
+                    <Printer className="h-4 w-4 mr-2" />
+                    Print report
+                  </Button>
                 </div>
               </div>
 
@@ -1117,9 +1117,10 @@ export default function Reports() {
                         <tr>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Type of Expense</th>
-                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill No</th>
-                          <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO#</th>
-                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Purpose</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Destination</th>
+                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Credit</th>
+                          <th className="px-4 py-3 text-right font-semibold text-slate-700">Debit</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Notes</th>
                           <th className="px-4 py-3 text-right font-semibold text-slate-700">Opening Balance</th>
                           <th className="px-4 py-3 text-right font-semibold text-slate-700">Closing Balance</th>
@@ -1129,46 +1130,47 @@ export default function Reports() {
                         {selectedUser && (
                           <>
                             <tr className="bg-slate-50 font-medium">
-                              <td className="px-4 py-3" colSpan={5}></td>
+                              <td className="px-4 py-3" colSpan={6}></td>
                               <td className="px-4 py-3">Opening Balance</td>
                               <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
                               <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
                             </tr>
                             {loading ? (
                               <tr>
-                                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading...</td>
                               </tr>
                             ) : detailedListWithBalances.length === 0 ? (
                               <tr>
-                                <td colSpan={8} className="px-4 py-6 text-center text-slate-500">No allocations or expenses in this period</td>
+                                <td colSpan={9} className="px-4 py-6 text-center text-slate-500">No allocations or expenses in this period</td>
                               </tr>
                             ) : (
                               detailedListWithBalances.map((row) => (
                                 <tr key={row.id} className="hover:bg-slate-50">
                                   <td className="px-4 py-3">{formatDateDDMMYYYY(row.date)}</td>
                                   <td className="px-4 py-3">{row.category}</td>
-                                  <td className="px-4 py-3">{row.billNo}</td>
-                                  <td className="px-4 py-3">{row.lpo}</td>
-                                  <td className="px-4 py-3 text-right font-medium">{formatINR(row.amount)}</td>
+                                  <td className="px-4 py-3">{row.purpose ?? "-"}</td>
+                                  <td className="px-4 py-3">{row.destination ?? "-"}</td>
+                                  <td className="px-4 py-3 text-right font-medium">{row.type === "allocation" ? formatINR(row.credit) : ""}</td>
+                                  <td className="px-4 py-3 text-right font-medium">{row.type === "expense" ? formatINR(row.debit) : ""}</td>
                                   <td className="px-4 py-3">{row.notes}</td>
                                   <td className="px-4 py-3 text-right">{formatINR(row.openingBalance)}</td>
                                   <td className="px-4 py-3 text-right font-medium">{formatINR(row.closingBalance)}</td>
                                 </tr>
                               ))
                             )}
-                            {selectedUser && !loading && (
+                            {selectedUser && !loading && detailedListWithBalances.length > 0 && (
                               <tr className="bg-slate-50 font-medium">
-                                <td className="px-4 py-3" colSpan={5}></td>
+                                <td className="px-4 py-3" colSpan={6}></td>
                                 <td className="px-4 py-3">Closing Balance</td>
-                                <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.closing)}</td>
-                                <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.closing)}</td>
+                                <td className="px-4 py-3 text-right font-medium">{formatINR(detailedListWithBalances[detailedListWithBalances.length - 1].closingBalance)}</td>
+                                <td className="px-4 py-3 text-right font-medium">{formatINR(detailedListWithBalances[detailedListWithBalances.length - 1].closingBalance)}</td>
                               </tr>
                             )}
                           </>
                         )}
                         {!selectedUser && (
                           <tr>
-                            <td colSpan={8} className="px-4 py-8 text-center text-slate-500">Select an employee to view detailed report</td>
+                            <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Select an employee to view detailed report</td>
                           </tr>
                         )}
                       </tbody>

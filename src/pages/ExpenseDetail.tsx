@@ -43,6 +43,7 @@ interface Expense {
   admin_comment?: string;
   assigned_engineer_id?: string;
   assigned_engineer_name?: string;
+  category?: string | null;
 }
 
 interface LineItem {
@@ -829,6 +830,19 @@ export default function ExpenseDetail() {
                   </p>
                 </div>
               </div>
+
+              {expense.category && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <FileText className="h-4 w-4" />
+                      Category
+                    </div>
+                    <p className="font-medium capitalize">{expense.category}</p>
+                  </div>
+                </>
+              )}
 
               {expense.purpose && (
                 <>

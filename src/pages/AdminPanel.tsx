@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +73,8 @@ interface Expense {
   assigned_engineer_id?: string;
   admin_comment?: string;
   isResubmitted?: boolean;
+  category?: string | null;
+  purpose?: string | null;
 }
 
 export default function AdminPanel() {
@@ -102,6 +104,7 @@ export default function AdminPanel() {
     field_type: string;
     field_value: string;
   }>>([]);
+  const reviewDialogContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     console.log("🔄 [AdminPanel] useEffect triggered");
@@ -116,6 +119,20 @@ export default function AdminPanel() {
       console.warn("⚠️ [AdminPanel] Conditions not met - userRole:", userRole, "organizationId:", organizationId);
     }
   }, [userRole, organizationId, user?.id]);
+
+  // Fix blank white page: scroll review dialog content to top when opened
+  useEffect(() => {
+    if (dialogOpen && selectedExpense) {
+      const scrollEl = reviewDialogContentRef.current;
+      if (scrollEl) {
+        const scrollToTop = () => { scrollEl.scrollTop = 0; };
+        scrollToTop();
+        requestAnimationFrame(scrollToTop);
+        const t = setTimeout(scrollToTop, 50);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [dialogOpen, selectedExpense?.id]);
 
   // Log expenses state changes
   useEffect(() => {
@@ -1055,6 +1072,7 @@ export default function AdminPanel() {
                         <TableHead className="font-semibold min-w-[80px] whitespace-nowrap">Txn #</TableHead>
                         <TableHead className="font-semibold min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
                         <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Title</TableHead>
+                        <TableHead className="font-semibold min-w-[100px] hidden md:table-cell">Category</TableHead>
                         <TableHead className="font-semibold w-[140px] max-w-[140px] hidden sm:table-cell">Destination</TableHead>
                         <TableHead className="font-semibold min-w-[90px] whitespace-nowrap">Amount</TableHead>
                         <TableHead className="font-semibold min-w-[90px] hidden md:table-cell">Balance</TableHead>
@@ -1083,6 +1101,7 @@ export default function AdminPanel() {
                           <TableCell className="font-medium text-xs sm:text-sm hidden sm:table-cell">
                             <div className="line-clamp-2 break-words">{expense.title}</div>
                           </TableCell>
+                          <TableCell className="text-xs sm:text-sm hidden md:table-cell capitalize">{expense.category ?? "-"}</TableCell>
                           <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell max-w-[140px]" title={expense.destination}>{expense.destination}</TableCell>
                           <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
                           <TableCell className="text-xs sm:text-sm hidden md:table-cell">
@@ -1148,7 +1167,8 @@ export default function AdminPanel() {
                                       {expense.status === "approved" || expense.status === "rejected" ? "View" : "View/Approve"}
                                     </Button>
                                   </DialogTrigger>
-                                  <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
+                                  <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col p-0">
+                                    <div ref={reviewDialogContentRef} className="overflow-y-auto flex-1 p-4 sm:p-6 min-h-0">
                                     <DialogHeader>
                                       <DialogTitle>Review and manage this expense submission</DialogTitle>
                                     </DialogHeader>
@@ -1176,6 +1196,20 @@ export default function AdminPanel() {
                                           <label className="text-sm font-medium">Destination</label>
                                           <p className="text-sm">{selectedExpense.destination}</p>
                                         </div>
+
+                                        {selectedExpense.category && (
+                                          <div>
+                                            <label className="text-sm font-medium">Category</label>
+                                            <p className="text-sm capitalize">{selectedExpense.category}</p>
+                                          </div>
+                                        )}
+
+                                        {selectedExpense.purpose && (
+                                          <div>
+                                            <label className="text-sm font-medium">Purpose</label>
+                                            <p className="text-sm">{selectedExpense.purpose}</p>
+                                          </div>
+                                        )}
 
                                         <div className="grid grid-cols-2 gap-4">
                                           <div>
@@ -1468,6 +1502,7 @@ export default function AdminPanel() {
                                         </Button>
                                       )}
                                     </DialogFooter>
+                                    </div>
                                   </DialogContent>
                                 </Dialog>
                               </div>

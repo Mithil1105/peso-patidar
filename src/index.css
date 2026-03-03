@@ -219,3 +219,18 @@ All colors MUST be HSL.
     animation: fade-in 0.4s ease-out forwards;
   }
 }
+
+/* Print: hide sidebar and nav so report content prints cleanly */
+@media print {
+  [data-sidebar="sidebar"],
+  [data-sidebar="trigger"],
+  .sidebar,
+  nav[aria-label="Sidebar"],
+  button[aria-label="Toggle sidebar"] {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
