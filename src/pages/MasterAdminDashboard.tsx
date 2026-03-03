@@ -18,6 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Building2,
   Mail,
@@ -27,7 +29,9 @@ import {
   MessageSquare,
   RefreshCw,
   Copy,
+  Download,
 } from "lucide-react";
+import { fetchFullBackup, downloadFullBackup, downloadFullBackupWithReceipts, fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs } from "@/lib/backupData";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -74,6 +78,11 @@ export default function MasterAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingOrgId, setUpdatingOrgId] = useState<string | null>(null);
+  const [backupFullLoading, setBackupFullLoading] = useState(false);
+  const [backupOrgLoading, setBackupOrgLoading] = useState(false);
+  const [selectedOrgIdForBackup, setSelectedOrgIdForBackup] = useState<string>("");
+  const [includeReceiptsFull, setIncludeReceiptsFull] = useState(false);
+  const [includeReceiptsOrg, setIncludeReceiptsOrg] = useState(false);
 
   const PLAN_OPTIONS = ["starter", "free-trial", "pro"] as const;
   const PAYMENT_OPTIONS = ["active", "pending", "overdue", "suspended", "cancelled"] as const;
@@ -153,6 +162,60 @@ export default function MasterAdminDashboard() {
   const handleRefresh = () => {
     setRefreshing(true);
     load();
+  };
+
+  const handleDownloadFullBackup = async () => {
+    try {
+      setBackupFullLoading(true);
+      const payload = await fetchFullBackup(supabase);
+      if (includeReceiptsFull) {
+        const receiptsByOrg: Record<string, Awaited<ReturnType<typeof fetchReceiptBlobs>>> = {};
+        for (const orgId of Object.keys(payload.dataByOrganization)) {
+          const atts = payload.dataByOrganization[orgId]?.attachments ?? [];
+          receiptsByOrg[orgId] = await fetchReceiptBlobs(supabase, atts);
+        }
+        await downloadFullBackupWithReceipts(payload, receiptsByOrg);
+        toast({ title: "Full backup downloaded", description: "All organizations, data, and receipt files saved (ZIP)." });
+      } else {
+        downloadFullBackup(payload);
+        toast({ title: "Full backup downloaded", description: "All organizations and data have been saved." });
+      }
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Backup failed",
+        description: e instanceof Error ? e.message : "Failed to prepare full backup.",
+      });
+    } finally {
+      setBackupFullLoading(false);
+    }
+  };
+
+  const handleDownloadOrgBackup = async () => {
+    if (!selectedOrgIdForBackup) {
+      toast({ variant: "destructive", title: "Select an organization", description: "Choose an organization to download." });
+      return;
+    }
+    try {
+      setBackupOrgLoading(true);
+      const payload = await fetchOrgBackup(supabase, selectedOrgIdForBackup);
+      if (includeReceiptsOrg && payload.attachments.length > 0) {
+        const receiptBlobs = await fetchReceiptBlobs(supabase, payload.attachments);
+        await downloadBackupWithReceipts(payload, receiptBlobs);
+        toast({ title: "Backup downloaded", description: `Data and ${receiptBlobs.length} receipt(s) for ${organizations.find((o) => o.id === selectedOrgIdForBackup)?.name ?? "organization"} saved.` });
+      } else {
+        downloadBackup(payload);
+        toast({ title: "Backup downloaded", description: `Data for ${organizations.find((o) => o.id === selectedOrgIdForBackup)?.name ?? "organization"} saved.` });
+      }
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Backup failed",
+        description: e instanceof Error ? e.message : "Failed to prepare organization backup.",
+      });
+    } finally {
+      setBackupOrgLoading(false);
+    }
   };
 
   const copyToClipboard = async (text: string, label: string) => {
@@ -342,6 +405,71 @@ export default function MasterAdminDashboard() {
                 )}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Data & backup (master admin) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download className="h-5 w-5" />
+            Data & backup
+          </CardTitle>
+          <CardDescription>
+            Worst-case backup: full website data includes <strong>all expenses, users, memberships, settings, locations, categories, and audit logs from every organization</strong>, plus contact leads and master admin list. Use &quot;Download full website data&quot; to get everything in one file. Optionally include receipt files in a ZIP.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="full-include-receipts"
+                checked={includeReceiptsFull}
+                onCheckedChange={(v) => setIncludeReceiptsFull(v === true)}
+              />
+              <Label htmlFor="full-include-receipts" className="text-sm font-normal cursor-pointer">Include receipts (full backup)</Label>
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadFullBackup}
+              disabled={backupFullLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {backupFullLoading ? "Preparing full backup…" : includeReceiptsFull ? "Download full data (ZIP)" : "Download full website data"}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="org-include-receipts"
+                checked={includeReceiptsOrg}
+                onCheckedChange={(v) => setIncludeReceiptsOrg(v === true)}
+              />
+              <Label htmlFor="org-include-receipts" className="text-sm font-normal cursor-pointer">Include receipts (org backup)</Label>
+            </div>
+            <Select value={selectedOrgIdForBackup} onValueChange={setSelectedOrgIdForBackup}>
+              <SelectTrigger className="w-[280px]">
+                <SelectValue placeholder="Select organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {organizations.map((org) => (
+                  <SelectItem key={org.id} value={org.id}>
+                    {org.name} ({org.slug})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              type="button"
+              onClick={handleDownloadOrgBackup}
+              disabled={backupOrgLoading || !selectedOrgIdForBackup}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {backupOrgLoading ? "Preparing…" : includeReceiptsOrg ? "Download org data (ZIP)" : "Download organization data"}
+            </button>
           </div>
         </CardContent>
       </Card>

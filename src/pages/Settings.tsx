@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Save, Bell, Volume2, VolumeX, MapPin, Plus, Edit, Trash2, Upload, Image as ImageIcon, X } from "lucide-react";
+import { Settings as SettingsIcon, Save, Bell, Volume2, VolumeX, MapPin, Plus, Edit, Trash2, Upload, Image as ImageIcon, X, Database, Download, RotateCcw } from "lucide-react";
+import { fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs, restoreFromBackup, parseBackupFile, type BackupPayload } from "@/lib/backupData";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatINR } from "@/lib/format";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -51,6 +53,15 @@ export default function Settings() {
   const [deleteLocationDialogOpen, setDeleteLocationDialogOpen] = useState(false);
   const [locationToDelete, setLocationToDelete] = useState<{ id: string; name: string } | null>(null);
   const [deletingLocation, setDeletingLocation] = useState(false);
+
+  // Data & backup
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [restorePreview, setRestorePreview] = useState<BackupPayload | null>(null);
+  const [includeReceipts, setIncludeReceipts] = useState(false);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (userRole === "admin") {
@@ -451,6 +462,74 @@ export default function Settings() {
       });
     } finally {
       setDeletingLocation(false);
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    if (!organizationId) return;
+    try {
+      setBackupLoading(true);
+      const payload = await fetchOrgBackup(supabase, organizationId);
+      if (includeReceipts && payload.attachments.length > 0) {
+        const receiptBlobs = await fetchReceiptBlobs(supabase, payload.attachments);
+        await downloadBackupWithReceipts(payload, receiptBlobs);
+        toast({ title: "Backup downloaded", description: `Data and ${receiptBlobs.length} receipt file(s) saved.` });
+      } else {
+        downloadBackup(payload);
+        toast({ title: "Backup downloaded", description: "Your organization data has been saved." });
+      }
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Backup failed",
+        description: e instanceof Error ? e.message : "Failed to prepare backup.",
+      });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleRestoreFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const payload = await parseBackupFile(file);
+      if (payload.organizationId !== organizationId) {
+        toast({
+          variant: "destructive",
+          title: "Wrong organization",
+          description: "This backup is for a different organization. Restore only allowed for the same organization.",
+        });
+        return;
+      }
+      setRestorePreview(payload);
+      setRestoreFile(file);
+      setRestoreConfirmOpen(true);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Invalid file",
+        description: err instanceof Error ? err.message : "Could not read backup file.",
+      });
+    }
+    e.target.value = "";
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!restoreFile || !organizationId) return;
+    try {
+      setRestoreLoading(true);
+      const result = await restoreFromBackup(supabase, organizationId, restoreFile);
+      if (result.success) {
+        toast({ title: "Restore complete", description: "Data has been restored." });
+        setRestoreConfirmOpen(false);
+        setRestoreFile(null);
+        setRestorePreview(null);
+      } else {
+        toast({ variant: "destructive", title: "Restore failed", description: result.error });
+      }
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -1038,8 +1117,97 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+
+          {/* Data & backup */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                <CardTitle>Data & backup</CardTitle>
+              </div>
+              <CardDescription>
+                Download a full backup of your organization data (expenses, profiles, categories, etc.) or restore from a previous backup. Optionally include receipt files in a ZIP.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="include-receipts"
+                  checked={includeReceipts}
+                  onCheckedChange={(v) => setIncludeReceipts(v === true)}
+                />
+                <Label htmlFor="include-receipts" className="text-sm font-normal cursor-pointer">
+                  Include receipt files (downloads as ZIP with data + receipts)
+                </Label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadBackup}
+                  disabled={backupLoading || !organizationId}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {backupLoading ? "Preparing backup…" : includeReceipts ? "Download backup (ZIP)" : "Download data backup"}
+                </Button>
+                <input
+                  ref={restoreFileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={handleRestoreFileSelect}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => restoreFileInputRef.current?.click()}
+                  disabled={restoreLoading || !organizationId}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Restore from backup
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </>
       )}
+
+      {/* Restore confirmation dialog */}
+      <AlertDialog
+        open={restoreConfirmOpen}
+        onOpenChange={(open) => {
+          setRestoreConfirmOpen(open);
+          if (!open) {
+            setRestoreFile(null);
+            setRestorePreview(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore from backup</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  This will add or update data for this organization. Existing rows with the same ID will be updated; new rows will be inserted.
+                </p>
+                {restorePreview && (
+                  <p className="text-sm text-muted-foreground">
+                    Backup: organization {restorePreview.organizationId}, exported {restorePreview.exportedAt ? new Date(restorePreview.exportedAt).toLocaleString() : "—"}.
+                  </p>
+                )}
+                <p className="text-muted-foreground">
+                  Receipt files are not re-uploaded; only database records are restored.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestoreConfirm} disabled={restoreLoading}>
+              {restoreLoading ? "Restoring…" : "Restore"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Location Dialog */}
       <Dialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen}>

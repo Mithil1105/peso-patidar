@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,13 +29,18 @@ import {
   TrendingUp,
   Filter,
   Search,
-  Download
+  Download,
+  Database,
+  RotateCcw
 } from "lucide-react";
+import { fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs } from "@/lib/backupData";
 import { useToast } from "@/hooks/use-toast";
 import { ExpenseService } from "@/services/ExpenseService";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { MobileExpenseTable } from "@/components/MobileExpenseTable";
 import { formatINR } from "@/lib/format";
 
@@ -78,6 +84,7 @@ interface Expense {
 }
 
 export default function AdminPanel() {
+  const navigate = useNavigate();
   const { user, userRole, organizationId } = useAuth();
   const { toast } = useToast();
 
@@ -105,6 +112,8 @@ export default function AdminPanel() {
     field_value: string;
   }>>([]);
   const reviewDialogContentRef = useRef<HTMLDivElement>(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [includeReceipts, setIncludeReceipts] = useState(false);
 
   useEffect(() => {
     console.log("🔄 [AdminPanel] useEffect triggered");
@@ -870,6 +879,29 @@ export default function AdminPanel() {
     }
   };
 
+  const handleDownloadBackup = async () => {
+    if (!organizationId) return;
+    try {
+      setBackupLoading(true);
+      const payload = await fetchOrgBackup(supabase, organizationId);
+      if (includeReceipts && payload.attachments.length > 0) {
+        const receiptBlobs = await fetchReceiptBlobs(supabase, payload.attachments);
+        await downloadBackupWithReceipts(payload, receiptBlobs);
+        toast({ title: "Backup downloaded", description: `Data and ${receiptBlobs.length} receipt file(s) saved.` });
+      } else {
+        downloadBackup(payload);
+        toast({ title: "Backup downloaded", description: "Your organization data has been saved." });
+      }
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Backup failed",
+        description: e instanceof Error ? e.message : "Failed to prepare backup.",
+      });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
 
   const getStats = () => {
     const totalExpenses = expenses.length;
@@ -1035,14 +1067,41 @@ export default function AdminPanel() {
 
               <div className="space-y-2">
                 <label className="text-xs sm:text-sm font-medium text-gray-700">Actions</label>
-                <Button
-                  onClick={exportExpenses}
-                  className="w-full h-10 sm:h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Export CSV</span>
-                  <span className="sm:hidden">Export</span>
-                </Button>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="admin-include-receipts"
+                    checked={includeReceipts}
+                    onCheckedChange={(v) => setIncludeReceipts(v === true)}
+                  />
+                  <Label htmlFor="admin-include-receipts" className="text-xs font-normal cursor-pointer">Include receipts</Label>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={exportExpenses}
+                    className="w-full h-10 sm:h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    <span className="hidden sm:inline">Export CSV</span>
+                    <span className="sm:hidden">Export</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadBackup}
+                    disabled={backupLoading || !organizationId}
+                    className="w-full h-10 sm:h-12 text-sm"
+                  >
+                    <Database className="h-4 w-4 mr-2" />
+                    {backupLoading ? "Preparing…" : includeReceipts ? "Download backup (ZIP)" : "Download backup"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate("/settings")}
+                    className="w-full h-10 sm:h-12 text-sm"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Restore from backup
+                  </Button>
+                </div>
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationPopup } from "@/components/NotificationPopup";
@@ -28,6 +28,8 @@ export function useNotificationManager() {
     sound_enabled: true,
     desktop_enabled: false,
   });
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSettingUpRef = useRef(false);
 
   useEffect(() => {
     if (user) {
@@ -48,10 +50,10 @@ export function useNotificationManager() {
   };
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !organizationId) return;
 
     console.log('🔄 Initializing notification subscription...');
-      const cleanup = setupRealtimeSubscription();
+    const cleanup = setupRealtimeSubscription();
     
     // Also set up a polling fallback in case realtime doesn't work
     // This will check for new notifications every 10 seconds as a backup
@@ -82,11 +84,15 @@ export function useNotificationManager() {
     }, 10000); // Poll every 10 seconds as fallback
 
     return () => {
-      console.log('Cleaning up notification subscription and polling');
       cleanup();
       clearInterval(pollInterval);
+      isSettingUpRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
     };
-  }, [user?.id, organizationId, settings]);
+  }, [user?.id, organizationId]);
 
   const loadSettings = () => {
     try {
@@ -171,18 +177,24 @@ export function useNotificationManager() {
   };
 
   const setupRealtimeSubscription = () => {
-    if (!user?.id) {
-      console.log('No user ID, skipping notification subscription');
+    if (!user?.id || !organizationId) {
       return () => {};
     }
+    if (isSettingUpRef.current) {
+      return () => {};
+    }
+    isSettingUpRef.current = true;
 
     console.log('Setting up notification subscription for user:', user.id);
 
-    // Remove any existing channel with the same name first
-    const channelName = `notification-popups-${user.id}`;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    const channelName = `notification-popups-${user.id}-${organizationId}`;
     const existingChannel = supabase.getChannels().find(ch => ch.topic === `realtime:${channelName}`);
     if (existingChannel) {
-      console.log('Removing existing channel:', channelName);
       supabase.removeChannel(existingChannel);
     }
 
@@ -242,26 +254,32 @@ export function useNotificationManager() {
       )
       .subscribe((status) => {
         console.log('📡 Notification subscription status:', status);
-        
-        // If subscription fails, try to reconnect after a delay
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to notifications');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('❌ Channel error, attempting to reconnect in 5 seconds...');
-          setTimeout(() => {
-            console.log('🔄 Reconnecting notification subscription...');
+          isSettingUpRef.current = false;
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          isSettingUpRef.current = false;
+          if (reconnectTimeoutRef.current) return;
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = null;
             setupRealtimeSubscription();
-          }, 5000);
+          }, 8000);
         } else if (status === 'CLOSED') {
-          console.warn('⚠️ Channel closed, reconnecting...');
-          setTimeout(() => {
+          isSettingUpRef.current = false;
+          if (reconnectTimeoutRef.current) return;
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = null;
             setupRealtimeSubscription();
-          }, 2000);
+          }, 3000);
         }
       });
 
     return () => {
-      console.log('Cleaning up notification subscription');
+      isSettingUpRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
   };
