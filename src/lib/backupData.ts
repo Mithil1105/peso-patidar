@@ -376,7 +376,7 @@ export async function downloadBackupWithReceipts(
   const url = URL.createObjectURL(zipBlob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `backup-${payload.organizationId}-${payload.exportedAt.slice(0, 19).replace(/[:T]/g, "-")}-with-receipts.zip`;
+  a.download = getBackupDownloadFilename(payload, { zip: true });
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -387,7 +387,7 @@ export function downloadBackup(payload: BackupPayload): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `backup-${payload.organizationId}-${payload.exportedAt.slice(0, 19).replace(/[:T]/g, "-")}.json`;
+  a.download = getBackupDownloadFilename(payload, { zip: false });
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -529,6 +529,105 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+/** Preview summary for a backup payload: counts and date range of data. */
+export interface BackupPreview {
+  counts: {
+    expenses: number;
+    profiles: number;
+    organization_memberships: number;
+    expense_line_items: number;
+    attachments: number;
+    audit_logs: number;
+    expense_form_field_values: number;
+    expense_categories: number;
+    cash_transfer_history: number;
+    locations: number;
+    engineer_locations: number;
+    user_roles: number;
+    organization_settings: number;
+  };
+  /** Earliest date in the backup data (expenses, transfers, etc.). */
+  dataFrom: string | null;
+  /** Latest date in the backup data. */
+  dataTo: string | null;
+  exportedAt: string;
+  organizationName: string;
+}
+
+/** Build a preview (counts + date range) from a backup payload for restore confirmation. */
+export function getBackupPreview(payload: BackupPayload): BackupPreview {
+  const expenses = Array.isArray(payload.expenses) ? payload.expenses : [];
+  const transfers = Array.isArray(payload.cash_transfer_history) ? payload.cash_transfer_history : [];
+  const auditLogs = Array.isArray(payload.audit_logs) ? payload.audit_logs : [];
+
+  const dates: string[] = [];
+  for (const e of expenses) {
+    const r = e as Record<string, unknown>;
+    if (r.trip_start) dates.push(String(r.trip_start));
+    if (r.trip_end) dates.push(String(r.trip_end));
+    if (r.created_at) dates.push(String(r.created_at));
+  }
+  for (const t of transfers) {
+    const r = t as Record<string, unknown>;
+    if (r.transferred_at) dates.push(String(r.transferred_at));
+  }
+  for (const a of auditLogs) {
+    const r = a as Record<string, unknown>;
+    if (r.created_at) dates.push(String(r.created_at));
+  }
+
+  let dataFrom: string | null = null;
+  let dataTo: string | null = null;
+  if (dates.length > 0) {
+    const sorted = [...dates].sort();
+    dataFrom = sorted[0];
+    dataTo = sorted[sorted.length - 1];
+  }
+
+  const org = payload.organization && typeof payload.organization === "object" ? (payload.organization as Record<string, unknown>) : null;
+  const organizationName = (org?.name && String(org.name).trim()) ? String(org.name).trim() : "Organization";
+
+  return {
+    counts: {
+      expenses: expenses.length,
+      profiles: Array.isArray(payload.profiles) ? payload.profiles.length : 0,
+      organization_memberships: Array.isArray(payload.organization_memberships) ? payload.organization_memberships.length : 0,
+      expense_line_items: Array.isArray(payload.expense_line_items) ? payload.expense_line_items.length : 0,
+      attachments: Array.isArray(payload.attachments) ? payload.attachments.length : 0,
+      audit_logs: auditLogs.length,
+      expense_form_field_values: Array.isArray(payload.expense_form_field_values) ? payload.expense_form_field_values.length : 0,
+      expense_categories: Array.isArray(payload.expense_categories) ? payload.expense_categories.length : 0,
+      cash_transfer_history: transfers.length,
+      locations: Array.isArray(payload.locations) ? payload.locations.length : 0,
+      engineer_locations: Array.isArray(payload.engineer_locations) ? payload.engineer_locations.length : 0,
+      user_roles: Array.isArray(payload.user_roles) ? payload.user_roles.length : 0,
+      organization_settings: Array.isArray(payload.organization_settings) ? payload.organization_settings.length : 0,
+    },
+    dataFrom,
+    dataTo,
+    exportedAt: payload.exportedAt ?? new Date().toISOString(),
+    organizationName,
+  };
+}
+
+/** Build backup download filename: Pesowise_Backup_<Company>_<from>_to_<to>_exported_<date>.json|zip */
+export function getBackupDownloadFilename(payload: BackupPayload, options: { zip?: boolean } = {}): string {
+  const preview = getBackupPreview(payload);
+  const company = preview.organizationName.replace(/[^a-zA-Z0-9-_]/g, "_").replace(/_+/g, "_") || "Organization";
+  const ext = options.zip ? "zip" : "json";
+
+  const exportedPart = preview.exportedAt
+    ? new Date(preview.exportedAt).toISOString().slice(0, 19).replace(/[:T]/g, "-")
+    : new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+
+  if (preview.dataFrom && preview.dataTo) {
+    const fromStr = preview.dataFrom.slice(0, 10).replace(/-/g, "");
+    const toStr = preview.dataTo.slice(0, 10).replace(/-/g, "");
+    return `Pesowise_Backup_${company}_${fromStr}_to_${toStr}_exported_${exportedPart}.${ext}`;
+  }
+  return `Pesowise_Backup_${company}_exported_${exportedPart}.${ext}`;
 }
 
 export function parseBackupFile(file: File): Promise<BackupPayload> {

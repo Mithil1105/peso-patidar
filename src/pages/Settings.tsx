@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Settings as SettingsIcon, Save, Bell, Volume2, VolumeX, MapPin, Plus, Edit, Trash2, Upload, Image as ImageIcon, X, Database, Download, RotateCcw } from "lucide-react";
-import { fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs, restoreFromBackup, parseBackupFile, type BackupPayload } from "@/lib/backupData";
+import { fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs, restoreFromBackup, parseBackupFile, getBackupPreview, type BackupPayload } from "@/lib/backupData";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatINR } from "@/lib/format";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1181,22 +1181,48 @@ export default function Settings() {
           }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Restore from backup</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p>
                   This will add or update data for this organization. Existing rows with the same ID will be updated; new rows will be inserted.
                 </p>
-                {restorePreview && (
-                  <p className="text-sm text-muted-foreground">
-                    Backup: organization {restorePreview.organizationId}, exported {restorePreview.exportedAt ? new Date(restorePreview.exportedAt).toLocaleString() : "—"}.
-                  </p>
-                )}
-                <p className="text-muted-foreground">
-                  Receipt files are not re-uploaded; only database records are restored.
-                </p>
+                {restorePreview && (() => {
+                  const preview = getBackupPreview(restorePreview);
+                  const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—";
+                  return (
+                    <div className="rounded-md border bg-muted/50 p-3 text-sm space-y-2">
+                      <p className="font-medium text-foreground">Preview — what will be restored</p>
+                      <p className="text-muted-foreground">
+                        <span className="font-medium text-foreground">{preview.organizationName}</span>
+                        {" · "}
+                        Backup exported {preview.exportedAt ? new Date(preview.exportedAt).toLocaleString() : "—"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Data period: <span className="text-foreground">{formatDate(preview.dataFrom)}</span>
+                        {" → "}
+                        <span className="text-foreground">{formatDate(preview.dataTo)}</span>
+                        {!preview.dataFrom && !preview.dataTo && " (no date range in backup)"}
+                      </p>
+                      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground list-none">
+                        {preview.counts.expenses > 0 && <li>Expenses: <span className="text-foreground font-medium">{preview.counts.expenses}</span></li>}
+                        {preview.counts.profiles > 0 && <li>Profiles: <span className="text-foreground font-medium">{preview.counts.profiles}</span></li>}
+                        {preview.counts.organization_memberships > 0 && <li>Memberships: <span className="text-foreground font-medium">{preview.counts.organization_memberships}</span></li>}
+                        {preview.counts.expense_line_items > 0 && <li>Line items: <span className="text-foreground font-medium">{preview.counts.expense_line_items}</span></li>}
+                        {preview.counts.attachments > 0 && <li>Attachments: <span className="text-foreground font-medium">{preview.counts.attachments}</span></li>}
+                        {preview.counts.audit_logs > 0 && <li>Audit logs: <span className="text-foreground font-medium">{preview.counts.audit_logs}</span></li>}
+                        {preview.counts.cash_transfer_history > 0 && <li>Transfers: <span className="text-foreground font-medium">{preview.counts.cash_transfer_history}</span></li>}
+                        {preview.counts.expense_categories > 0 && <li>Categories: <span className="text-foreground font-medium">{preview.counts.expense_categories}</span></li>}
+                        {preview.counts.locations > 0 && <li>Locations: <span className="text-foreground font-medium">{preview.counts.locations}</span></li>}
+                      </ul>
+                      <p className="text-muted-foreground pt-1 border-t text-xs">
+                        Receipt files are not re-uploaded; only database records are restored.
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
