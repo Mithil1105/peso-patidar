@@ -288,6 +288,36 @@ export type Database = {
         }
         Relationships: []
       }
+      organization_settings: {
+        Row: {
+          id: string
+          organization_id: string
+          engineer_approval_limit: number | null
+          attachment_required_above_amount: number | null
+          allow_cashier_expense_submission: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          engineer_approval_limit?: number | null
+          attachment_required_above_amount?: number | null
+          allow_cashier_expense_submission?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          engineer_approval_limit?: number | null
+          attachment_required_above_amount?: number | null
+          allow_cashier_expense_submission?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           id: string
@@ -300,6 +330,7 @@ export type Database = {
           last_activity_at: string | null
           created_at: string | null
           updated_at: string | null
+          max_users: number | null
         }
         Insert: {
           id?: string
@@ -312,6 +343,7 @@ export type Database = {
           last_activity_at?: string | null
           created_at?: string | null
           updated_at?: string | null
+          max_users?: number | null
         }
         Update: {
           id?: string
@@ -324,6 +356,7 @@ export type Database = {
           last_activity_at?: string | null
           created_at?: string | null
           updated_at?: string | null
+          max_users?: number | null
         }
         Relationships: []
       }
@@ -653,6 +686,23 @@ export type Database = {
       get_storage_metrics: {
         Args: Record<string, never>
         Returns: Json
+      }
+      assign_user_to_organization: {
+        Args: {
+          p_user_id: string
+          p_organization_id: string
+          p_role?: string
+        }
+        Returns: undefined
+      }
+      get_organization_member_counts: {
+        Args: {
+          org_ids?: string[] | null
+        }
+        Returns: {
+          organization_id: string
+          member_count: number
+        }[]
       }
     }
     Enums: {

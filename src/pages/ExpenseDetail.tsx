@@ -22,6 +22,7 @@ import {
   Eye
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatINR } from "@/lib/format";
@@ -74,6 +75,7 @@ export default function ExpenseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, userRole, organizationId, organization } = useAuth();
+  const { allowCashierExpenseSubmission } = useAllowCashierExpenseSubmission();
   const { toast } = useToast();
   
   const [expense, setExpense] = useState<Expense | null>(null);
@@ -279,8 +281,9 @@ export default function ExpenseDetail() {
 
   const canEdit = () => {
     if (!expense) return false;
-    // Cashiers cannot edit expenses
-    if (userRole === "cashier") return false;
+    if (userRole === "cashier") {
+      return allowCashierExpenseSubmission === true && expense.user_id === user?.id && (expense.status === "submitted" || expense.status === "rejected");
+    }
     return (
       (expense.user_id === user?.id && (expense.status === "submitted" || expense.status === "rejected")) ||
       userRole === "admin"

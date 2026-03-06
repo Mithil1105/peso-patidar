@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Building2,
@@ -44,6 +45,7 @@ interface Organization {
   is_blocked: boolean | null;
   last_activity_at: string | null;
   created_at: string;
+  max_users: number | null;
 }
 
 interface ContactLead {
@@ -83,13 +85,14 @@ export default function MasterAdminDashboard() {
   const [selectedOrgIdForBackup, setSelectedOrgIdForBackup] = useState<string>("");
   const [includeReceiptsFull, setIncludeReceiptsFull] = useState(false);
   const [includeReceiptsOrg, setIncludeReceiptsOrg] = useState(false);
+  const [memberCountByOrgId, setMemberCountByOrgId] = useState<Record<string, number>>({});
 
   const PLAN_OPTIONS = ["starter", "free-trial", "pro"] as const;
   const PAYMENT_OPTIONS = ["active", "pending", "overdue", "suspended", "cancelled"] as const;
 
   const updateOrganization = async (
     orgId: string,
-    updates: { plan?: string | null; payment_status?: string | null }
+    updates: { plan?: string | null; payment_status?: string | null; max_users?: number | null }
   ) => {
     setUpdatingOrgId(orgId);
     try {
@@ -118,10 +121,10 @@ export default function MasterAdminDashboard() {
 
   const load = async () => {
     try {
-      const [orgRes, leadsRes, metricsRes] = await Promise.all([
+      const [orgRes, leadsRes, metricsRes, countsRes] = await Promise.all([
         supabase
           .from("organizations")
-          .select("id, name, slug, plan, payment_status, is_blocked, last_activity_at, created_at")
+          .select("id, name, slug, plan, payment_status, is_blocked, last_activity_at, created_at, max_users")
           .order("created_at", { ascending: false }),
         supabase
           .from("contact_leads")
@@ -129,6 +132,7 @@ export default function MasterAdminDashboard() {
           .order("created_at", { ascending: false })
           .limit(100),
         supabase.rpc("get_storage_metrics"),
+        supabase.rpc("get_organization_member_counts"),
       ]);
 
       if (orgRes.error) throw orgRes.error;
@@ -137,6 +141,13 @@ export default function MasterAdminDashboard() {
       setOrganizations((orgRes.data ?? []) as Organization[]);
       setContactLeads((leadsRes.data ?? []) as ContactLead[]);
       setStorageMetrics((metricsRes.data ?? null) as StorageMetrics | null);
+      if (countsRes.data && Array.isArray(countsRes.data)) {
+        const byId: Record<string, number> = {};
+        for (const row of countsRes.data as { organization_id: string; member_count: number }[]) {
+          byId[row.organization_id] = Number(row.member_count);
+        }
+        setMemberCountByOrgId(byId);
+      }
       if (metricsRes.error) {
         console.warn("Storage metrics not available:", metricsRes.error.message);
       }
@@ -321,6 +332,7 @@ export default function MasterAdminDashboard() {
                   <TableHead>Slug</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Payment</TableHead>
+                  <TableHead>Users</TableHead>
                   <TableHead>Last activity</TableHead>
                   <TableHead>Blocked</TableHead>
                 </TableRow>
@@ -328,12 +340,14 @@ export default function MasterAdminDashboard() {
               <TableBody>
                 {organizations.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground">
                       No organizations
                     </TableCell>
                   </TableRow>
                 ) : (
-                  organizations.map((org) => (
+                  organizations.map((org) => {
+                    const memberCount = memberCountByOrgId[org.id] ?? 0;
+                    return (
                     <TableRow key={org.id}>
                       <TableCell className="max-w-[180px]">
                         <button
@@ -394,6 +408,34 @@ export default function MasterAdminDashboard() {
                           </SelectContent>
                         </Select>
                       </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-muted-foreground text-xs whitespace-nowrap">
+                            {memberCount} / {org.max_users == null ? "∞" : org.max_users}
+                          </span>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1}
+                            placeholder="Unlimited"
+                            className="h-8 w-[100px]"
+                            key={`${org.id}-${org.max_users ?? "u"}`}
+                            defaultValue={org.max_users == null ? "" : String(org.max_users)}
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              if (raw === "") {
+                                if (org.max_users != null) updateOrganization(org.id, { max_users: null });
+                                return;
+                              }
+                              const n = parseInt(raw, 10);
+                              if (!Number.isNaN(n) && n >= 0 && n !== (org.max_users ?? undefined)) {
+                                updateOrganization(org.id, { max_users: n });
+                              }
+                            }}
+                            disabled={updatingOrgId === org.id}
+                          />
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {org.last_activity_at
                           ? format(new Date(org.last_activity_at), "PPp")
@@ -401,7 +443,8 @@ export default function MasterAdminDashboard() {
                       </TableCell>
                       <TableCell>{org.is_blocked ? "Yes" : "No"}</TableCell>
                     </TableRow>
-                  ))
+                  );
+                  })
                 )}
               </TableBody>
             </Table>

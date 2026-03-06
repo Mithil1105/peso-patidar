@@ -31,12 +31,11 @@ export default function NotificationSettings() {
 
   const loadSettings = async () => {
     try {
-      // Try to load from database first
       const { data, error } = await supabase
         .from("profiles")
         .select("notification_settings")
         .eq("user_id", user?.id)
-        .single();
+        .maybeSingle();
 
       if (!error && data?.notification_settings) {
         setSettings({
@@ -45,18 +44,24 @@ export default function NotificationSettings() {
           desktop_enabled: data.notification_settings.desktop_enabled ?? false,
         });
       } else {
-        // Fallback to localStorage
         const stored = localStorage.getItem(`notification_settings_${user?.id}`);
         if (stored) {
-          setSettings(JSON.parse(stored));
+          try {
+            setSettings(JSON.parse(stored));
+          } catch {
+            // use defaults
+          }
         }
       }
-    } catch (error) {
-      console.error("Error loading notification settings:", error);
-      // Fallback to localStorage
+    } catch {
+      // 400 etc. if notification_settings column missing – use localStorage or defaults
       const stored = localStorage.getItem(`notification_settings_${user?.id}`);
       if (stored) {
-        setSettings(JSON.parse(stored));
+        try {
+          setSettings(JSON.parse(stored));
+        } catch {
+          // use defaults
+        }
       }
     } finally {
       setLoading(false);

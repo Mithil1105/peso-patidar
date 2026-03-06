@@ -609,8 +609,7 @@ export default function UserManagement() {
         throw new Error("Organization not found. Please contact support.");
       }
 
-      // Use assign_user_to_organization function which handles conflicts properly
-      // This will create/update profile and organization membership
+      // Use assign_user_to_organization function which enforces org user limit and handles conflicts
       const { error: assignError } = await supabase.rpc('assign_user_to_organization', {
         p_user_id: authData.user.id,
         p_organization_id: organizationId,
@@ -618,45 +617,18 @@ export default function UserManagement() {
       });
 
       if (assignError) {
-        // If RPC fails, fall back to manual insert with conflict handling
-        // Update profile (trigger may have created it already)
-        const { error: profileError } = await supabase
+        // Surface RPC error (e.g. "Organization user limit reached") – do not fall back to direct upsert
+        throw new Error(assignError.message || "Failed to add user to organization.");
+      }
+
+      // RPC succeeded; update the name if needed (RPC uses name from auth metadata)
+      if (validated.name !== (authData.user.user_metadata?.name || 'New User')) {
+        const { error: nameUpdateError } = await supabase
           .from("profiles")
-          .upsert({
-            user_id: authData.user.id,
-            name: validated.name,
-            email: validated.email,
-            organization_id: organizationId,
-            is_active: true,
-          }, {
-            onConflict: 'user_id'
-          });
+          .update({ name: validated.name })
+          .eq("user_id", authData.user.id);
 
-        if (profileError) throw profileError;
-
-        // Create organization membership
-        const { error: membershipError } = await supabase
-          .from("organization_memberships")
-          .upsert({
-            organization_id: organizationId,
-          user_id: authData.user.id,
-          role: validated.role,
-            is_active: true,
-          }, {
-            onConflict: 'organization_id,user_id'
-        });
-
-        if (membershipError) throw membershipError;
-      } else {
-        // If RPC succeeded, update the name if needed (RPC uses name from auth metadata)
-        if (validated.name !== (authData.user.user_metadata?.name || 'New User')) {
-          const { error: nameUpdateError } = await supabase
-            .from("profiles")
-            .update({ name: validated.name })
-            .eq("user_id", authData.user.id);
-          
-          if (nameUpdateError) console.error("Failed to update name:", nameUpdateError);
-        }
+        if (nameUpdateError) console.error("Failed to update name:", nameUpdateError);
       }
 
       // If creating an employee and an engineer is chosen, link them

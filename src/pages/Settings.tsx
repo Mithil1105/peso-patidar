@@ -27,6 +27,7 @@ export default function Settings() {
   // Admin settings
   const [engineerApprovalLimit, setEngineerApprovalLimit] = useState<string>("50000");
   const [attachmentRequiredAboveAmount, setAttachmentRequiredAboveAmount] = useState<string>("50");
+  const [allowCashierExpenseSubmission, setAllowCashierExpenseSubmission] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -64,14 +65,14 @@ export default function Settings() {
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (userRole === "admin") {
+    if (userRole === "admin" && organizationId) {
       fetchSettings();
       fetchLocations();
     }
     if (user) {
       loadNotificationSettings();
     }
-  }, [userRole, user]);
+  }, [userRole, user, organizationId]);
 
   const fetchSettings = async () => {
     try {
@@ -80,20 +81,36 @@ export default function Settings() {
         setLoading(false);
         return;
       }
-      
-      // First try organization_settings table (preferred, used by ExpenseService)
-      const { data: orgSettings, error: orgError } = await supabase
+
+      // Prefer full organization_settings (including allow_cashier_expense_submission)
+      let orgSettings: { engineer_approval_limit?: number | null; attachment_required_above_amount?: number | null; allow_cashier_expense_submission?: boolean | null } | null = null;
+      const { data: fullSettings, error: fullError } = await supabase
         .from("organization_settings")
-        .select("engineer_approval_limit, attachment_required_above_amount")
+        .select("engineer_approval_limit, attachment_required_above_amount, allow_cashier_expense_submission")
         .eq("organization_id", organizationId)
         .maybeSingle();
 
-      if (!orgError && orgSettings) {
+      if (!fullError && fullSettings) {
+        orgSettings = fullSettings;
+      } else if (fullError && (fullError.code === "42703" || fullError.message?.includes("allow_cashier_expense_submission"))) {
+        // Column might not exist yet (migration not run) – fetch without it
+        const { data: fallbackSettings, error: fallbackError } = await supabase
+          .from("organization_settings")
+          .select("engineer_approval_limit, attachment_required_above_amount")
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+        if (!fallbackError && fallbackSettings) orgSettings = fallbackSettings;
+      }
+
+      if (orgSettings) {
         if (orgSettings.engineer_approval_limit !== null && orgSettings.engineer_approval_limit !== undefined) {
           setEngineerApprovalLimit(orgSettings.engineer_approval_limit.toString());
         }
         if (orgSettings.attachment_required_above_amount !== null && orgSettings.attachment_required_above_amount !== undefined) {
           setAttachmentRequiredAboveAmount(orgSettings.attachment_required_above_amount.toString());
+        }
+        if (orgSettings.allow_cashier_expense_submission !== null && orgSettings.allow_cashier_expense_submission !== undefined) {
+          setAllowCashierExpenseSubmission(orgSettings.allow_cashier_expense_submission === true);
         }
         setLoading(false);
         return;
@@ -217,6 +234,7 @@ export default function Settings() {
           organization_id: organizationId,
           engineer_approval_limit: limitValue,
           attachment_required_above_amount: attachmentLimitValue,
+          allow_cashier_expense_submission: allowCashierExpenseSubmission,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: "organization_id"
@@ -247,12 +265,11 @@ export default function Settings() {
   const loadNotificationSettings = async () => {
     try {
       setLoadingNotifications(true);
-      // Try to load from database first
       const { data, error } = await supabase
         .from("profiles")
         .select("notification_settings")
         .eq("user_id", user?.id)
-        .single();
+        .maybeSingle();
 
       if (!error && data?.notification_settings) {
         setNotificationSettings({
@@ -261,18 +278,24 @@ export default function Settings() {
           desktop_enabled: data.notification_settings.desktop_enabled ?? false,
         });
       } else {
-        // Fallback to localStorage
         const stored = localStorage.getItem(`notification_settings_${user?.id}`);
         if (stored) {
-          setNotificationSettings(JSON.parse(stored));
+          try {
+            setNotificationSettings(JSON.parse(stored));
+          } catch {
+            // use defaults
+          }
         }
       }
-    } catch (error) {
-      console.error("Error loading notification settings:", error);
-      // Fallback to localStorage
+    } catch {
+      // 400 etc. (e.g. notification_settings column missing) – use localStorage or defaults
       const stored = localStorage.getItem(`notification_settings_${user?.id}`);
       if (stored) {
-        setNotificationSettings(JSON.parse(stored));
+        try {
+          setNotificationSettings(JSON.parse(stored));
+        } catch {
+          // use defaults
+        }
       }
     } finally {
       setLoadingNotifications(false);
@@ -871,8 +894,8 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      {/* Admin Settings - Only for admins */}
-      {userRole === "admin" && (
+      {/* Admin Settings - Organization admins (and visible to master_admin with a note) */}
+      {(userRole === "admin" || userRole === "master_admin") && (
         <>
         <Card>
           <CardHeader>
@@ -881,11 +904,15 @@ export default function Settings() {
               <CardTitle>Admin Settings</CardTitle>
             </div>
             <CardDescription>
-              Configure system-wide settings (Admin only)
+              Configure organization-wide settings (organization admin only)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {loading ? (
+            {userRole === "master_admin" && !organizationId ? (
+              <p className="text-muted-foreground text-sm">
+                Sign in as an organization administrator to change these settings (e.g. manager approval limit, attachment rules, and whether cashiers can submit expenses).
+              </p>
+            ) : loading ? (
               <p className="text-muted-foreground">Loading settings...</p>
             ) : (
               <>
@@ -923,6 +950,20 @@ export default function Settings() {
                     Expenses above {formatINR(parseFloat(attachmentRequiredAboveAmount) || 0)} require bill attachments.
                     Expenses at or below this amount do not require attachments.
                   </p>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="allow-cashier-expense">Allow cashiers to submit expenses</Label>
+                    <p className="text-sm text-muted-foreground">
+                      When enabled, cashiers can create and submit expense claims; admins can approve them.
+                    </p>
+                  </div>
+                  <Switch
+                    id="allow-cashier-expense"
+                    checked={allowCashierExpenseSubmission}
+                    onCheckedChange={setAllowCashierExpenseSubmission}
+                  />
                 </div>
 
                 <div className="flex gap-2">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import {
 
 interface Expense {
   id: string;
+  user_id?: string;
   title: string;
   destination: string;
   trip_start: string;
@@ -44,6 +46,7 @@ interface Expense {
 
 export default function Expenses() {
   const { user, userRole } = useAuth();
+  const { allowCashierExpenseSubmission } = useAllowCashierExpenseSubmission();
   const { toast } = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([]);
@@ -517,7 +520,7 @@ export default function Expenses() {
               Export CSV
             </Button>
           )}
-          {(userRole === "employee" || userRole === "admin" || userRole === "engineer") && (
+          {(userRole === "employee" || userRole === "admin" || userRole === "engineer" || (userRole === "cashier" && allowCashierExpenseSubmission === true)) && (
             <Button onClick={() => navigate("/expenses/new")}>
               <Plus className="mr-2 h-4 w-4" />
               Add Expense
@@ -725,7 +728,7 @@ export default function Expenses() {
                               <Eye className="mr-2 h-4 w-4" />
                               View
                             </DropdownMenuItem>
-                            {(expense.status === "submitted" || expense.status === "rejected") && userRole !== "cashier" && (
+                            {(expense.status === "submitted" || expense.status === "rejected") && (userRole !== "cashier" || (userRole === "cashier" && allowCashierExpenseSubmission === true && expense.user_id === user?.id)) && (
                               <>
                                 <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
                                   <Edit className="mr-2 h-4 w-4" />

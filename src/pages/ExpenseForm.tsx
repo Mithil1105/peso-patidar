@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,19 +50,21 @@ export default function ExpenseForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { allowCashierExpenseSubmission, loading: settingLoading } = useAllowCashierExpenseSubmission();
 
-  // Block cashiers from accessing expense form
+  // Block cashiers only when org does not allow cashier expense submission
   useEffect(() => {
-    if (userRole === "cashier") {
-      toast({
-        variant: "destructive",
-        title: "Access Denied",
-        description: "Cashiers are not allowed to create or edit expenses.",
-      });
-      navigate("/expenses");
-    }
-  }, [userRole, navigate, toast]);
-  
+    if (userRole !== "cashier") return;
+    if (settingLoading) return;
+    if (allowCashierExpenseSubmission === true) return;
+    toast({
+      variant: "destructive",
+      title: "Access Denied",
+      description: "Cashiers are not allowed to create or edit expenses.",
+    });
+    navigate("/expenses");
+  }, [userRole, allowCashierExpenseSubmission, settingLoading, navigate, toast]);
+
   const [loading, setLoading] = useState(false);
   const [expense, setExpense] = useState({
     title: "",

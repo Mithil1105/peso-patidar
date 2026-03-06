@@ -24,12 +24,14 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 import { Button } from "@/components/ui/button";
 import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
 import { Badge } from "@/components/ui/badge";
 
 export function AppSidebar() {
   const { userRole, signOut, organization } = useAuth();
+  const { allowCashierExpenseSubmission } = useAllowCashierExpenseSubmission();
   const { unreadCount } = useUnreadNotifications();
 
   const employeeItems = [
@@ -61,8 +63,9 @@ export function AppSidebar() {
   ];
 
 
-  const cashierItems = [
+  const cashierItemsBase = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+    ...(allowCashierExpenseSubmission === true ? [{ title: "My Expenses", url: "/expenses", icon: Receipt }] : []),
     { title: "All Expenses", url: "/admin/expenses", icon: Receipt },
     { title: "Balances", url: "/balances", icon: FileText },
     { title: "Transaction History", url: "/cashier/transactions", icon: Clock },
@@ -80,7 +83,7 @@ export function AppSidebar() {
     userRole === "master_admin" ? masterAdminItems :
     userRole === "admin" ? adminItems :
     userRole === "engineer" ? engineerItems :
-    userRole === "cashier" ? cashierItems :
+    userRole === "cashier" ? cashierItemsBase :
     employeeItems;
 
   return (

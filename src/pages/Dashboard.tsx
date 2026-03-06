@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 
 interface DashboardStats {
   totalExpenses: number;
@@ -40,6 +41,7 @@ interface Notification {
 
 export default function Dashboard() {
   const { user, userRole } = useAuth();
+  const { allowCashierExpenseSubmission } = useAllowCashierExpenseSubmission();
   const navigate = useNavigate();
 
   // Master admins use the dedicated Master Admin Dashboard
@@ -897,7 +899,7 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
-            {(userRole === "employee" || userRole === "admin" || userRole === "engineer") && (
+            {(userRole === "employee" || userRole === "admin" || userRole === "engineer" || (userRole === "cashier" && allowCashierExpenseSubmission === true)) && (
               <>
               <Button 
                 onClick={() => navigate("/expenses/new")}

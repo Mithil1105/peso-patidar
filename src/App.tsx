@@ -101,7 +101,7 @@ const App = () => (
           <Route
             path="/expenses/new"
             element={
-              <ProtectedRoute allowedRoles={["employee", "admin", "engineer"]}>
+              <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
                 <Layout>
                   <ExpenseForm />
                 </Layout>
@@ -121,7 +121,7 @@ const App = () => (
           <Route
             path="/expenses/:id/edit"
             element={
-              <ProtectedRoute allowedRoles={["employee", "admin", "engineer"]}>
+              <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
                 <Layout>
                   <ExpenseForm />
                 </Layout>
