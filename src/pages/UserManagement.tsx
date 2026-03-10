@@ -70,7 +70,7 @@ export default function UserManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState<{ user_id: string; name: string; email: string; balance: number; role: string } | null>(null);
   const [userToDelete, setUserToDelete] = useState<{ user_id: string; name: string; email: string } | null>(null);
-  const [editFormData, setEditFormData] = useState<{ name: string; email: string; role: "admin" | "engineer" | "employee" | "cashier"; reportingEngineerId: string; cashierAssignedEngineerId: string; cashierAssignedLocationId: string; assignedCashierId: string; locationId: string }>({
+  const [editFormData, setEditFormData] = useState<{ name: string; email: string; role: "admin" | "engineer" | "employee" | "cashier"; reportingEngineerId: string; cashierAssignedEngineerId: string; cashierAssignedLocationId: string; assignedCashierId: string; locationId: string; balance: number }>({
     name: "",
     email: "",
     role: "employee",
@@ -79,6 +79,7 @@ export default function UserManagement() {
     cashierAssignedLocationId: "none",
     assignedCashierId: "none",
     locationId: "none",
+    balance: 0,
   });
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -848,6 +849,7 @@ export default function UserManagement() {
           cashierAssignedLocationId: (data as any)?.cashier_assigned_location_id || "none",
           assignedCashierId: (data as any)?.assigned_cashier_id || "none",
           locationId: locationId,
+          balance: Number(u.balance ?? 0),
         });
       } catch (e) {
         setEditFormData({
@@ -859,6 +861,7 @@ export default function UserManagement() {
           cashierAssignedLocationId: "none",
           assignedCashierId: "none",
           locationId: "none",
+          balance: Number(u.balance ?? 0),
         });
       }
     };
@@ -877,13 +880,16 @@ export default function UserManagement() {
     try {
       setUpdating(true);
 
-      // Update profile (name, email, assignments)
+      // Update profile (name, email, assignments, balance for admin)
       // Clear assignments when role changes - only set if role matches
       const updateData: any = {
         name: editFormData.name,
         email: editFormData.email,
       };
-      
+      if (userRole === "admin" && typeof editFormData.balance === "number" && !Number.isNaN(editFormData.balance)) {
+        updateData.balance = editFormData.balance;
+      }
+
       // Handle reporting_engineer_id (for employees)
       if (editFormData.role === "employee") {
         updateData.reporting_engineer_id = editFormData.reportingEngineerId !== "none" 
@@ -2642,6 +2648,34 @@ export default function UserManagement() {
                 </SelectContent>
               </Select>
             </div>
+            {userRole === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-balance" className="whitespace-nowrap">Balance (INR)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="edit-balance"
+                    type="number"
+                    step="0.01"
+                    value={editFormData.balance ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                      setEditFormData(prev => ({ ...prev, balance: Number.isNaN(v) ? 0 : v }));
+                    }}
+                    placeholder="0"
+                    className="whitespace-nowrap"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditFormData(prev => ({ ...prev, balance: 0 }))}
+                  >
+                    Set to 0
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground whitespace-nowrap">Edit or clear this user&apos;s balance. Use 0 to remove.</p>
+              </div>
+            )}
             {editFormData.role === "employee" && (
               <div className="space-y-2">
                 <Label htmlFor="edit-engineer" className="whitespace-nowrap">Assign Manager</Label>

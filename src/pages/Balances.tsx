@@ -65,6 +65,12 @@ export default function Balances() {
   const [editTransferNewDate, setEditTransferNewDate] = useState<string>("");
   const [editTransferSaving, setEditTransferSaving] = useState(false);
 
+  // Edit balance (set to any value or 0) - admin only
+  const [editBalanceDialogOpen, setEditBalanceDialogOpen] = useState(false);
+  const [editBalanceRow, setEditBalanceRow] = useState<ProfileRow | null>(null);
+  const [editBalanceNewValue, setEditBalanceNewValue] = useState<string>("");
+  const [editBalanceSaving, setEditBalanceSaving] = useState(false);
+
   const canEdit = userRole === "admin" || userRole === "cashier";
 
   useEffect(() => {
@@ -788,6 +794,26 @@ export default function Balances() {
     }
   };
 
+  const handleSaveEditBalance = async () => {
+    if (!editBalanceRow) return;
+    const parsed = parseFloat(editBalanceNewValue);
+    if (Number.isNaN(parsed)) {
+      toast({ variant: "destructive", title: "Error", description: "Please enter a valid number" });
+      return;
+    }
+    try {
+      setEditBalanceSaving(true);
+      await updateBalance(editBalanceRow.user_id, parsed);
+      setEditBalanceDialogOpen(false);
+      setEditBalanceRow(null);
+      setEditBalanceNewValue("");
+    } catch {
+      // updateBalance already shows toast
+    } finally {
+      setEditBalanceSaving(false);
+    }
+  };
+
   if (!canEdit) {
     return (
       <div className="space-y-8">
@@ -1153,7 +1179,23 @@ export default function Balances() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end">
+                      <div className="flex justify-end gap-2 flex-wrap">
+                        {userRole === "admin" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            disabled={savingId === r.user_id}
+                            onClick={() => {
+                              setEditBalanceRow(r);
+                              setEditBalanceNewValue(String(r.balance ?? 0));
+                              setEditBalanceDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           className="w-20 min-w-[80px]"
@@ -1463,6 +1505,76 @@ export default function Balances() {
                   ? `Add ${formatINR(bulkAmount)} to ${selectedUserIds.size} User(s)`
                   : "Add to Selected Users"
               }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit balance dialog - admin only */}
+      <Dialog
+        open={editBalanceDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditBalanceDialogOpen(false);
+            setEditBalanceRow(null);
+            setEditBalanceNewValue("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit balance</DialogTitle>
+            <DialogDescription>
+              Set this user's balance to a specific value. Use 0 to clear (remove) their balance.
+            </DialogDescription>
+          </DialogHeader>
+          {editBalanceRow && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border p-3 text-sm">
+                <p className="font-medium">{editBalanceRow.name}</p>
+                <p className="text-muted-foreground text-xs">{editBalanceRow.email}</p>
+                <p className="mt-2">
+                  <span className="text-muted-foreground">Current balance: </span>
+                  <span className={`font-medium ${(editBalanceRow.balance ?? 0) < 0 ? "text-red-600" : ""}`}>
+                    {formatINR(editBalanceRow.balance ?? 0)}
+                  </span>
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-balance-value">New balance (INR)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="edit-balance-value"
+                    type="number"
+                    step="0.01"
+                    value={editBalanceNewValue}
+                    onChange={(e) => setEditBalanceNewValue(e.target.value)}
+                    placeholder="0"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditBalanceNewValue("0")}
+                  >
+                    Set to 0
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditBalanceDialogOpen(false);
+                setEditBalanceRow(null);
+                setEditBalanceNewValue("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEditBalance} disabled={editBalanceSaving}>
+              {editBalanceSaving ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
