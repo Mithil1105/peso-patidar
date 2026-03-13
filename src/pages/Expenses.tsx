@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Filter, Download, ArrowLeft, MoreVertical, Eye, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Filter, Download, ArrowLeft, MoreVertical, Edit, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -715,21 +715,24 @@ export default function Expenses() {
                             <StatusBadge status={expense.status as any} />
                           )}
                         </div>
-                      <div className="flex justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreVertical className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}`)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View
-                            </DropdownMenuItem>
-                            {(expense.status === "submitted" || expense.status === "rejected") && (userRole !== "cashier" || (userRole === "cashier" && allowCashierExpenseSubmission === true && expense.user_id === user?.id)) && (
-                              <>
+                        <div className="flex justify-end shrink-0 gap-1">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-8 px-2 text-xs font-normal whitespace-nowrap"
+                            onClick={() => navigate(`/expenses/${expense.id}`)}
+                          >
+                            View
+                          </Button>
+                          {(expense.status === "submitted" || expense.status === "rejected") && (userRole !== "cashier" || (userRole === "cashier" && allowCashierExpenseSubmission === true && expense.user_id === user?.id)) && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
+                                  <MoreVertical className="h-4 w-4" />
+                                  <span className="sr-only">More actions</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => navigate(`/expenses/${expense.id}/edit`)}>
                                   <Edit className="mr-2 h-4 w-4" />
                                   {expense.status === "rejected" ? "Edit & Resubmit" : "Edit"}
@@ -746,10 +749,9 @@ export default function Expenses() {
                                     Delete
                                   </DropdownMenuItem>
                                 )}
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                       </div>
                     </TableCell>

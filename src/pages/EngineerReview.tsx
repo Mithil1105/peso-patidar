@@ -792,13 +792,13 @@ export default function ManagerReview() {
                         <div className="sm:hidden mb-2">
                           <StatusBadge status={expense.status as any} />
                         </div>
-                      <div className="flex justify-end">
+                      <div className="flex justify-end shrink-0">
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button
-                              variant={expense.status === "approved" || expense.status === "rejected" ? "secondary" : "default"}
+                              variant={(expense.status || "").toLowerCase() === "approved" || (expense.status || "").toLowerCase() === "rejected" ? "secondary" : "default"}
                                 size="sm"
-                              className={expense.status === "approved" || expense.status === "rejected" 
+                              className={(expense.status || "").toLowerCase() === "approved" || (expense.status || "").toLowerCase() === "rejected" 
                                 ? "h-8 px-2 text-xs font-normal whitespace-nowrap"
                                 : "h-8 px-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
                               }
@@ -809,7 +809,7 @@ export default function ManagerReview() {
                                   await fetchEngineerApprovalLimit();
                                 }}
                               >
-                              {expense.status === "approved" || expense.status === "rejected" ? "View" : "View/Approve"}
+                              {(expense.status || "").toLowerCase() === "approved" || (expense.status || "").toLowerCase() === "rejected" ? "View" : "View/Approve"}
                               </Button>
                             </DialogTrigger>
                         <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">

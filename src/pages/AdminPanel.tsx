@@ -1199,371 +1199,21 @@ export default function AdminPanel() {
                                   <StatusBadge status={expense.status as any} />
                                 )}
                               </div>
-                              <div className="flex justify-end">
-                                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant={expense.status === "approved" || expense.status === "rejected" ? "secondary" : "default"}
-                                      size="sm"
-                                      className={expense.status === "approved" || expense.status === "rejected"
-                                        ? "h-8 px-2 text-xs font-normal whitespace-nowrap"
-                                        : "h-8 px-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
-                                      }
-                                      onClick={async () => {
-                                        setSelectedExpense(expense);
-                                        setDialogOpen(true);
-                                        // Fetch attachments when opening dialog
-                                        if (expense.id) {
-                                          const { data: attData } = await supabase
-                                            .from("attachments")
-                                            .select("*")
-                                            .eq("expense_id", expense.id)
-                                            .order("created_at", { ascending: false });
-                                          setAttachments(attData || []);
-                                        }
-                                      }}
-                                    >
-                                      {expense.status === "approved" || expense.status === "rejected" ? "View" : "View/Approve"}
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col p-0">
-                                    <div ref={reviewDialogContentRef} className="overflow-y-auto flex-1 p-4 sm:p-6 min-h-0">
-                                    <DialogHeader>
-                                      <DialogTitle>Review and manage this expense submission</DialogTitle>
-                                    </DialogHeader>
-
-                                    {selectedExpense && (
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                          <div>
-                                            <label className="text-sm font-medium">Employee</label>
-                                            <p className="text-sm">{selectedExpense.user_name}</p>
-                                            <p className="text-xs text-muted-foreground">{selectedExpense.user_email}</p>
-                                          </div>
-                                          <div>
-                                            <label className="text-sm font-medium">Amount</label>
-                                            <p className="text-lg font-semibold">{formatINR(selectedExpense.total_amount)}</p>
-                                          </div>
-                                        </div>
-
-                                        <div>
-                                          <label className="text-sm font-medium">Title</label>
-                                          <p className="text-sm">{selectedExpense.title}</p>
-                                        </div>
-
-                                        <div>
-                                          <label className="text-sm font-medium">Destination</label>
-                                          <p className="text-sm">{selectedExpense.destination}</p>
-                                        </div>
-
-                                        {selectedExpense.category && (
-                                          <div>
-                                            <label className="text-sm font-medium">Category</label>
-                                            <p className="text-sm capitalize">{selectedExpense.category}</p>
-                                          </div>
-                                        )}
-
-                                        {selectedExpense.purpose && (
-                                          <div>
-                                            <label className="text-sm font-medium">Purpose</label>
-                                            <p className="text-sm">{selectedExpense.purpose}</p>
-                                          </div>
-                                        )}
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div>
-                                            <label className="text-sm font-medium">Trip Start</label>
-                                            <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
-                                          </div>
-                                          <div>
-                                            <label className="text-sm font-medium">Trip End</label>
-                                            <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
-                                          </div>
-                                        </div>
-
-                                        <div>
-                                          <label className="text-sm font-medium">Current Status</label>
-                                          <div className="mt-1">
-                                            <StatusBadge status={selectedExpense.status as any} />
-                                          </div>
-                                        </div>
-
-                                        {/* Form Field Values */}
-                                        {formFieldValues.length > 0 && (
-                                          <div className="space-y-3 pt-2 border-t">
-                                            <label className="text-sm font-medium">Additional Information</label>
-                                            {formFieldValues.map((field) => (
-                                              <div key={field.template_id} className="space-y-1">
-                                                <div className="text-xs text-muted-foreground">
-                                                  {field.template_name}
-                                                </div>
-                                                <div className="text-sm">
-                                                  {field.field_type === 'checkbox' ? (
-                                                    <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
-                                                      {field.field_value === 'true' ? 'Yes' : 'No'}
-                                                    </Badge>
-                                                  ) : (
-                                                    <span className="font-medium">{field.field_value}</span>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-
-                                        {/* For submitted expenses, show both Verify and Approve buttons */}
-                                        {selectedExpense.status === "submitted" ? (
-                                          <div>
-                                            <label className="text-sm font-medium">Admin Comment (Optional)</label>
-                                            <Textarea
-                                              value={adminComment}
-                                              onChange={(e) => setAdminComment(e.target.value)}
-                                              placeholder="Add a comment about this expense..."
-                                              className="mt-1"
-                                            />
-                                          </div>
-                                        ) : selectedExpense.status === "verified" ? (
-                                          <div>
-                                            <label className="text-sm font-medium">Admin Comment (Optional)</label>
-                                            <Textarea
-                                              value={adminComment}
-                                              onChange={(e) => setAdminComment(e.target.value)}
-                                              placeholder="Add a comment about this expense..."
-                                              className="mt-1"
-                                            />
-                                          </div>
-                                        ) : (
-                                          <>
-                                            <div>
-                                              <label className="text-sm font-medium">Update Status</label>
-                                              <Select
-                                                value={selectedStatus}
-                                                onValueChange={setSelectedStatus}
-                                                disabled={selectedExpense.status === 'approved'}
-                                              >
-                                                <SelectTrigger className="mt-1">
-                                                  <SelectValue placeholder="Select new status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                  <SelectItem value="submitted">Submitted</SelectItem>
-                                                  <SelectItem value="verified">Verified</SelectItem>
-                                                  <SelectItem value="approved">Approved</SelectItem>
-                                                </SelectContent>
-                                              </Select>
-                                            </div>
-
-                                            <div>
-                                              <label className="text-sm font-medium">Admin Comment</label>
-                                              <Textarea
-                                                value={adminComment}
-                                                onChange={(e) => setAdminComment(e.target.value)}
-                                                placeholder="Add a comment about this expense..."
-                                                className="mt-1"
-                                              />
-                                            </div>
-                                          </>
-                                        )}
-
-                                        {attachments.length > 0 && (
-                                          <div className="space-y-2">
-                                            <label className="text-sm font-medium">Receipts & Attachments</label>
-                                            <div className="space-y-2">
-                                              {attachments.map((a) => (
-                                                <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                                  <div className="flex items-center gap-3">
-                                                    {a.content_type?.startsWith("image/") ? (
-                                                      <img
-                                                        src={a.file_url}
-                                                        alt={a.filename}
-                                                        className="h-14 w-14 object-cover rounded"
-                                                        onError={(e) => {
-                                                          console.error("❌ [AdminPanel] Image failed to load:", a.file_url);
-                                                          console.error("❌ [AdminPanel] Error event:", e);
-                                                        }}
-                                                        onLoad={() => {
-                                                          console.log("✅ [AdminPanel] Image loaded successfully:", a.file_url);
-                                                        }}
-                                                      />
-                                                    ) : (
-                                                      <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
-                                                    )}
-                                                    <div>
-                                                      <p className="font-medium text-sm">{a.filename}</p>
-                                                      <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
-                                                    </div>
-                                                  </div>
-                                                  <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                      console.log("🖼️ [AdminPanel] Setting image preview URL:", a.file_url);
-                                                      setImagePreviewUrl(a.file_url);
-                                                      setPreviewContentType(a.content_type);
-                                                      setImagePreviewOpen(true);
-                                                    }}
-                                                  >
-                                                    View
-                                                  </Button>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {/* Expense Timeline */}
-                                        {auditLogs.length > 0 && (
-                                          <div className="space-y-2 border-t pt-4 mt-4">
-                                            <label className="text-sm font-medium">Expense Timeline</label>
-                                            <div className="space-y-3 mt-2">
-                                              {auditLogs.map((log, index) => {
-                                                // Determine colors based on action type
-                                                const getStatusColors = (action: string) => {
-                                                  const actionLower = action.toLowerCase();
-                                                  if (actionLower.includes('approved')) {
-                                                    return {
-                                                      dot: 'bg-green-500',
-                                                      line: 'bg-green-200',
-                                                      text: 'text-green-700',
-                                                      bg: 'bg-green-50',
-                                                      border: 'border-green-200'
-                                                    };
-                                                  } else if (actionLower.includes('verified')) {
-                                                    return {
-                                                      dot: 'bg-yellow-500',
-                                                      line: 'bg-yellow-200',
-                                                      text: 'text-yellow-700',
-                                                      bg: 'bg-yellow-50',
-                                                      border: 'border-yellow-200'
-                                                    };
-                                                  } else if (actionLower.includes('rejected')) {
-                                                    return {
-                                                      dot: 'bg-red-500',
-                                                      line: 'bg-red-200',
-                                                      text: 'text-red-700',
-                                                      bg: 'bg-red-50',
-                                                      border: 'border-red-200'
-                                                    };
-                                                  } else if (actionLower.includes('resubmitted')) {
-                                                    return {
-                                                      dot: 'bg-blue-500',
-                                                      line: 'bg-blue-200',
-                                                      text: 'text-blue-700',
-                                                      bg: 'bg-blue-50',
-                                                      border: 'border-blue-200'
-                                                    };
-                                                  } else if (actionLower.includes('submitted')) {
-                                                    return {
-                                                      dot: 'bg-indigo-500',
-                                                      line: 'bg-indigo-200',
-                                                      text: 'text-indigo-700',
-                                                      bg: 'bg-indigo-50',
-                                                      border: 'border-indigo-200'
-                                                    };
-                                                  } else if (actionLower.includes('created')) {
-                                                    return {
-                                                      dot: 'bg-gray-500',
-                                                      line: 'bg-gray-200',
-                                                      text: 'text-gray-700',
-                                                      bg: 'bg-gray-50',
-                                                      border: 'border-gray-200'
-                                                    };
-                                                  } else {
-                                                    return {
-                                                      dot: 'bg-purple-500',
-                                                      line: 'bg-purple-200',
-                                                      text: 'text-purple-700',
-                                                      bg: 'bg-purple-50',
-                                                      border: 'border-purple-200'
-                                                    };
-                                                  }
-                                                };
-
-                                                const colors = getStatusColors(log.action);
-                                                const displayText = log.action === "expense_resubmitted"
-                                                  ? "Expense Resubmitted"
-                                                  : log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
-
-                                                return (
-                                                  <div key={index} className={`flex gap-3 p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
-                                                    <div className="flex flex-col items-center">
-                                                      <div className={`w-3 h-3 ${colors.dot} rounded-full ring-2 ring-white shadow-sm`}></div>
-                                                      {index < auditLogs.length - 1 && (
-                                                        <div className={`w-0.5 h-10 ${colors.line} mt-2`}></div>
-                                                      )}
-                                                    </div>
-                                                    <div className="flex-1 space-y-1">
-                                                      <p className={`text-sm font-semibold ${colors.text}`}>
-                                                        {displayText}
-                                                      </p>
-                                                      {log.comment && (
-                                                        <p className={`text-xs ${colors.text} opacity-80`}>{log.comment}</p>
-                                                      )}
-                                                      <p className="text-xs text-muted-foreground">
-                                                        by <span className="font-medium">{log.user_name}</span> • {format(new Date(log.created_at), "MMM d, h:mm a")}
-                                                      </p>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    <DialogFooter>
-                                      <Button variant="outline" onClick={() => {
-                                        setDialogOpen(false);
-                                        setSelectedExpense(null);
-                                        setAdminComment("");
-                                        setSelectedStatus("");
-                                      }}>
-                                        Cancel
-                                      </Button>
-                                      {selectedExpense?.status === "rejected" ? (
-                                        // No action buttons for rejected expenses - they are final
-                                        null
-                                      ) : selectedExpense?.status === "submitted" ? (
-                                        <>
-                                          <Button
-                                            variant="destructive"
-                                            onClick={rejectExpense}
-                                            disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
-                                          >
-                                            Reject
-                                          </Button>
-                                          <Button variant="outline" onClick={verifyExpense}>
-                                            Verify
-                                          </Button>
-                                          <Button onClick={approveExpenseDirect}>
-                                            Approve
-                                          </Button>
-                                        </>
-                                      ) : selectedExpense?.status === "verified" ? (
-                                        <>
-                                          <Button
-                                            variant="destructive"
-                                            onClick={rejectExpense}
-                                            disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
-                                          >
-                                            Reject
-                                          </Button>
-                                          <Button onClick={approveExpenseDirect}>
-                                            Approve
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <Button
-                                          onClick={updateExpenseStatus}
-                                          disabled={!selectedStatus || selectedExpense?.status === 'approved'}
-                                        >
-                                          Update Status
-                                        </Button>
-                                      )}
-                                    </DialogFooter>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
+                              <div className="flex justify-end shrink-0">
+                                <Button
+                                  variant={(expense.status || "").toLowerCase() === "approved" || (expense.status || "").toLowerCase() === "rejected" ? "secondary" : "default"}
+                                  size="sm"
+                                  className={(expense.status || "").toLowerCase() === "approved" || (expense.status || "").toLowerCase() === "rejected"
+                                    ? "h-8 px-2 text-xs font-normal whitespace-nowrap"
+                                    : "h-8 px-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
+                                  }
+                                  onClick={() => {
+                                    setSelectedExpense(expense);
+                                    setDialogOpen(true);
+                                  }}
+                                >
+                                  {(expense.status || "").toLowerCase() === "approved" || (expense.status || "").toLowerCase() === "rejected" ? "View" : "View/Approve"}
+                                </Button>
                               </div>
                             </div>
                           </TableCell>
@@ -1574,6 +1224,355 @@ export default function AdminPanel() {
                 </div>
               </div>
             )}
+
+        {/* Review Expense Dialog - single instance outside table for reliable rendering */}
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setSelectedExpense(null);
+            setAdminComment("");
+            setSelectedStatus("");
+          }
+        }}>
+          <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[95vh] sm:max-h-[85vh] overflow-hidden flex flex-col p-0">
+            <div ref={reviewDialogContentRef} className="overflow-y-auto flex-1 p-4 sm:p-6 min-h-0">
+              <DialogHeader>
+                <DialogTitle>Review and manage this expense submission</DialogTitle>
+              </DialogHeader>
+
+              {selectedExpense && (
+                                        <div className="space-y-4">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                              <label className="text-sm font-medium">Employee</label>
+                                              <p className="text-sm">{selectedExpense.user_name}</p>
+                                              <p className="text-xs text-muted-foreground">{selectedExpense.user_email}</p>
+                                            </div>
+                                            <div>
+                                              <label className="text-sm font-medium">Amount</label>
+                                              <p className="text-lg font-semibold">{formatINR(selectedExpense.total_amount)}</p>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <label className="text-sm font-medium">Title</label>
+                                            <p className="text-sm">{selectedExpense.title}</p>
+                                          </div>
+
+                                          <div>
+                                            <label className="text-sm font-medium">Destination</label>
+                                            <p className="text-sm">{selectedExpense.destination}</p>
+                                          </div>
+
+                                          {selectedExpense.category && (
+                                            <div>
+                                              <label className="text-sm font-medium">Category</label>
+                                              <p className="text-sm capitalize">{selectedExpense.category}</p>
+                                            </div>
+                                          )}
+
+                                          {selectedExpense.purpose && (
+                                            <div>
+                                              <label className="text-sm font-medium">Purpose</label>
+                                              <p className="text-sm">{selectedExpense.purpose}</p>
+                                            </div>
+                                          )}
+
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <label className="text-sm font-medium">Trip Start</label>
+                                              <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
+                                            </div>
+                                            <div>
+                                              <label className="text-sm font-medium">Trip End</label>
+                                              <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <label className="text-sm font-medium">Current Status</label>
+                                            <div className="mt-1">
+                                              <StatusBadge status={selectedExpense.status as any} />
+                                            </div>
+                                          </div>
+
+                                          {/* Form Field Values */}
+                                          {formFieldValues.length > 0 && (
+                                            <div className="space-y-3 pt-2 border-t">
+                                              <label className="text-sm font-medium">Additional Information</label>
+                                              {formFieldValues.map((field) => (
+                                                <div key={field.template_id} className="space-y-1">
+                                                  <div className="text-xs text-muted-foreground">
+                                                    {field.template_name}
+                                                  </div>
+                                                  <div className="text-sm">
+                                                    {field.field_type === 'checkbox' ? (
+                                                      <Badge variant={field.field_value === 'true' ? 'default' : 'outline'}>
+                                                        {field.field_value === 'true' ? 'Yes' : 'No'}
+                                                      </Badge>
+                                                    ) : (
+                                                      <span className="font-medium">{field.field_value}</span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          {/* For submitted expenses, show both Verify and Approve buttons */}
+                                          {selectedExpense.status === "submitted" ? (
+                                            <div>
+                                              <label className="text-sm font-medium">Admin Comment (Optional)</label>
+                                              <Textarea
+                                                value={adminComment}
+                                                onChange={(e) => setAdminComment(e.target.value)}
+                                                placeholder="Add a comment about this expense..."
+                                                className="mt-1"
+                                              />
+                                            </div>
+                                          ) : selectedExpense.status === "verified" ? (
+                                            <div>
+                                              <label className="text-sm font-medium">Admin Comment (Optional)</label>
+                                              <Textarea
+                                                value={adminComment}
+                                                onChange={(e) => setAdminComment(e.target.value)}
+                                                placeholder="Add a comment about this expense..."
+                                                className="mt-1"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <div>
+                                                <label className="text-sm font-medium">Update Status</label>
+                                                <Select
+                                                  value={selectedStatus}
+                                                  onValueChange={setSelectedStatus}
+                                                  disabled={selectedExpense.status === 'approved'}
+                                                >
+                                                  <SelectTrigger className="mt-1">
+                                                    <SelectValue placeholder="Select new status" />
+                                                  </SelectTrigger>
+                                                  <SelectContent>
+                                                    <SelectItem value="submitted">Submitted</SelectItem>
+                                                    <SelectItem value="verified">Verified</SelectItem>
+                                                    <SelectItem value="approved">Approved</SelectItem>
+                                                  </SelectContent>
+                                                </Select>
+                                              </div>
+
+                                              <div>
+                                                <label className="text-sm font-medium">Admin Comment</label>
+                                                <Textarea
+                                                  value={adminComment}
+                                                  onChange={(e) => setAdminComment(e.target.value)}
+                                                  placeholder="Add a comment about this expense..."
+                                                  className="mt-1"
+                                                />
+                                              </div>
+                                            </>
+                                          )}
+
+                                          {attachments.length > 0 && (
+                                            <div className="space-y-2">
+                                              <label className="text-sm font-medium">Receipts & Attachments</label>
+                                              <div className="space-y-2">
+                                                {attachments.map((a) => (
+                                                  <div key={a.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                                    <div className="flex items-center gap-3">
+                                                      {a.content_type?.startsWith("image/") ? (
+                                                        <img
+                                                          src={a.file_url}
+                                                          alt={a.filename}
+                                                          className="h-14 w-14 object-cover rounded"
+                                                          onError={(e) => {
+                                                            console.error("❌ [AdminPanel] Image failed to load:", a.file_url);
+                                                            console.error("❌ [AdminPanel] Error event:", e);
+                                                          }}
+                                                          onLoad={() => {
+                                                            console.log("✅ [AdminPanel] Image loaded successfully:", a.file_url);
+                                                          }}
+                                                        />
+                                                      ) : (
+                                                        <div className="h-14 w-14 flex items-center justify-center bg-gray-100 rounded text-xs">FILE</div>
+                                                      )}
+                                                      <div>
+                                                        <p className="font-medium text-sm">{a.filename}</p>
+                                                        <p className="text-xs text-muted-foreground">{a.content_type} • {format(new Date(a.created_at), "MMM d, yyyy")}</p>
+                                                      </div>
+                                                    </div>
+                                                    <Button
+                                                      variant="outline"
+                                                      size="sm"
+                                                      onClick={() => {
+                                                        console.log("🖼️ [AdminPanel] Setting image preview URL:", a.file_url);
+                                                        setImagePreviewUrl(a.file_url);
+                                                        setPreviewContentType(a.content_type);
+                                                        setImagePreviewOpen(true);
+                                                      }}
+                                                    >
+                                                      View
+                                                    </Button>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Expense Timeline */}
+                                          {auditLogs.length > 0 && (
+                                            <div className="space-y-2 border-t pt-4 mt-4">
+                                              <label className="text-sm font-medium">Expense Timeline</label>
+                                              <div className="space-y-3 mt-2">
+                                                {auditLogs.map((log, index) => {
+                                                  // Determine colors based on action type
+                                                  const getStatusColors = (action: string) => {
+                                                    const actionLower = action.toLowerCase();
+                                                    if (actionLower.includes('approved')) {
+                                                      return {
+                                                        dot: 'bg-green-500',
+                                                        line: 'bg-green-200',
+                                                        text: 'text-green-700',
+                                                        bg: 'bg-green-50',
+                                                        border: 'border-green-200'
+                                                      };
+                                                    } else if (actionLower.includes('verified')) {
+                                                      return {
+                                                        dot: 'bg-yellow-500',
+                                                        line: 'bg-yellow-200',
+                                                        text: 'text-yellow-700',
+                                                        bg: 'bg-yellow-50',
+                                                        border: 'border-yellow-200'
+                                                      };
+                                                    } else if (actionLower.includes('rejected')) {
+                                                      return {
+                                                        dot: 'bg-red-500',
+                                                        line: 'bg-red-200',
+                                                        text: 'text-red-700',
+                                                        bg: 'bg-red-50',
+                                                        border: 'border-red-200'
+                                                      };
+                                                    } else if (actionLower.includes('resubmitted')) {
+                                                      return {
+                                                        dot: 'bg-blue-500',
+                                                        line: 'bg-blue-200',
+                                                        text: 'text-blue-700',
+                                                        bg: 'bg-blue-50',
+                                                        border: 'border-blue-200'
+                                                      };
+                                                    } else if (actionLower.includes('submitted')) {
+                                                      return {
+                                                        dot: 'bg-indigo-500',
+                                                        line: 'bg-indigo-200',
+                                                        text: 'text-indigo-700',
+                                                        bg: 'bg-indigo-50',
+                                                        border: 'border-indigo-200'
+                                                      };
+                                                    } else if (actionLower.includes('created')) {
+                                                      return {
+                                                        dot: 'bg-gray-500',
+                                                        line: 'bg-gray-200',
+                                                        text: 'text-gray-700',
+                                                        bg: 'bg-gray-50',
+                                                        border: 'border-gray-200'
+                                                      };
+                                                    } else {
+                                                      return {
+                                                        dot: 'bg-purple-500',
+                                                        line: 'bg-purple-200',
+                                                        text: 'text-purple-700',
+                                                        bg: 'bg-purple-50',
+                                                        border: 'border-purple-200'
+                                                      };
+                                                    }
+                                                  };
+
+                                                  const colors = getStatusColors(log.action);
+                                                  const displayText = log.action === "expense_resubmitted"
+                                                    ? "Expense Resubmitted"
+                                                    : log.action.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+
+                                                  return (
+                                                    <div key={index} className={`flex gap-3 p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
+                                                      <div className="flex flex-col items-center">
+                                                        <div className={`w-3 h-3 ${colors.dot} rounded-full ring-2 ring-white shadow-sm`}></div>
+                                                        {index < auditLogs.length - 1 && (
+                                                          <div className={`w-0.5 h-10 ${colors.line} mt-2`}></div>
+                                                        )}
+                                                      </div>
+                                                      <div className="flex-1 space-y-1">
+                                                        <p className={`text-sm font-semibold ${colors.text}`}>
+                                                          {displayText}
+                                                        </p>
+                                                        {log.comment && (
+                                                          <p className={`text-xs ${colors.text} opacity-80`}>{log.comment}</p>
+                                                        )}
+                                                        <p className="text-xs text-muted-foreground">
+                                                          by <span className="font-medium">{log.user_name}</span> • {format(new Date(log.created_at), "MMM d, h:mm a")}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      <DialogFooter>
+                                        <Button variant="outline" onClick={() => {
+                                          setDialogOpen(false);
+                                          setSelectedExpense(null);
+                                          setAdminComment("");
+                                          setSelectedStatus("");
+                                        }}>
+                                          Cancel
+                                        </Button>
+                                        {selectedExpense?.status === "rejected" ? (
+                                          // No action buttons for rejected expenses - they are final
+                                          null
+                                        ) : selectedExpense?.status === "submitted" ? (
+                                          <>
+                                            <Button
+                                              variant="destructive"
+                                              onClick={rejectExpense}
+                                              disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
+                                            >
+                                              Reject
+                                            </Button>
+                                            <Button variant="outline" onClick={verifyExpense}>
+                                              Verify
+                                            </Button>
+                                            <Button onClick={approveExpenseDirect}>
+                                              Approve
+                                            </Button>
+                                          </>
+                                        ) : selectedExpense?.status === "verified" ? (
+                                          <>
+                                            <Button
+                                              variant="destructive"
+                                              onClick={rejectExpense}
+                                              disabled={reviewLoading || selectedExpense?.status === 'approved' || selectedExpense?.status === 'rejected'}
+                                            >
+                                              Reject
+                                            </Button>
+                                            <Button onClick={approveExpenseDirect}>
+                                              Approve
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <Button
+                                            onClick={updateExpenseStatus}
+                                            disabled={!selectedStatus || selectedExpense?.status === 'approved'}
+                                          >
+                                            Update Status
+                                          </Button>
+                                        )}
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+
           </CardContent>
         </Card>
         {/* Image/PDF Preview Dialog - outside the table */}
