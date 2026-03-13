@@ -1,9 +1,9 @@
 import { Building2, Users } from "lucide-react";
 
 const orgs = [
-  { name: "Main Office", users: 12, balance: "₱ 250,000" },
-  { name: "Branch A", users: 8, balance: "₱ 75,000" },
-  { name: "Branch B", users: 5, balance: "₱ 45,000" },
+  { name: "Main Office", users: 12, balance: "₹ 250,000" },
+  { name: "Branch A", users: 8, balance: "₹ 75,000" },
+  { name: "Branch B", users: 5, balance: "₹ 45,000" },
 ];
 
 export function MockOrgChart() {

@@ -12,7 +12,7 @@ export function MockAnalyticsDashboard() {
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="p-2.5 rounded-lg bg-muted/30 border border-border">
           <p className="text-[10px] text-muted-foreground mb-1">Total Expenses</p>
-          <p className="text-sm font-bold text-foreground">₱ 125,450</p>
+          <p className="text-sm font-bold text-foreground">₹ 125,450</p>
           <p className="text-[10px] text-accent flex items-center gap-0.5">
             <ArrowUp className="h-3 w-3" /> +12%
           </p>

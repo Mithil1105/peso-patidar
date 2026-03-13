@@ -14,30 +14,30 @@ function WindowControls() {
 const summaryCards = [
   {
     title: "Available Balance",
-    value: "₱ 45,230.00",
+    value: "₹ 45,230.00",
     detail: "+12.5% this month",
     detailClass: "text-success",
     dot: "bg-success",
   },
   {
     title: "Pending Approval",
-    value: "₱ 8,450.00",
+    value: "₹ 8,450.00",
     detail: "5 expense reports",
     detailClass: "text-warning",
     dot: null,
   },
   {
     title: "Spent This Month",
-    value: "₱ 23,680.00",
+    value: "₹ 23,680.00",
     progress: 78,
     dot: null,
   },
 ];
 
 const recentExpenses = [
-  { name: "Office Supplies", time: "Today, 2:30 PM", amount: "₱ 1,250.00" },
-  { name: "Team Lunch", time: "Today, 2:30 PM", amount: "₱ 2,100.00" },
-  { name: "Travel Fare", time: "Today, 2:30 PM", amount: "₱ 850.00" },
+  { name: "Office Supplies", time: "Today, 2:30 PM", amount: "₹ 1,250.00" },
+  { name: "Team Lunch", time: "Today, 2:30 PM", amount: "₹ 2,100.00" },
+  { name: "Travel Fare", time: "Today, 2:30 PM", amount: "₹ 850.00" },
 ];
 
 export function MockDashboardLarge() {

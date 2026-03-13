@@ -27,13 +27,13 @@ export function PricingIllustration({ className }: PricingIllustrationProps) {
       {/* Price tag (top right) */}
       <rect x="115" y="20" width="20" height="14" rx="3" fill="hsl(var(--accent))" />
       <text x="125" y="30" textAnchor="middle" fontSize="7" fill="hsl(var(--accent-foreground))">
-        ₱
+        ₹
       </text>
       {/* Large coin */}
       <circle cx="125" cy="55" r="10" fill="hsl(var(--warning))" fillOpacity="0.3" />
       <circle cx="125" cy="55" r="7" fill="hsl(var(--warning))" />
       <text x="125" y="58" textAnchor="middle" fontSize="8" fill="hsl(var(--warning-foreground))" style={{ fontWeight: "bold" }}>
-        ₱
+        ₹
       </text>
       {/* Small coin */}
       <circle cx="118" cy="70" r="8" fill="hsl(var(--warning))" fillOpacity="0.3" />

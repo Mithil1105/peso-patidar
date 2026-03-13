@@ -33,7 +33,7 @@ export function MockExpenseCard() {
       </div>
       <div className="pt-3 border-t border-border flex justify-between items-end">
         <span className="text-xs text-muted-foreground">Amount</span>
-        <span className="text-lg font-bold text-foreground">₱ 2,450.00</span>
+        <span className="text-lg font-bold text-foreground">₹ 2,450.00</span>
       </div>
     </div>
   );
