@@ -674,8 +674,14 @@ export default function Expenses() {
                 <TableBody>
                   {filteredExpenses.map((expense) => (
                   <TableRow key={expense.id}>
-                    <TableCell className="text-xs sm:text-sm font-mono font-semibold text-blue-600 whitespace-nowrap">
-                      {(expense as any).transaction_number || '-'}
+                    <TableCell className="text-xs sm:text-sm font-mono font-semibold whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/expenses/${expense.id}`)}
+                        className="text-blue-600 hover:underline focus:outline-none focus:underline"
+                      >
+                        {(expense as any).transaction_number || '-'}
+                      </button>
                     </TableCell>
                     <TableCell className="text-xs sm:text-sm">
                       <div className="font-medium">{expense.title}</div>
@@ -715,7 +721,17 @@ export default function Expenses() {
                             <StatusBadge status={expense.status as any} />
                           )}
                         </div>
-                      <div className="flex justify-end">
+                      <div className="flex justify-end items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2"
+                          onClick={() => navigate(`/expenses/${expense.id}`)}
+                          title="View expense"
+                        >
+                          <Eye className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">View</span>
+                        </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
