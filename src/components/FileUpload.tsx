@@ -111,24 +111,22 @@ export function FileUpload({
       setUploading(true);
       setUploadProgress(0);
       
-      // Calculate current total size of all attachments
+      // Calculate current total size of all attachments - 2MB combined limit
       const currentTotalSize = attachments.reduce((sum, att) => sum + (att.file_size || 0), 0);
-      const maxTotalSize = 10 * 1024 * 1024; // 10MB total limit for all attachments
+      const maxTotalSize = 2 * 1024 * 1024; // 2MB total limit for all attachments combined
       
       // Check if adding this file would exceed total limit
       if (currentTotalSize + file.size > maxTotalSize) {
         const currentTotalMB = (currentTotalSize / (1024 * 1024)).toFixed(2);
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-        throw new Error(`Total size limit exceeded. Current total: ${currentTotalMB}MB, adding ${fileSizeMB}MB would exceed 10MB limit.`);
+        throw new Error(`Total size limit exceeded. Current total: ${currentTotalMB}MB, adding ${fileSizeMB}MB would exceed 2MB limit.`);
       }
       
-      // Validate individual file type and size - PDFs have 4MB limit, images have 10MB limit
-      const isPDF = file.type === 'application/pdf';
-      const maxIndividualSize = isPDF ? 4 * 1024 * 1024 : 10 * 1024 * 1024; // 4MB for PDFs, 10MB for images
-      const maxSizeMB = isPDF ? 4 : 10;
+      // Validate individual file size - 2MB max per file (combined total is 2MB)
+      const maxIndividualSize = 2 * 1024 * 1024; // 2MB max per file
       
       if (file.size > maxIndividualSize) {
-        throw new Error(`File size must be less than ${maxSizeMB}MB${isPDF ? ' for PDF files' : ''}`);
+        throw new Error(`File size must be less than 2MB`);
       }
 
       // Allow PNG, JPG images and PDF files
@@ -445,7 +443,7 @@ export function FileUpload({
               {isMobile ? "Take a photo or choose from files" : "or drag and drop bill photos/PDFs here"}
               </p>
               <p className="text-xs text-muted-foreground">
-                PNG, JPG (max 10MB each), PDF (max 4MB each) • Total limit: 10MB for all files
+                PNG, JPG, PDF (max 2MB each) • Total limit: 2MB for all files combined
                 {required && (
                   <span className="text-red-500 font-medium"> * Required for submission</span>
                 )}
@@ -466,7 +464,7 @@ export function FileUpload({
             <div className="flex items-center justify-between">
               <h4 className="font-medium">Uploaded Files</h4>
               <p className="text-xs text-muted-foreground">
-                Total: {formatFileSize(attachments.reduce((sum, att) => sum + (att.file_size || 0), 0))} / {formatFileSize(10 * 1024 * 1024)}
+                Total: {formatFileSize(attachments.reduce((sum, att) => sum + (att.file_size || 0), 0))} / {formatFileSize(2 * 1024 * 1024)}
               </p>
             </div>
             <div className="space-y-2">

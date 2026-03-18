@@ -1022,7 +1022,7 @@ export default function Settings() {
                       : "No logo uploaded. Default logo will be used."}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Recommended: Square image, PNG or JPG, max 5MB
+                    Recommended: Square image, PNG or JPG, max 2MB
                   </p>
                 </div>
               </div>
@@ -1038,12 +1038,12 @@ export default function Settings() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        // Validate file size (5MB)
-                        if (file.size > 5 * 1024 * 1024) {
+                        // Validate file size (2MB)
+                        if (file.size > 2 * 1024 * 1024) {
                           toast({
                             variant: "destructive",
                             title: "File too large",
-                            description: "Logo must be less than 5MB",
+                            description: "Logo must be less than 2MB",
                           });
                           return;
                         }

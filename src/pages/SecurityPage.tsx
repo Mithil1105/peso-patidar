@@ -255,7 +255,7 @@ export default function SecurityPage() {
                         <CardContent className="space-y-2 text-gray-700">
                             <p>• Authenticated access only, org membership rules</p>
                             <p>• File type restrictions: PDF/JPG/PNG</p>
-                            <p>• Size limits recommended: 10MB</p>
+                            <p>• Size limits: 2MB combined for all files</p>
                         </CardContent>
                     </Card>
                 </SectionBand>

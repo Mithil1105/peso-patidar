@@ -33,7 +33,7 @@ import type { FAQItem } from "@/components/marketing/sections";
 const expenseFeatures = [
   "Create expense reports with title, vendor, date, and amount",
   "Categorize expenses for better organization and reporting",
-  "Upload receipts in PDF, JPG, or PNG format (recommended 10MB max)",
+  "Upload receipts in PDF, JPG, or PNG format (max 2MB combined)",
   "Track expense status through the entire workflow",
   "Add notes and context to each expense for transparency",
 ];
@@ -155,7 +155,7 @@ const faqItems: FAQItem[] = [
   {
     question: "What file formats are supported for receipt uploads?",
     answer:
-      "PesoWise supports PDF, JPG, and PNG file formats for receipt uploads. We recommend keeping files under 10MB for optimal performance.",
+      "PesoWise supports PDF, JPG, and PNG file formats for receipt uploads. Total upload size is limited to 2MB combined for optimal performance.",
   },
   {
     question: "Can I customize the approval workflow?",
