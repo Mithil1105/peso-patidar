@@ -1136,7 +1136,7 @@ export default function AdminPanel() {
                         <TableHead className="font-semibold min-w-[90px] whitespace-nowrap">Amount</TableHead>
                         <TableHead className="font-semibold min-w-[90px] hidden md:table-cell">Balance</TableHead>
                         <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Status</TableHead>
-                        <TableHead className="font-semibold min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Created</TableHead>
+                        <TableHead className="font-semibold min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Expense Date</TableHead>
                         <TableHead className="text-right font-semibold min-w-[120px]">Status / Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1153,7 +1153,7 @@ export default function AdminPanel() {
                               <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
                               <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
                               <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                                {format(new Date(expense.created_at), "MMM d, yyyy")}
+                                {format(new Date(expense.trip_start), "MMM d, yyyy")}
                               </div>
                             </div>
                           </TableCell>
@@ -1186,7 +1186,7 @@ export default function AdminPanel() {
                             )}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
-                            {format(new Date(expense.created_at), "MMM d, yyyy")}
+                            {format(new Date(expense.trip_start), "MMM d, yyyy")}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">

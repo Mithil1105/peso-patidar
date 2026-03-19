@@ -667,7 +667,7 @@ export default function Expenses() {
                         <TableHead className="min-w-[100px] hidden sm:table-cell">Trip Start</TableHead>
                         <TableHead className="min-w-[90px] whitespace-nowrap">Amount</TableHead>
                         <TableHead className="min-w-[100px] hidden sm:table-cell">Status</TableHead>
-                        <TableHead className="min-w-[100px] hidden sm:table-cell">Created</TableHead>
+                        <TableHead className="min-w-[100px] hidden sm:table-cell">Expense Date</TableHead>
                         <TableHead className="text-right min-w-[120px]">Status / Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -684,7 +684,7 @@ export default function Expenses() {
                         {format(new Date(expense.trip_start), "MMM d, yyyy")}
                       </div>
                       <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                        {format(new Date(expense.created_at), "MMM d, yyyy")}
+                        {format(new Date(expense.trip_start), "MMM d, yyyy")}
                       </div>
                     </TableCell>
                     <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell max-w-[140px]" title={expense.destination}>{expense.destination}</TableCell>
@@ -702,7 +702,7 @@ export default function Expenses() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm hidden sm:table-cell">
-                      {format(new Date(expense.created_at), "MMM d, yyyy")}
+                      {format(new Date(expense.trip_start), "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">

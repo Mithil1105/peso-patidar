@@ -109,8 +109,8 @@ export function MobileExpenseTable({
                 </div>
               )}
               <div className="flex justify-between">
-                <span>Created:</span>
-                <span>{expense.created_at ? format(new Date(expense.created_at), "MMM d, yyyy") : "N/A"}</span>
+                <span>Expense Date:</span>
+                <span>{expense.trip_start ? format(new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</span>
               </div>
             </div>
 
@@ -149,8 +149,8 @@ export function MobileExpenseTable({
                         </div>
                       </div>
                       <div>
-                        <label className="text-sm font-medium">Created</label>
-                        <p className="text-sm text-muted-foreground">{expense.created_at ? format(new Date(expense.created_at), "MMM d, yyyy") : "N/A"}</p>
+                        <label className="text-sm font-medium">Expense Date</label>
+                        <p className="text-sm text-muted-foreground">{expense.trip_start ? format(new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</p>
                       </div>
                     </div>
 

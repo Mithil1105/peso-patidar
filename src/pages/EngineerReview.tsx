@@ -749,7 +749,7 @@ export default function ManagerReview() {
                       <TableHead className="w-[140px] max-w-[140px] hidden sm:table-cell">Destination</TableHead>
                       <TableHead className="min-w-[90px] whitespace-nowrap">Amount</TableHead>
                       <TableHead className="min-w-[100px] hidden sm:table-cell">Status</TableHead>
-                      <TableHead className="min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Created</TableHead>
+                      <TableHead className="min-w-[100px] whitespace-nowrap text-right pr-2 sm:pr-4 hidden sm:table-cell">Expense Date</TableHead>
                       <TableHead className="min-w-[120px] text-right">Status / Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -766,7 +766,7 @@ export default function ManagerReview() {
                         <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
                         <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
                         <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                          {format(new Date(expense.created_at), "MMM d, yyyy")}
+                          {format(new Date(expense.trip_start), "MMM d, yyyy")}
                         </div>
                       </div>
                     </TableCell>
@@ -785,7 +785,7 @@ export default function ManagerReview() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
-                      {format(new Date(expense.created_at), "MMM d, yyyy")}
+                      {format(new Date(expense.trip_start), "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
