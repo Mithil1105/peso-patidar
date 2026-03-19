@@ -404,8 +404,8 @@ export default function ExpenseDetail() {
               <span class="value">${expense.destination}</span>
             </div>
             <div class="row">
-              <span class="label">Trip Dates:</span>
-              <span class="value">${format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")} - ${format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}</span>
+              <span class="label">Date of Expense:</span>
+              <span class="value">${format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}</span>
             </div>
             ${expense.purpose ? `
             <div class="row">
@@ -597,8 +597,8 @@ export default function ExpenseDetail() {
               <span class="value">${expense.destination}</span>
             </div>
             <div class="row">
-              <span class="label">Trip Dates:</span>
-              <span class="value">${format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")} - ${format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}</span>
+              <span class="label">Date of Expense:</span>
+              <span class="value">${format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}</span>
             </div>
             ${expense.purpose ? `
             <div class="row">
@@ -826,10 +826,10 @@ export default function ExpenseDetail() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    Trip Duration
+                    Date of Expense
                   </div>
                   <p className="font-medium">
-                    {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d")} - {format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}
+                    {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                   </p>
                 </div>
               </div>

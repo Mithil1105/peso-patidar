@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { CalendarIcon, Save, Send } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { formatINR } from "@/lib/format";
+import { formatINR, parseLocalDate } from "@/lib/format";
 import { FileUpload } from "@/components/FileUpload";
 import { ExpenseService, CreateExpenseData, UpdateExpenseData } from "@/services/ExpenseService";
 import { z } from "zod";
@@ -90,6 +90,7 @@ export default function ExpenseForm() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [attachmentRequiredAboveAmount, setAttachmentRequiredAboveAmount] = useState<number>(50); // Default ₹50
   const [isAttachmentRequired, setIsAttachmentRequired] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   
   // Form fields state
   const [categoryFormFields, setCategoryFormFields] = useState<any[]>([]);
@@ -266,7 +267,7 @@ export default function ExpenseForm() {
       setExpense({
         title: expenseData.title,
         destination: expenseData.destination,
-        expense_date: new Date(expenseData.trip_start),
+        expense_date: parseLocalDate(expenseData.trip_start) ?? new Date(),
         purpose: expenseData.purpose || "",
         amount: Number(expenseData.total_amount || 0),
         category: expenseData.category || "other",
@@ -1097,7 +1098,7 @@ export default function ExpenseForm() {
 
             <div className="space-y-2">
               <Label>Expense Date *</Label>
-              <Popover>
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -1114,7 +1115,13 @@ export default function ExpenseForm() {
                   <Calendar
                     mode="single"
                     selected={expense.expense_date}
-                    onSelect={(date) => date && setExpense({ ...expense, expense_date: date })}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      // Use local date parts so the highlighted day matches the day the user clicked (no off-by-one)
+                      const localMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                      setExpense((prev) => ({ ...prev, expense_date: localMidnight }));
+                      setDatePickerOpen(false);
+                    }}
                     initialFocus
                     disabled={(date) => {
                       // Disable all future dates (dates after today)

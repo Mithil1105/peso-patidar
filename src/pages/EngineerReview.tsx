@@ -875,15 +875,9 @@ export default function ManagerReview() {
                                     <label className="text-sm font-medium">Destination</label>
                                     <p className="text-sm">{selectedExpense.destination}</p>
                                   </div>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                      <label className="text-sm font-medium">Start Date</label>
-                                      <p className="text-sm">{format(parseLocalDate(selectedExpense.trip_start) ?? new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
-                                    </div>
-                                    <div>
-                                      <label className="text-sm font-medium">End Date</label>
-                                      <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
-                                    </div>
+                                  <div>
+                                    <label className="text-sm font-medium">Date of Expense</label>
+                                    <p className="text-sm">{format(parseLocalDate(selectedExpense.trip_start) ?? new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
                                   </div>
                                   {selectedExpense.purpose && (
                                     <div>

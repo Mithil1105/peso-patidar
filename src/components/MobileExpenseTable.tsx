@@ -100,14 +100,6 @@ export function MobileExpenseTable({
                   {formatINR(expense.user_balance ?? 0)}
                 </span>
               </div>
-              {expense.trip_start && expense.trip_end && (
-                <div className="flex justify-between">
-                  <span>Trip Dates:</span>
-                  <span className="truncate ml-2">
-                    {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d")} - {format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}
-                  </span>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span>Expense Date:</span>
                 <span>{expense.trip_start ? format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</span>
@@ -168,15 +160,6 @@ export function MobileExpenseTable({
                       <label className="text-sm font-medium">Purpose</label>
                       <p className="text-sm text-muted-foreground">{expense.purpose || "No purpose provided"}</p>
                     </div>
-
-                    {expense.trip_start && expense.trip_end && (
-                      <div>
-                        <label className="text-sm font-medium">Trip Dates</label>
-                        <p className="text-sm text-muted-foreground">
-                          {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")} - {format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}
-                        </p>
-                      </div>
-                    )}
 
                     <div>
                       <label className="text-sm font-medium">Admin Comment</label>
