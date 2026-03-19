@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Eye } from "lucide-react";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatINR } from "@/lib/format";
+import { formatINR, parseLocalDate } from "@/lib/format";
 
 interface Expense {
   id: string;
@@ -104,13 +104,13 @@ export function MobileExpenseTable({
                 <div className="flex justify-between">
                   <span>Trip Dates:</span>
                   <span className="truncate ml-2">
-                    {format(new Date(expense.trip_start), "MMM d")} - {format(new Date(expense.trip_end), "MMM d, yyyy")}
+                    {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d")} - {format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}
                   </span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span>Expense Date:</span>
-                <span>{expense.trip_start ? format(new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</span>
+                <span>{expense.trip_start ? format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</span>
               </div>
             </div>
 
@@ -150,7 +150,7 @@ export function MobileExpenseTable({
                       </div>
                       <div>
                         <label className="text-sm font-medium">Expense Date</label>
-                        <p className="text-sm text-muted-foreground">{expense.trip_start ? format(new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</p>
+                        <p className="text-sm text-muted-foreground">{expense.trip_start ? format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy") : "N/A"}</p>
                       </div>
                     </div>
 
@@ -173,7 +173,7 @@ export function MobileExpenseTable({
                       <div>
                         <label className="text-sm font-medium">Trip Dates</label>
                         <p className="text-sm text-muted-foreground">
-                          {format(new Date(expense.trip_start), "MMM d, yyyy")} - {format(new Date(expense.trip_end), "MMM d, yyyy")}
+                          {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")} - {format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}
                         </p>
                       </div>
                     )}

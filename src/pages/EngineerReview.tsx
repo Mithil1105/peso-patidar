@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ExpenseService } from "@/services/ExpenseService";
 import { format, subDays, subMonths, subYears } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatINR } from "@/lib/format";
+import { formatINR, parseLocalDate } from "@/lib/format";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 
@@ -766,7 +766,7 @@ export default function ManagerReview() {
                         <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
                         <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
                         <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                          {format(new Date(expense.trip_start), "MMM d, yyyy")}
+                          {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                         </div>
                       </div>
                     </TableCell>
@@ -785,7 +785,7 @@ export default function ManagerReview() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
-                      {format(new Date(expense.trip_start), "MMM d, yyyy")}
+                      {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
@@ -878,7 +878,7 @@ export default function ManagerReview() {
                                   <div className="grid grid-cols-2 gap-4">
                                     <div>
                                       <label className="text-sm font-medium">Start Date</label>
-                                      <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
+                                      <p className="text-sm">{format(parseLocalDate(selectedExpense.trip_start) ?? new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
                                     </div>
                                     <div>
                                       <label className="text-sm font-medium">End Date</label>

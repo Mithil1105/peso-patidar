@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 import { format } from "date-fns";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatINR } from "@/lib/format";
+import { formatINR, parseLocalDate } from "@/lib/format";
 
 interface Expense {
   id: string;
@@ -405,7 +405,7 @@ export default function ExpenseDetail() {
             </div>
             <div class="row">
               <span class="label">Trip Dates:</span>
-              <span class="value">${format(new Date(expense.trip_start), "MMM d, yyyy")} - ${format(new Date(expense.trip_end), "MMM d, yyyy")}</span>
+              <span class="value">${format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")} - ${format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}</span>
             </div>
             ${expense.purpose ? `
             <div class="row">
@@ -598,7 +598,7 @@ export default function ExpenseDetail() {
             </div>
             <div class="row">
               <span class="label">Trip Dates:</span>
-              <span class="value">${format(new Date(expense.trip_start), "MMM d, yyyy")} - ${format(new Date(expense.trip_end), "MMM d, yyyy")}</span>
+              <span class="value">${format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")} - ${format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}</span>
             </div>
             ${expense.purpose ? `
             <div class="row">
@@ -829,7 +829,7 @@ export default function ExpenseDetail() {
                     Trip Duration
                   </div>
                   <p className="font-medium">
-                    {format(new Date(expense.trip_start), "MMM d")} - {format(new Date(expense.trip_end), "MMM d, yyyy")}
+                    {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d")} - {format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "MMM d, yyyy")}
                   </p>
                 </div>
               </div>

@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
-import { formatINR } from "@/lib/format";
+import { formatINR, parseLocalDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -53,7 +53,7 @@ export default function Expenses() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("created_at");
+  const [sortBy, setSortBy] = useState("trip_start");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [returnMoneyDialogOpen, setReturnMoneyDialogOpen] = useState(false);
   const [returnAmount, setReturnAmount] = useState("");
@@ -183,6 +183,10 @@ export default function Expenses() {
           aValue = a.total_amount;
           bValue = b.total_amount;
           break;
+        case "trip_start":
+          aValue = (parseLocalDate(a.trip_start) ?? new Date(a.trip_start)).getTime();
+          bValue = (parseLocalDate(b.trip_start) ?? new Date(b.trip_start)).getTime();
+          break;
         case "created_at":
         default:
           aValue = new Date(a.created_at).getTime();
@@ -218,8 +222,8 @@ export default function Expenses() {
         escapeCSV((expense as any).transaction_number || ''),
         escapeCSV(expense.title),
         escapeCSV(expense.destination),
-        format(new Date(expense.trip_start), "yyyy-MM-dd"),
-        format(new Date(expense.trip_end), "yyyy-MM-dd"),
+        format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "yyyy-MM-dd"),
+        format(parseLocalDate(expense.trip_end) ?? new Date(expense.trip_end), "yyyy-MM-dd"),
         Number(expense.total_amount).toFixed(2), // Raw number without formatting
         escapeCSV(expense.status),
         format(new Date(expense.created_at), "yyyy-MM-dd")
@@ -615,6 +619,7 @@ export default function Expenses() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="trip_start">Date of Expense</SelectItem>
                   <SelectItem value="created_at">Date Created</SelectItem>
                   <SelectItem value="title">Title</SelectItem>
                   <SelectItem value="destination">Destination</SelectItem>
@@ -664,7 +669,6 @@ export default function Expenses() {
                         <TableHead className="min-w-[80px] whitespace-nowrap">Txn #</TableHead>
                         <TableHead className="min-w-[140px] sm:min-w-[140px]">Title / Destination</TableHead>
                         <TableHead className="w-[140px] max-w-[140px] hidden sm:table-cell">Destination</TableHead>
-                        <TableHead className="min-w-[100px] hidden sm:table-cell">Trip Start</TableHead>
                         <TableHead className="min-w-[90px] whitespace-nowrap">Amount</TableHead>
                         <TableHead className="min-w-[100px] hidden sm:table-cell">Status</TableHead>
                         <TableHead className="min-w-[100px] hidden sm:table-cell">Expense Date</TableHead>
@@ -681,16 +685,10 @@ export default function Expenses() {
                       <div className="font-medium">{expense.title}</div>
                       <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
                       <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                        {format(new Date(expense.trip_start), "MMM d, yyyy")}
-                      </div>
-                      <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                        {format(new Date(expense.trip_start), "MMM d, yyyy")}
+                        {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                       </div>
                     </TableCell>
                     <TableCell className="text-xs sm:text-sm truncate hidden sm:table-cell max-w-[140px]" title={expense.destination}>{expense.destination}</TableCell>
-                    <TableCell className="text-xs sm:text-sm hidden sm:table-cell">
-                      {format(new Date(expense.trip_start), "MMM d, yyyy")}
-                    </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm font-medium">{formatINR(expense.total_amount)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {(expense as any).isResubmitted && expense.status === "submitted" ? (
@@ -702,7 +700,7 @@ export default function Expenses() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs sm:text-sm hidden sm:table-cell">
-                      {format(new Date(expense.trip_start), "MMM d, yyyy")}
+                      {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">

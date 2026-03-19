@@ -705,8 +705,10 @@ export default function ExpenseForm() {
       }
 
       // Prepare data for ExpenseService
-      // Use expense_date for both trip_start and trip_end since DB requires both
-      const expenseDateStr = validatedExpense.expense_date.toISOString().split('T')[0];
+      // Use expense_date for both trip_start and trip_end since DB requires both.
+      // Build YYYY-MM-DD from local date parts to avoid timezone shifting the day.
+      const d = validatedExpense.expense_date;
+      const expenseDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const expenseData: CreateExpenseData | UpdateExpenseData = {
         title: validatedExpense.title,
         destination: validatedExpense.destination,

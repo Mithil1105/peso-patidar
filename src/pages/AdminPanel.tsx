@@ -42,7 +42,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { MobileExpenseTable } from "@/components/MobileExpenseTable";
-import { formatINR } from "@/lib/format";
+import { formatINR, parseLocalDate } from "@/lib/format";
 
 interface User {
   id: string;
@@ -852,7 +852,7 @@ export default function AdminPanel() {
       const csvContent = [
         ["Date of Transaction", "Category", "Amount", "Petty Cash", "Transaction ID", "Employee Name", "Location"],
         ...filteredExpenses.map(expense => [
-          format(new Date(expense.trip_start), "yyyy-MM-dd"), // Date of transaction (expense date)
+          format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "yyyy-MM-dd"), // Date of transaction (expense date)
           escapeCSV((expense as any).category || "N/A"), // Category
           Number(expense.total_amount).toFixed(2), // Amount
           "petty cash", // Petty Cash - always "petty cash" for each transaction
@@ -1153,7 +1153,7 @@ export default function AdminPanel() {
                               <div className="font-medium text-xs sm:text-sm mt-1 line-clamp-1 break-words">{expense.title}</div>
                               <div className="text-xs text-muted-foreground sm:hidden mt-1">{expense.destination}</div>
                               <div className="text-xs text-muted-foreground sm:hidden mt-1">
-                                {format(new Date(expense.trip_start), "MMM d, yyyy")}
+                                {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                               </div>
                             </div>
                           </TableCell>
@@ -1186,7 +1186,7 @@ export default function AdminPanel() {
                             )}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-xs sm:text-sm text-right pr-2 sm:pr-4 hidden sm:table-cell">
-                            {format(new Date(expense.trip_start), "MMM d, yyyy")}
+                            {format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "MMM d, yyyy")}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex flex-col sm:flex-row items-end gap-2 sm:gap-0">
@@ -1278,15 +1278,9 @@ export default function AdminPanel() {
                                             </div>
                                           )}
 
-                                          <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                              <label className="text-sm font-medium">Trip Start</label>
-                                              <p className="text-sm">{format(new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
-                                            </div>
-                                            <div>
-                                              <label className="text-sm font-medium">Trip End</label>
-                                              <p className="text-sm">{format(new Date(selectedExpense.trip_end), "MMM d, yyyy")}</p>
-                                            </div>
+                                          <div>
+                                            <label className="text-sm font-medium">Date of Expense</label>
+                                            <p className="text-sm">{format(parseLocalDate(selectedExpense.trip_start) ?? new Date(selectedExpense.trip_start), "MMM d, yyyy")}</p>
                                           </div>
 
                                           <div>
