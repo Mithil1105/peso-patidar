@@ -40,7 +40,7 @@ interface Notification {
 }
 
 export default function Dashboard() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const { allowCashierExpenseSubmission } = useAllowCashierExpenseSubmission();
   const navigate = useNavigate();
 
@@ -77,6 +77,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (userRole === "master_admin") return; // redirecting to /master
     if (user) {
+      if (userRole === "admin" && !organizationId) return;
       try {
         fetchStats();
         fetchNotifications();
@@ -91,7 +92,7 @@ export default function Dashboard() {
         // Don't crash the page, just log the error
       }
     }
-  }, [user, userRole]);
+  }, [user, userRole, organizationId]);
 
   const fetchReturnRequests = async () => {
     if (!user?.id || userRole !== "cashier") return;
@@ -389,33 +390,45 @@ export default function Dashboard() {
           );
         }
 
-        // Calculate total balances from expenses data (sum of expenses by role)
+        // Calculate total balances from profiles (actual wallet balances) grouped by org role
         try {
-          // Get all user roles to map user_id to role
-          const { data: allRoles, error: rolesError } = await supabase
-            .from("user_roles")
-            .select("user_id, role");
+          if (!organizationId) throw new Error("Organization not found for balance totals");
 
-          if (!rolesError && allRoles) {
-            // Create a map of user_id to role
-            const userRoleMap = new Map(allRoles.map(r => [r.user_id, r.role]));
-            
-            // Calculate totals from expenses by role
-            expenses.forEach(expense => {
-              const role = userRoleMap.get(expense.user_id);
-              const amount = Number(expense.total_amount || 0);
-              
+          const { data: profilesData, error: profilesError } = await supabase
+            .from("profiles")
+            .select("user_id, balance")
+            .eq("organization_id", organizationId);
+
+          if (profilesError) throw profilesError;
+
+          const profileIds = (profilesData || []).map((p) => p.user_id);
+          if (profileIds.length > 0) {
+            const { data: membershipsData, error: membershipsError } = await supabase
+              .from("organization_memberships")
+              .select("user_id, role")
+              .eq("organization_id", organizationId)
+              .eq("is_active", true)
+              .in("user_id", profileIds);
+
+            if (membershipsError) throw membershipsError;
+
+            const roleByUserId = new Map((membershipsData || []).map((m) => [m.user_id, m.role]));
+
+            (profilesData || []).forEach((profile) => {
+              const role = roleByUserId.get(profile.user_id);
+              const balance = Number(profile.balance || 0);
+
               if (role === "employee") {
-                totalEmployeeBalance += amount;
+                totalEmployeeBalance += balance;
               } else if (role === "engineer") {
-                totalEngineerBalance += amount;
+                totalEngineerBalance += balance;
               } else if (role === "cashier") {
-                totalCashierBalance += amount;
+                totalCashierBalance += balance;
               }
             });
           }
         } catch (error) {
-          console.error("Error calculating total balances from expenses:", error);
+          console.error("Error calculating role balance totals:", error);
         }
       }
 
