@@ -742,6 +742,7 @@ export default function UserManagement() {
           .insert({
             engineer_id: authData.user.id,
             location_id: formData.locationId,
+            organization_id: organizationId,
           });
 
         if (locationError) throw locationError;
@@ -1006,11 +1007,12 @@ export default function UserManagement() {
 
       // Update engineer locations if role is engineer
       if (editFormData.role === "engineer") {
-        // Delete existing location assignments
+        // Delete existing location assignments for this org
         const { error: deleteError } = await supabase
           .from("engineer_locations")
           .delete()
-          .eq("engineer_id", userToEdit.user_id);
+          .eq("engineer_id", userToEdit.user_id)
+          .eq("organization_id", organizationId);
 
         if (deleteError) throw deleteError;
 
@@ -1021,6 +1023,7 @@ export default function UserManagement() {
             .insert({
               engineer_id: userToEdit.user_id,
               location_id: editFormData.locationId,
+              organization_id: organizationId,
             });
 
           if (locationError) throw locationError;
@@ -1030,7 +1033,8 @@ export default function UserManagement() {
         const { error: deleteError } = await supabase
           .from("engineer_locations")
           .delete()
-          .eq("engineer_id", userToEdit.user_id);
+          .eq("engineer_id", userToEdit.user_id)
+          .eq("organization_id", organizationId);
 
         if (deleteError) throw deleteError;
       }

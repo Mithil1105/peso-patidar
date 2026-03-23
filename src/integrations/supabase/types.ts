@@ -467,18 +467,21 @@ export type Database = {
           id: string
           engineer_id: string
           location_id: string
+          organization_id: string
           created_at: string
         }
         Insert: {
           id?: string
           engineer_id: string
           location_id: string
+          organization_id: string
           created_at?: string
         }
         Update: {
           id?: string
           engineer_id?: string
           location_id?: string
+          organization_id?: string
           created_at?: string
         }
         Relationships: [

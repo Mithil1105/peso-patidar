@@ -114,6 +114,8 @@ export default function AdminPanel() {
   const reviewDialogContentRef = useRef<HTMLDivElement>(null);
   const [backupLoading, setBackupLoading] = useState(false);
   const [includeReceipts, setIncludeReceipts] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   useEffect(() => {
     console.log("🔄 [AdminPanel] useEffect triggered");
@@ -659,6 +661,168 @@ export default function AdminPanel() {
     }
   };
 
+  // Get expenses that can be bulk processed (submitted or verified status)
+  const getSelectableExpenses = () => {
+    return filteredExpenses.filter(
+      (e) => e.status === "submitted" || e.status === "verified"
+    );
+  };
+
+  const handleSelectExpense = (expenseId: string, checked: boolean) => {
+    const newSelected = new Set(selectedExpenseIds);
+    if (checked) {
+      newSelected.add(expenseId);
+    } else {
+      newSelected.delete(expenseId);
+    }
+    setSelectedExpenseIds(newSelected);
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const selectableIds = new Set(getSelectableExpenses().map((e) => e.id));
+      setSelectedExpenseIds(selectableIds);
+    } else {
+      setSelectedExpenseIds(new Set());
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (!user || selectedExpenseIds.size === 0) return;
+
+    const expenseIds = Array.from(selectedExpenseIds);
+    const expensesToApprove = filteredExpenses.filter(
+      (e) =>
+        expenseIds.includes(e.id) &&
+        (e.status === "submitted" || e.status === "verified")
+    );
+
+    if (expensesToApprove.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Valid Expenses",
+        description:
+          "Selected expenses cannot be approved. Only submitted or verified expenses can be approved.",
+      });
+      return;
+    }
+
+    try {
+      setBulkActionLoading(true);
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      for (const expense of expensesToApprove) {
+        try {
+          await ExpenseService.approveExpense(expense.id, user.id, "Bulk approved");
+          successCount++;
+        } catch (error: any) {
+          errorCount++;
+          errors.push(
+            `${expense.title || expense.id}: ${error.message || "Failed to approve"}`
+          );
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: "Bulk Approval Complete",
+          description: `Successfully approved ${successCount} expense(s).${errorCount > 0 ? ` ${errorCount} failed.` : ""}`,
+        });
+      }
+
+      if (errorCount > 0 && errors.length > 0) {
+        console.error("Bulk approval errors:", errors);
+        toast({
+          variant: "destructive",
+          title: "Some Approvals Failed",
+          description: `${errorCount} expense(s) could not be approved. Check console for details.`,
+        });
+      }
+
+      setSelectedExpenseIds(new Set());
+      fetchExpenses();
+    } catch (error: any) {
+      console.error("Error in bulk approve:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to approve expenses",
+      });
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (!user || selectedExpenseIds.size === 0) return;
+
+    const expenseIds = Array.from(selectedExpenseIds);
+    const expensesToReject = filteredExpenses.filter(
+      (e) =>
+        expenseIds.includes(e.id) &&
+        (e.status === "submitted" || e.status === "verified")
+    );
+
+    if (expensesToReject.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Valid Expenses",
+        description:
+          "Selected expenses cannot be rejected. Only submitted or verified expenses can be rejected.",
+      });
+      return;
+    }
+
+    try {
+      setBulkActionLoading(true);
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+
+      for (const expense of expensesToReject) {
+        try {
+          await ExpenseService.rejectExpense(expense.id, user.id, "Bulk rejected");
+          successCount++;
+        } catch (error: any) {
+          errorCount++;
+          errors.push(
+            `${expense.title || expense.id}: ${error.message || "Failed to reject"}`
+          );
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: "Bulk Rejection Complete",
+          description: `Successfully rejected ${successCount} expense(s).${errorCount > 0 ? ` ${errorCount} failed.` : ""}`,
+        });
+      }
+
+      if (errorCount > 0 && errors.length > 0) {
+        console.error("Bulk rejection errors:", errors);
+        toast({
+          variant: "destructive",
+          title: "Some Rejections Failed",
+          description: `${errorCount} expense(s) could not be rejected. Check console for details.`,
+        });
+      }
+
+      setSelectedExpenseIds(new Set());
+      fetchExpenses();
+    } catch (error: any) {
+      console.error("Error in bulk reject:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to reject expenses",
+      });
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   const approveExpenseDirect = async () => {
     if (!selectedExpense || !user) return;
 
@@ -1123,11 +1287,57 @@ export default function AdminPanel() {
                 <span className="ml-2 text-gray-600">Loading expenses...</span>
               </div>
             ) : (
+              <>
+                {selectedExpenseIds.size > 0 && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-blue-900">
+                      {selectedExpenseIds.size} expense(s) selected
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={handleBulkApprove}
+                        disabled={bulkActionLoading}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        size="sm"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Bulk Approve
+                      </Button>
+                      <Button
+                        onClick={handleBulkReject}
+                        disabled={bulkActionLoading}
+                        variant="destructive"
+                        size="sm"
+                      >
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Bulk Reject
+                      </Button>
+                      <Button
+                        onClick={() => setSelectedExpenseIds(new Set())}
+                        variant="outline"
+                        size="sm"
+                        disabled={bulkActionLoading}
+                      >
+                        Clear Selection
+                      </Button>
+                    </div>
+                  </div>
+                )}
               <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <div className="inline-block min-w-full align-middle">
                   <Table className="min-w-full">
                     <TableHeader>
                       <TableRow className="border-gray-200">
+                        <TableHead className="font-semibold w-[50px]">
+                          <Checkbox
+                            checked={
+                              getSelectableExpenses().length > 0 &&
+                              getSelectableExpenses().every((e) => selectedExpenseIds.has(e.id))
+                            }
+                            onCheckedChange={(v) => handleSelectAll(v === true)}
+                            disabled={getSelectableExpenses().length === 0}
+                          />
+                        </TableHead>
                         <TableHead className="font-semibold min-w-[80px] whitespace-nowrap">Txn #</TableHead>
                         <TableHead className="font-semibold min-w-[140px] sm:min-w-[140px]">Employee / Title</TableHead>
                         <TableHead className="font-semibold min-w-[100px] hidden sm:table-cell">Title</TableHead>
@@ -1141,8 +1351,21 @@ export default function AdminPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredExpenses.map((expense) => (
+                      {filteredExpenses.map((expense) => {
+                        const isSelectable =
+                          expense.status === "submitted" || expense.status === "verified";
+                        const isSelected = selectedExpenseIds.has(expense.id);
+                        return (
                         <TableRow key={expense.id}>
+                          <TableCell className="w-[50px]">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) =>
+                                handleSelectExpense(expense.id, checked as boolean)
+                              }
+                              disabled={!isSelectable || bulkActionLoading}
+                            />
+                          </TableCell>
                           <TableCell className="text-xs sm:text-sm font-mono font-semibold text-blue-600 whitespace-nowrap">
                             {(expense as any).transaction_number || '-'}
                           </TableCell>
@@ -1218,11 +1441,13 @@ export default function AdminPanel() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
+                      );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
               </div>
+              </>
             )}
 
         {/* Review Expense Dialog - single instance outside table for reliable rendering */}
