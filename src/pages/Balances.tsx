@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/format";
@@ -34,10 +35,12 @@ export default function Balances() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [cashierBalance, setCashierBalance] = useState<number>(0);
   const [addAmounts, setAddAmounts] = useState<{ [key: string]: number }>({});
+  const [addNotes, setAddNotes] = useState<{ [key: string]: string }>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [bulkAddDialogOpen, setBulkAddDialogOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [bulkAmount, setBulkAmount] = useState<number>(0);
+  const [bulkNote, setBulkNote] = useState<string>("");
   const [bulkAdding, setBulkAdding] = useState(false);
   const [activeTab, setActiveTab] = useState<"balances" | "history">("balances");
   
@@ -69,6 +72,7 @@ export default function Balances() {
   const [editBalanceDialogOpen, setEditBalanceDialogOpen] = useState(false);
   const [editBalanceRow, setEditBalanceRow] = useState<ProfileRow | null>(null);
   const [editBalanceNewValue, setEditBalanceNewValue] = useState<string>("");
+  const [editBalanceNote, setEditBalanceNote] = useState<string>("");
   const [editBalanceSaving, setEditBalanceSaving] = useState(false);
 
   const canEdit = userRole === "admin" || userRole === "cashier";
@@ -354,7 +358,7 @@ export default function Balances() {
     }
   };
 
-  const addAmountToUser = async (userId: string, amountToAdd: number) => {
+  const addAmountToUser = async (userId: string, amountToAdd: number, note: string) => {
     try {
       setSavingId(userId);
       
@@ -562,6 +566,7 @@ export default function Balances() {
               recipient_role: recipientRole,
               amount: amountToAdd,
               transfer_type: transferType,
+              notes: note,
             })
             .select();
           
@@ -627,6 +632,7 @@ export default function Balances() {
       
       // Clear the add amount input
       setAddAmounts(prev => ({ ...prev, [userId]: 0 }));
+      setAddNotes(prev => ({ ...prev, [userId]: "" }));
       
       // Refresh transfer history if history tab is active
       if (activeTab === "history") {
@@ -640,7 +646,7 @@ export default function Balances() {
     }
   };
 
-  const updateBalance = async (userId: string, newBalance: number) => {
+  const updateBalance = async (userId: string, newBalance: number, note?: string) => {
     try {
       setSavingId(userId);
       
@@ -743,6 +749,7 @@ export default function Balances() {
               recipient_role: recipientRole,
               amount: balanceDifference,
               transfer_type: transferType,
+              notes: note || undefined,
             })
             .select();
           
@@ -801,12 +808,18 @@ export default function Balances() {
       toast({ variant: "destructive", title: "Error", description: "Please enter a valid number" });
       return;
     }
+    const trimmedNote = editBalanceNote.trim();
+    if (!trimmedNote) {
+      toast({ variant: "destructive", title: "Error", description: "Please add a note for this balance edit" });
+      return;
+    }
     try {
       setEditBalanceSaving(true);
-      await updateBalance(editBalanceRow.user_id, parsed);
+      await updateBalance(editBalanceRow.user_id, parsed, trimmedNote);
       setEditBalanceDialogOpen(false);
       setEditBalanceRow(null);
       setEditBalanceNewValue("");
+      setEditBalanceNote("");
     } catch {
       // updateBalance already shows toast
     } finally {
@@ -1163,7 +1176,7 @@ export default function Balances() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 flex-wrap">
                         <Input
                           type="number"
                           className="w-32 h-9 min-w-[120px]"
@@ -1172,6 +1185,16 @@ export default function Balances() {
                           onChange={(e) => {
                             const val = parseFloat(e.target.value || '0');
                             setAddAmounts(prev => ({ ...prev, [r.user_id]: isNaN(val) ? 0 : val }));
+                          }}
+                          disabled={userRole === 'cashier' && user?.id === r.user_id}
+                        />
+                        <Input
+                          type="text"
+                          className="w-40 h-9 min-w-[140px]"
+                          placeholder="Note"
+                          value={addNotes[r.user_id] || ''}
+                          onChange={(e) => {
+                            setAddNotes(prev => ({ ...prev, [r.user_id]: e.target.value }));
                           }}
                           disabled={userRole === 'cashier' && user?.id === r.user_id}
                         />
@@ -1189,6 +1212,7 @@ export default function Balances() {
                             onClick={() => {
                               setEditBalanceRow(r);
                               setEditBalanceNewValue(String(r.balance ?? 0));
+                              setEditBalanceNote("");
                               setEditBalanceDialogOpen(true);
                             }}
                           >
@@ -1203,9 +1227,14 @@ export default function Balances() {
                           onClick={() => {
                             console.log('Button clicked for user:', r.user_id, 'userRole:', userRole);
                             const amountToAdd = addAmounts[r.user_id] || 0;
+                            const note = (addNotes[r.user_id] || "").trim();
                             console.log('Amount to add:', amountToAdd);
                             if (amountToAdd > 0) {
-                              addAmountToUser(r.user_id, amountToAdd);
+                              if (!note) {
+                                toast({ variant: "destructive", title: "Error", description: "Please add a note for this transfer" });
+                                return;
+                              }
+                              addAmountToUser(r.user_id, amountToAdd, note);
                             } else {
                               toast({ variant: "destructive", title: "Error", description: "Please enter an amount to add" });
                             }
@@ -1248,6 +1277,16 @@ export default function Balances() {
                 onChange={(e) => setBulkAmount(parseFloat(e.target.value) || 0)}
                 min="0"
                 step="0.01"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-note">Note</Label>
+              <Textarea
+                id="bulk-note"
+                placeholder="Add note for this bulk transfer"
+                value={bulkNote}
+                onChange={(e) => setBulkNote(e.target.value)}
+                className="min-h-[80px]"
               />
             </div>
 
@@ -1328,6 +1367,7 @@ export default function Balances() {
                 setBulkAddDialogOpen(false);
                 setSelectedUserIds(new Set());
                 setBulkAmount(0);
+                setBulkNote("");
               }}
             >
               Cancel
@@ -1347,6 +1387,15 @@ export default function Balances() {
                     variant: "destructive",
                     title: "Error",
                     description: "Please enter a valid amount greater than 0",
+                  });
+                  return;
+                }
+                const trimmedBulkNote = bulkNote.trim();
+                if (!trimmedBulkNote) {
+                  toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Please add a note for this bulk transfer",
                   });
                   return;
                 }
@@ -1422,6 +1471,7 @@ export default function Balances() {
                             recipient_role: recipientRole,
                             amount: bulkAmount,
                             transfer_type: transferType,
+                            notes: trimmedBulkNote,
                           })
                           .select();
                         
@@ -1481,6 +1531,7 @@ export default function Balances() {
                   setBulkAddDialogOpen(false);
                   setSelectedUserIds(new Set());
                   setBulkAmount(0);
+                  setBulkNote("");
                   
                   // Refresh transfer history if history tab is active
                   if (activeTab === "history") {
@@ -1518,6 +1569,7 @@ export default function Balances() {
             setEditBalanceDialogOpen(false);
             setEditBalanceRow(null);
             setEditBalanceNewValue("");
+            setEditBalanceNote("");
           }
         }}
       >
@@ -1560,6 +1612,16 @@ export default function Balances() {
                   </Button>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-balance-note">Note</Label>
+                <Textarea
+                  id="edit-balance-note"
+                  value={editBalanceNote}
+                  onChange={(e) => setEditBalanceNote(e.target.value)}
+                  placeholder="Add reason/note for this balance edit"
+                  className="min-h-[90px]"
+                />
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -1569,6 +1631,7 @@ export default function Balances() {
                 setEditBalanceDialogOpen(false);
                 setEditBalanceRow(null);
                 setEditBalanceNewValue("");
+                setEditBalanceNote("");
               }}
             >
               Cancel
