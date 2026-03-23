@@ -1217,22 +1217,7 @@ export default function UserManagement() {
       });
 
       if (error) {
-        // If edge function doesn't exist, fallback to showing password
-        // (This is for development - in production, edge function must be created)
-        console.warn('Edge function not available, using fallback. Please create the edge function for production use.');
-        
-        // For now, show the password to admin
-        // TODO: Create edge function at supabase/functions/admin-reset-password/index.ts
-        setResetPasswordValue(newUserPassword);
-        setResetPasswordSuccessOpen(true);
-        setResetPasswordDialogOpen(false);
-        setAdminPassword("");
-        setNewUserPassword("");
-        
-        toast({
-          title: "Password Reset",
-          description: `Password has been reset for ${userToEdit.name}. Please copy and share the new password securely.`,
-        });
+        throw new Error(error.message || "Failed to call password reset function");
       } else if (data?.success) {
         setResetPasswordValue(newUserPassword);
         setResetPasswordSuccessOpen(true);
