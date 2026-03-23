@@ -526,8 +526,6 @@ export default function Balances() {
             transferType = 'admin_to_employee';
           } else if (recipientRole === 'engineer') {
             transferType = 'admin_to_engineer';
-          } else {
-            transferType = 'admin_to_employee'; // fallback
           }
         } else {
           // cashier
@@ -710,8 +708,6 @@ export default function Balances() {
             transferType = 'admin_to_employee';
           } else if (recipientRole === 'engineer') {
             transferType = 'admin_to_engineer';
-          } else {
-            transferType = 'admin_to_employee'; // fallback
           }
         } else {
           // cashier
@@ -950,14 +946,22 @@ export default function Balances() {
     }
   };
 
-  const getTransferTypeLabel = (type: string) => {
+  const getTransferTypeLabel = (type: string, transferrerRole?: string, recipientRole?: string) => {
     const labels: Record<string, string> = {
       admin_to_cashier: "Admin → Cashier",
       admin_to_employee: "Admin → Employee",
       admin_to_engineer: "Admin → Manager",
       cashier_to_employee: "Cashier → Employee",
       cashier_to_engineer: "Cashier → Manager",
+      cashier_to_admin: "Cashier → Admin",
+      employee_to_cashier: "Employee → Cashier",
+      engineer_to_cashier: "Manager → Cashier",
+      admin_to_admin: "Admin → Admin",
     };
+    if (transferrerRole && recipientRole) {
+      const roleKey = `${transferrerRole}_to_${recipientRole}`;
+      if (labels[roleKey]) return labels[roleKey];
+    }
     return labels[type] || type;
   };
 
@@ -1032,7 +1036,7 @@ export default function Balances() {
           `"${t.recipient_name || "Unknown"}"`,
           t.recipient_role,
           t.amount,
-          getTransferTypeLabel(t.transfer_type),
+          getTransferTypeLabel(t.transfer_type, t.transferrer_role, t.recipient_role),
           t.notes ? `"${t.notes.replace(/"/g, '""')}"` : "",
           t.date_edited && t.transferred_at_original ? format(new Date(t.transferred_at_original), "yyyy-MM-dd HH:mm:ss") : "",
           t.date_edited && t.transferred_at_edited_at ? format(new Date(t.transferred_at_edited_at), "yyyy-MM-dd HH:mm:ss") : "",
@@ -1442,8 +1446,6 @@ export default function Balances() {
                           transferType = 'admin_to_employee';
                         } else if (recipientRole === 'engineer') {
                           transferType = 'admin_to_engineer';
-                        } else {
-                          transferType = 'admin_to_employee'; // fallback
                         }
                         
                         console.log('Logging cash transfer history (bulk):', {
@@ -1808,7 +1810,7 @@ export default function Balances() {
                             </TableCell>
                             <TableCell>
                               <Badge variant="secondary">
-                                {getTransferTypeLabel(transfer.transfer_type)}
+                                {getTransferTypeLabel(transfer.transfer_type, transfer.transferrer_role, transfer.recipient_role)}
                               </Badge>
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate">
