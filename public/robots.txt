@@ -85,7 +85,7 @@ Allow: /
 Crawl-delay: 0
 
 # Sitemap location
-Sitemap: https://pesowise.com/sitemap.xml
+Sitemap: https://pesowise.unimisk.com/sitemap.xml
 
 # Default crawl delay for other bots
 User-agent: *
