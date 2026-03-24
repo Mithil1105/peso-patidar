@@ -665,6 +665,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 **Made with ❤️ by the PesoWise Team**
 
-[Website](https://pesowise.com) • [Documentation](docs/) • [Issues](https://github.com/your-org/pesowise/issues) • [License](LICENSE)
+[Website](https://pesowise.unimisk.com) • [Documentation](docs/) • [Issues](https://github.com/your-org/pesowise/issues) • [License](LICENSE)
 
 </div>

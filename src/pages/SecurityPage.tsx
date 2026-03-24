@@ -78,13 +78,13 @@ export default function SecurityPage() {
                 "@type": "ListItem",
                 "position": 1,
                 "name": "Home",
-                "item": "https://pesowise.com/"
+                "item": "https://pesowise.unimisk.com/"
             },
             {
                 "@type": "ListItem",
                 "position": 2,
                 "name": "Security",
-                "item": "https://pesowise.com/security"
+                "item": "https://pesowise.unimisk.com/security"
             }
         ]
     };
@@ -94,7 +94,7 @@ export default function SecurityPage() {
             <SEOHead
                 title="Security & Compliance in Expense Management | PesoWise"
                 description="PesoWise uses role-based access control, row level security, and audit trails to protect expense and financial data."
-                canonicalUrl="https://pesowise.com/security"
+                canonicalUrl="https://pesowise.unimisk.com/security"
                 faqSchema={faqSchema}
                 structuredData={breadcrumbSchema}
             />

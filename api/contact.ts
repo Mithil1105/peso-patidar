@@ -91,7 +91,7 @@ Submitted at: ${new Date().toISOString()}
         'Authorization': `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: 'PesoWise Contact Form <noreply@pesowise.com>',
+        from: 'PesoWise Contact Form <noreply@pesowise.unimisk.com>',
         to: [contactToEmail],
         reply_to: workEmail,
         subject: emailSubject,

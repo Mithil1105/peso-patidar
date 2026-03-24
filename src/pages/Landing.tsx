@@ -71,7 +71,7 @@ export default function Landing() {
             <SEOHead
                 title="PesoWise – Petty Cash & Expense Management Software for Teams"
                 description="PesoWise is a secure petty cash and expense management platform for teams. Track expenses, automate approvals, manage balances, and maintain audit-ready records."
-                canonicalUrl="https://pesowise.com/"
+                canonicalUrl="https://pesowise.unimisk.com/"
                 structuredData={structuredData}
             />
             <MarketingLayout>
