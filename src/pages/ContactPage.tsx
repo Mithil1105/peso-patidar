@@ -117,7 +117,7 @@ export default function ContactPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <MapPin className="h-4 w-4 text-warning" />
-                      <span className="text-xs text-muted-foreground">Philippines</span>
+                      <span className="text-xs text-muted-foreground">India · teams worldwide</span>
                     </div>
                   </div>
                 </div>
@@ -146,7 +146,7 @@ export default function ContactPage() {
                       id="fullName"
                       name="fullName"
                       type="text"
-                      placeholder="Juan Dela Cruz"
+                      placeholder="Priya Sharma"
                       className={inputClass}
                     />
                   </div>
@@ -158,7 +158,7 @@ export default function ContactPage() {
                       id="workEmail"
                       name="workEmail"
                       type="email"
-                      placeholder="juan@company.com"
+                      placeholder="priya@company.com"
                       className={inputClass}
                     />
                   </div>
@@ -184,7 +184,7 @@ export default function ContactPage() {
                       id="phone"
                       name="phone"
                       type="tel"
-                      placeholder="+63 917 123 4567"
+                      placeholder="+91 98765 43210"
                       className={inputClass}
                     />
                   </div>

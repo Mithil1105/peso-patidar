@@ -193,7 +193,7 @@ const HomePage = () => {
             Why PesoWise?
           </h2>
           <p className="text-muted-foreground">
-            Purpose-built for Philippine businesses managing petty cash
+            Built in India for teams everywhere—petty cash without the chaos
           </p>
         </ScrollReveal>
 
