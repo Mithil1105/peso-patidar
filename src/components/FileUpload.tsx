@@ -42,11 +42,16 @@ export function FileUpload({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const totalSizeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { user, organizationId } = useAuth();
   const isMobile = useIsMobile();
+  const MAX_TOTAL_SIZE = 2 * 1024 * 1024;
+
+  const getTotalSize = (list: Attachment[]) =>
+    list.reduce((sum, att) => sum + (att.file_size || 0), 0);
 
   // Load existing attachments when expenseId is provided (not "new")
   useEffect(() => {
@@ -72,10 +77,14 @@ export function FileUpload({
               file_size: att.file_size || 0
             }));
             setAttachments(attachmentsWithSize);
+            totalSizeRef.current = getTotalSize(attachmentsWithSize);
             console.log('✅ Loaded existing attachments:', attachmentsWithSize.length);
+          } else {
+            totalSizeRef.current = 0;
           }
         } catch (error) {
           console.error('Error fetching attachments:', error);
+          totalSizeRef.current = 0;
         }
       }
     };
@@ -112,11 +121,10 @@ export function FileUpload({
       setUploadProgress(0);
       
       // Calculate current total size of all attachments - 2MB combined limit
-      const currentTotalSize = attachments.reduce((sum, att) => sum + (att.file_size || 0), 0);
-      const maxTotalSize = 2 * 1024 * 1024; // 2MB total limit for all attachments combined
+      const currentTotalSize = totalSizeRef.current;
       
       // Check if adding this file would exceed total limit
-      if (currentTotalSize + file.size > maxTotalSize) {
+      if (currentTotalSize + file.size > MAX_TOTAL_SIZE) {
         const currentTotalMB = (currentTotalSize / (1024 * 1024)).toFixed(2);
         const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
         throw new Error(`Total size limit exceeded. Current total: ${currentTotalMB}MB, adding ${fileSizeMB}MB would exceed 2MB limit.`);
@@ -254,6 +262,7 @@ export function FileUpload({
       };
 
       setAttachments(prev => [...prev, attachmentData || tempAttachment]);
+      totalSizeRef.current += file.size;
       
       toast({
         title: "Upload successful",
@@ -347,6 +356,7 @@ export function FileUpload({
 
       // Remove from local state
       setAttachments(prev => prev.filter(a => a.id !== attachmentId));
+      totalSizeRef.current = Math.max(0, totalSizeRef.current - (attachment.file_size || 0));
       
       toast({
         title: "File deleted",

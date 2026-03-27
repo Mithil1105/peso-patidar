@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -66,6 +66,7 @@ export default function ExpenseForm() {
   }, [userRole, allowCashierExpenseSubmission, settingLoading, navigate, toast]);
 
   const [loading, setLoading] = useState(false);
+  const isSavingRef = useRef(false);
   const [expense, setExpense] = useState({
     title: "",
     destination: "",
@@ -625,8 +626,37 @@ export default function ExpenseForm() {
 
   // line item handlers removed
 
+  const enforceMaxAttachmentSize = async (expenseId: string) => {
+    if (!organizationId) return;
+    const MAX_TOTAL_SIZE = 2 * 1024 * 1024; // 2MB combined limit
+
+    const { data: existingAttachments, error } = await supabase
+      .from("attachments")
+      .select("file_size")
+      .eq("expense_id", expenseId)
+      .eq("organization_id", organizationId);
+
+    if (error) {
+      throw new Error("Failed to validate total attachment size. Please try again.");
+    }
+
+    const totalBytes = (existingAttachments || []).reduce((sum: number, item: any) => {
+      const size = Number(item?.file_size || 0);
+      return sum + (Number.isFinite(size) ? size : 0);
+    }, 0);
+
+    if (totalBytes > MAX_TOTAL_SIZE) {
+      const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+      throw new Error(`Total attachment size is ${totalMB}MB, which exceeds the 2MB limit. Please remove some files and try again.`);
+    }
+  };
+
   const saveExpense = async () => {
     if (!user) return;
+    if (isSavingRef.current) {
+      return;
+    }
+    isSavingRef.current = true;
 
     try {
       setLoading(true);
@@ -749,6 +779,9 @@ export default function ExpenseForm() {
         // Move any temp files to the expense folder (for newly uploaded files during edit)
         // This must succeed before submission
         await moveTempFilesToExpense(id);
+
+        // Enforce combined attachment size limit before submit.
+        await enforceMaxAttachmentSize(id);
         
         // Submit the expense (this will handle status change to submitted)
         await ExpenseService.submitExpense(id, user.id);
@@ -775,6 +808,9 @@ export default function ExpenseForm() {
             .eq('id', newExpense.id);
           throw new Error(`Failed to create attachments: ${attachmentError.message || 'Unknown error'}`);
         }
+
+        // Enforce combined attachment size limit before submit.
+        await enforceMaxAttachmentSize(newExpense.id);
         
         // Submit the expense
         await ExpenseService.submitExpense(newExpense.id, user.id);
@@ -832,6 +868,7 @@ export default function ExpenseForm() {
       }
     } finally {
       setLoading(false);
+      isSavingRef.current = false;
     }
   };
 
