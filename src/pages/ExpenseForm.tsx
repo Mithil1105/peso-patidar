@@ -402,9 +402,15 @@ export default function ExpenseForm() {
       }
 
       if (!tempFiles || tempFiles.length === 0) return;
+      let movedCount = 0;
+      let failedCount = 0;
 
       // Move each temp file to the expense folder
       for (const file of tempFiles) {
+        if (!file?.name) {
+          failedCount += 1;
+          continue;
+        }
         const tempPath = `temp/${user.id}/${file.name}`;
         const newPath = `${expenseId}/${file.name}`;
 
@@ -415,6 +421,7 @@ export default function ExpenseForm() {
 
         if (copyError) {
           console.error('Error copying file:', copyError);
+          failedCount += 1;
           continue;
         }
 
@@ -436,16 +443,31 @@ export default function ExpenseForm() {
         
         if (attachmentInsertError) {
           console.error('Error creating attachment record:', attachmentInsertError);
-          throw attachmentInsertError;
+          failedCount += 1;
+          // Best-effort cleanup of copied file if DB row creation fails
+          await supabase.storage
+            .from('receipts')
+            .remove([newPath]);
+          continue;
         }
 
         // Delete temp file
         await supabase.storage
           .from('receipts')
           .remove([tempPath]);
+        movedCount += 1;
+      }
+
+      if (movedCount === 0 && tempFiles.length > 0) {
+        throw new Error('Failed to attach uploaded bill photos. Please re-upload and try again.');
+      }
+
+      if (failedCount > 0) {
+        console.warn(`Some temp files could not be moved (${failedCount}). Successfully moved: ${movedCount}.`);
       }
     } catch (error) {
       console.error('Error moving temp files:', error);
+      throw error;
     }
   };
 
