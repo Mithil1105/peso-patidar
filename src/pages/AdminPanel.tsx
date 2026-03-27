@@ -273,7 +273,6 @@ export default function AdminPanel() {
         .from("audit_logs")
         .select("user_id, action, comment, created_at")
         .eq("expense_id", expenseId)
-        .eq("organization_id", organizationId)
         .order("created_at", { ascending: false });
 
       if (logsError) throw logsError;
@@ -407,10 +406,15 @@ export default function AdminPanel() {
 
     // Now fetch expenses filtered by organization_id
     console.log("🔍 [AdminPanel] Fetching expenses for organization:", organizationId);
+    // Only show expenses that have reached the review/decision lifecycle.
+    // Draft/"created but not submitted yet" rows can exist while attachments are still being
+    // moved from `receipts/temp/...` into the expense folder + `attachments` table,
+    // causing the "no attachments yet" experience.
     const { data: allExpenses, error: expensesError } = await supabase
       .from("expenses")
       .select("*")
       .eq("organization_id", organizationId)
+      .in("status", ["submitted", "verified", "approved", "rejected"])
       .order("created_at", { ascending: false });
 
     console.log("🔍 [AdminPanel] Expenses query result (with org filter):");
@@ -472,8 +476,7 @@ export default function AdminPanel() {
         .from("audit_logs")
         .select("expense_id")
         .in("expense_id", expenseIds)
-        .eq("action", "expense_resubmitted")
-        .eq("organization_id", organizationId);
+        .eq("action", "expense_resubmitted");
 
       resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
     }

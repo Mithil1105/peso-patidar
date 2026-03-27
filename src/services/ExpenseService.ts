@@ -87,7 +87,9 @@ export class ExpenseService {
         purpose: data.purpose,
         category: data.category,
         total_amount: totalAmount,
-        status: data.status || "submitted",
+        // Create first, then submitExpense() will move it to "submitted" and write the submitted audit log.
+        // This avoids UI showing "Submitted" while audit logs/attachments are still being finalized.
+        status: "draft",
       })
       .select()
       .single();
@@ -335,13 +337,14 @@ export class ExpenseService {
 
       // Notify all admins
       if (expenseData && adminUserIds.length > 0) {
-        await notifyExpenseSubmitted(
+        // Do not block the submission flow on notification delivery.
+        void notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
           employeeProfile?.name || "Engineer",
           null, // No engineer assigned
           adminUserIds
-        );
+        ).catch((e) => console.error("notifyExpenseSubmitted failed (admin notifications):", e));
       }
 
       return updatedExpense;
@@ -400,12 +403,12 @@ export class ExpenseService {
 
       // Notify assigned engineer
       if (expenseData) {
-        await notifyExpenseSubmitted(
+        void notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
           employeeProfile?.name || "Employee",
           profile.reporting_engineer_id
-        );
+        ).catch((e) => console.error("notifyExpenseSubmitted failed (engineer notifications):", e));
       }
     } else {
       // Employee has no reporting engineer - send directly to admin
@@ -426,13 +429,13 @@ export class ExpenseService {
 
       // Notify all admins
       if (expenseData && adminUserIds.length > 0) {
-        await notifyExpenseSubmitted(
+        void notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
           employeeProfile?.name || "Employee",
           null, // No engineer assigned
           adminUserIds
-        );
+        ).catch((e) => console.error("notifyExpenseSubmitted failed (admin notifications no engineer):", e));
       }
     }
 
@@ -1030,14 +1033,26 @@ export class ExpenseService {
     action: string,
     comment?: string
   ): Promise<void> {
-    await supabase
-      .from("audit_logs")
-      .insert({
-        expense_id: expenseId,
-        user_id: userId,
-        organization_id: organizationId,
-        action,
-        comment,
-      });
+    // Some deployments have `audit_logs` without `organization_id`. Try the richer insert first,
+    // then fall back to the minimal payload.
+    const payload: any = {
+      expense_id: expenseId,
+      user_id: userId,
+      action,
+      comment,
+    };
+
+    try {
+      await supabase
+        .from("audit_logs")
+        .insert({
+          ...payload,
+          organization_id: organizationId,
+        });
+    } catch (e) {
+      await supabase
+        .from("audit_logs")
+        .insert(payload);
+    }
   }
 }
