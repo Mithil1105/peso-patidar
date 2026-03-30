@@ -234,3 +234,14 @@ All colors MUST be HSL.
     width: 100% !important;
   }
 }
+
+/* Hide browser number input spinners (up/down arrows) everywhere.
+   This prevents accidental value changes from clicking the spinner. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+}

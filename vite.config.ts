@@ -4,7 +4,9 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
+// cacheDir outside node_modules avoids Windows EPERM (OneDrive/antivirus locks on node_modules\.vite)
 export default defineConfig(({ mode }) => ({
+  cacheDir: path.resolve(__dirname, ".vite"),
   server: {
     host: "::",
     port: 3000,

@@ -18,6 +18,8 @@ interface Attachment {
   file_url: string;
   created_at: string;
   file_size?: number; // File size in bytes
+  /** Object name under `temp/{userId}/` or `{expenseId}/` in the receipts bucket */
+  storage_path?: string;
 }
 
 interface FileUploadProps {
@@ -189,7 +191,11 @@ export function FileUpload({
         .from('receipts')
         .upload(uploadPath, fileToUpload, {
           cacheControl: '3600',
-          upsert: false
+          upsert: false,
+          metadata: {
+            originalFilename: file.name,
+            uploadByteLength: String(file.size),
+          },
         });
 
       if (uploadResult.error) {
@@ -236,7 +242,7 @@ export function FileUpload({
             filename: file.name,
             content_type: file.type,
             uploaded_by: user?.id,
-            file_size: file.size, // Store file size
+            file_size: file.size,
           })
           .select()
           .single();
@@ -245,7 +251,9 @@ export function FileUpload({
           console.error('❌ Database insert error:', attachmentError);
           throw attachmentError;
         }
-        attachmentData = data;
+        attachmentData = data
+          ? { ...data, storage_path: fileName }
+          : data;
         console.log('✅ Attachment saved to database:', attachmentData);
       }
       
@@ -253,12 +261,13 @@ export function FileUpload({
 
       // Create a temporary attachment object for new expenses
       const tempAttachment = {
-        id: `temp-${Date.now()}`,
+        id: `temp-${Date.now()}-${fileName}`,
         filename: file.name,
         content_type: file.type,
         file_url: urlData.publicUrl,
         created_at: new Date().toISOString(),
-        file_size: file.size
+        file_size: file.size,
+        storage_path: fileName,
       };
 
       setAttachments(prev => [...prev, attachmentData || tempAttachment]);
@@ -480,7 +489,7 @@ export function FileUpload({
             <div className="space-y-2">
               {attachments.filter(attachment => attachment).map((attachment) => (
                 <div
-                  key={attachment.id || Math.random()}
+                  key={attachment.id || attachment.file_url}
                   className="flex items-center justify-between p-3 border rounded-lg"
                 >
                   <div className="flex items-center gap-3">

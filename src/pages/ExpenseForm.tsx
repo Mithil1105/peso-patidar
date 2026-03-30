@@ -45,6 +45,58 @@ const expenseSchema = z.object({
 
 // Line items schema removed
 
+/** Parses storage object names under `temp/{userId}/…` from public receipt URLs (session uploads). */
+function parseTempStorageNamesFromUrls(urls: string[] | undefined, userId: string): Set<string> {
+  const names = new Set<string>();
+  if (!urls?.length || !userId) return names;
+  const needle = `/temp/${userId}/`;
+  for (const url of urls) {
+    const i = url.indexOf(needle);
+    if (i === -1) continue;
+    let path = url.slice(i + needle.length);
+    const q = path.indexOf("?");
+    if (q !== -1) path = path.slice(0, q);
+    try {
+      const decoded = decodeURIComponent(path);
+      if (decoded) names.add(decoded);
+    } catch {
+      if (path) names.add(path);
+    }
+  }
+  return names;
+}
+
+type SessionTempMeta = {
+  filename: string;
+  file_size: number;
+  content_type: string;
+};
+
+function metadataForAttachmentInsert(
+  storageName: string,
+  listMetadata: Record<string, string | undefined> | undefined,
+  sessionMeta: Map<string, SessionTempMeta>
+) {
+  const meta = listMetadata;
+  const fallback = sessionMeta.get(storageName);
+  const displayName =
+    meta?.originalFilename ||
+    meta?.originalfilename ||
+    fallback?.filename ||
+    storageName ||
+    "unknown";
+  const byteLength =
+    (Number(meta?.uploadByteLength ?? meta?.size ?? 0) || 0) ||
+    (fallback?.file_size ?? 0) ||
+    0;
+  const contentType = meta?.mimetype || fallback?.content_type || "image/jpeg";
+  return {
+    displayName,
+    byteLength,
+    contentType,
+  };
+}
+
 export default function ExpenseForm() {
   const { user, userRole, organizationId } = useAuth();
   const { id } = useParams();
@@ -77,8 +129,11 @@ export default function ExpenseForm() {
   });
   // Line items state removed
   const [isEditing, setIsEditing] = useState(false);
-  const [currentExpenseId, setCurrentExpenseId] = useState<string | null>(null);
   const [expenseStatus, setExpenseStatus] = useState<string | null>(null);
+  /** Temp bucket object names uploaded during this form session (avoids moving stale temp files on submit). */
+  const sessionTempFilenamesRef = useRef<Set<string>>(new Set());
+  /** Display name + size per temp object (used when Storage list() fails with 544/timeout). */
+  const sessionTempUploadMetaRef = useRef<Map<string, SessionTempMeta>>(new Map());
   const [requiredFiles, setRequiredFiles] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -274,7 +329,6 @@ export default function ExpenseForm() {
         category: expenseData.category || "other",
       });
 
-      setCurrentExpenseId(expenseData.id);
       setExpenseStatus(expenseData.status);
       
       // Fetch form fields for this category and load existing values
@@ -378,97 +432,78 @@ export default function ExpenseForm() {
   // addLineItem removed
 
   const moveTempFilesToExpense = async (expenseId: string) => {
-    try {
-      if (!user?.id) {
-        console.error('User not authenticated');
-        return;
-      }
-      
-      if (!organizationId) {
-        console.error('Organization not found');
-        throw new Error('Organization not found');
+    // IMPORTANT: do NOT scan/list `temp/${userId}` here.
+    // Large tenants can have huge temp history; storage list() can time out.
+    // We only move the exact temp objects recorded during this form session.
+    if (!user?.id) return;
+    if (!organizationId) throw new Error("Organization not found");
+
+    const startedAt = performance.now();
+    const tempFileNames = Array.from(sessionTempFilenamesRef.current);
+    if (tempFileNames.length === 0) return;
+
+    let movedCount = 0;
+    let failedCount = 0;
+
+    for (const fileName of tempFileNames) {
+      if (!fileName) continue;
+
+      const tempPath = `temp/${user.id}/${fileName}`;
+      const newPath = `${expenseId}/${fileName}`;
+
+      const { error: copyError } = await supabase.storage
+        .from("receipts")
+        .copy(tempPath, newPath);
+
+      if (copyError) {
+        console.error("Error copying temp receipt:", { fileName, copyError });
+        failedCount += 1;
+        continue;
       }
 
-      // Get all temp files for this user
-      const { data: tempFiles, error: listError } = await supabase.storage
-        .from('receipts')
-        .list(`temp/${user.id}`, {
-          limit: 100,
-          sortBy: { column: 'created_at', order: 'desc' }
+      const { data: urlData } = supabase.storage
+        .from("receipts")
+        .getPublicUrl(newPath);
+
+      const meta = sessionTempUploadMetaRef.current.get(fileName);
+      const filename = meta?.filename || fileName;
+      const contentType = meta?.content_type || "image/jpeg";
+      const fileSize = Number.isFinite(meta?.file_size) ? (meta?.file_size as number) : 0;
+
+      const { error: attachmentInsertError } = await supabase
+        .from("attachments")
+        .insert({
+          expense_id: expenseId,
+          organization_id: organizationId,
+          file_url: urlData?.publicUrl || "",
+          filename,
+          content_type: contentType,
+          uploaded_by: user.id,
+          file_size: fileSize > 0 ? fileSize : null,
         });
 
-      if (listError) {
-        console.error('Error listing temp files:', listError);
-        return;
+      if (attachmentInsertError) {
+        console.error("Error inserting attachment row:", { fileName, attachmentInsertError });
+        failedCount += 1;
+        // Best-effort: if DB insert fails, remove the permanent copy we just created
+        await supabase.storage.from("receipts").remove([newPath]);
+        continue;
       }
 
-      if (!tempFiles || tempFiles.length === 0) return;
-      let movedCount = 0;
-      let failedCount = 0;
+      // Finally remove the temp object we just moved
+      await supabase.storage.from("receipts").remove([tempPath]);
+      movedCount += 1;
+    }
 
-      // Move each temp file to the expense folder
-      for (const file of tempFiles) {
-        if (!file?.name) {
-          failedCount += 1;
-          continue;
-        }
-        const tempPath = `temp/${user.id}/${file.name}`;
-        const newPath = `${expenseId}/${file.name}`;
+    console.info("moveTempFilesToExpense duration(ms):", Math.round(performance.now() - startedAt), {
+      tempCount: tempFileNames.length,
+      movedCount,
+      failedCount,
+      expenseId,
+    });
 
-        // Copy file to new location
-        const { data: copyData, error: copyError } = await supabase.storage
-          .from('receipts')
-          .copy(tempPath, newPath);
-
-        if (copyError) {
-          console.error('Error copying file:', copyError);
-          failedCount += 1;
-          continue;
-        }
-
-        // Create attachment record
-        const { data: urlData } = supabase.storage
-          .from('receipts')
-          .getPublicUrl(newPath);
-
-        const { error: attachmentInsertError } = await supabase
-          .from('attachments')
-          .insert({
-            expense_id: expenseId,
-            organization_id: organizationId,
-            file_url: urlData?.publicUrl || '',
-            filename: file.name || 'unknown',
-            content_type: file.metadata?.mimetype || 'image/jpeg',
-            uploaded_by: user.id
-          });
-        
-        if (attachmentInsertError) {
-          console.error('Error creating attachment record:', attachmentInsertError);
-          failedCount += 1;
-          // Best-effort cleanup of copied file if DB row creation fails
-          await supabase.storage
-            .from('receipts')
-            .remove([newPath]);
-          continue;
-        }
-
-        // Delete temp file
-        await supabase.storage
-          .from('receipts')
-          .remove([tempPath]);
-        movedCount += 1;
-      }
-
-      if (movedCount === 0 && tempFiles.length > 0) {
-        throw new Error('Failed to attach uploaded bill photos. Please re-upload and try again.');
-      }
-
-      if (failedCount > 0) {
-        console.warn(`Some temp files could not be moved (${failedCount}). Successfully moved: ${movedCount}.`);
-      }
-    } catch (error) {
-      console.error('Error moving temp files:', error);
-      throw error;
+    if (movedCount === 0 && tempFileNames.length > 0) {
+      throw new Error("Failed to attach uploaded bill photos. Please re-upload and try again.");
     }
   };
 
@@ -716,43 +751,35 @@ export default function ExpenseForm() {
       });
 
       if (requiresAttachment) {
-        // For new expenses, check if attachments exist
         if (!isEditing) {
-          // First check the attachments state (files uploaded via FileUpload component)
           const hasAttachmentsInState = attachments && attachments.length > 0;
-          
-          // Also check for temp files in storage as a fallback
-          const { data: tempFiles } = await supabase.storage
-            .from('receipts')
-            .list(`temp/${user.id}`, { limit: 100 });
-          
-          const hasTempFiles = tempFiles && tempFiles.length > 0;
-          
-          // Require at least one attachment either in state or in storage
-          if (!hasAttachmentsInState && !hasTempFiles) {
-            throw new Error(`Bill photos are required for expenses above ₹${currentAttachmentLimit}. Please upload at least one photo of your receipt or bill.`);
+          const hasTempUploadsInSession = sessionTempFilenamesRef.current.size > 0;
+
+          if (!hasAttachmentsInState && !hasTempUploadsInSession) {
+            throw new Error(
+              `Bill photos are required for expenses above ₹${currentAttachmentLimit}. Please upload at least one photo of your receipt or bill.`
+            );
           }
         } else if (id) {
-          // For editing, check if there are any attachments (existing in DB, in state, or temp files)
-          const { data: existingAttachments } = await supabase
-            .from("attachments")
-            .select("id")
-            .eq("expense_id", id);
-          
-          // Check the attachments state (includes existing + newly uploaded)
           const hasAttachmentsInState = attachments && attachments.length > 0;
-          
-          // Check for temp files that will be moved
-          const { data: tempFiles } = await supabase.storage
-            .from('receipts')
-            .list(`temp/${user.id}`, { limit: 100 });
-          
-          const hasExistingAttachments = existingAttachments && existingAttachments.length > 0;
-          const hasTempFiles = tempFiles && tempFiles.length > 0;
-          
-          // Require at least one attachment from any source
-          if (!hasExistingAttachments && !hasAttachmentsInState && !hasTempFiles) {
-            throw new Error(`Bill photos are required for expenses above ₹${currentAttachmentLimit}. Please upload at least one photo of your receipt or bill.`);
+          if (!hasAttachmentsInState) {
+            // Cheap existence check: only current expense_id
+            const { data: existingAttachments, error: existingAttachmentsError } = await supabase
+              .from("attachments")
+              .select("id")
+              .eq("expense_id", id)
+              .limit(1);
+
+            if (existingAttachmentsError) {
+              throw new Error("Failed to verify attachments. Please try again or contact support.");
+            }
+
+            const hasExistingAttachments = (existingAttachments && existingAttachments.length > 0) || false;
+            if (!hasExistingAttachments) {
+              throw new Error(
+                `Bill photos are required for expenses above ₹${currentAttachmentLimit}. Please upload at least one photo of your receipt or bill.`
+              );
+            }
           }
         }
       }
@@ -794,7 +821,6 @@ export default function ExpenseForm() {
       } else {
         // Create new expense
         const newExpense = await ExpenseService.createExpense(user.id, expenseData as CreateExpenseData);
-        setCurrentExpenseId(newExpense.id);
         
         // Move temp files to the new expense folder
         // This must succeed before submission - if it fails, the expense creation will be rolled back
@@ -823,6 +849,8 @@ export default function ExpenseForm() {
       }
 
       const isResubmission = expenseStatus === "rejected";
+      sessionTempFilenamesRef.current.clear();
+      sessionTempUploadMetaRef.current.clear();
       toast({
         title: "Success",
         description: userRole === "admin" 
@@ -1265,9 +1293,20 @@ export default function ExpenseForm() {
           <CardContent>
             <ErrorBoundary>
               <FileUpload 
-                expenseId={currentExpenseId || id || "new"} 
+                expenseId={isEditing && id ? id : "new"}
                 onUploadComplete={(attachment) => {
                   if (attachment && attachment.file_url) {
+                    // Only temp uploads (new-expense flow) should be registered for finalization.
+                    // DB attachments during edit flow are already inserted and must NOT be moved from temp.
+                    const isTempUpload = typeof attachment.id === "string" && attachment.id.startsWith("temp-");
+                    if (isTempUpload && attachment.storage_path) {
+                      sessionTempFilenamesRef.current.add(attachment.storage_path);
+                      sessionTempUploadMetaRef.current.set(attachment.storage_path, {
+                        filename: attachment.filename,
+                        file_size: attachment.file_size ?? 0,
+                        content_type: attachment.content_type || "image/jpeg",
+                      });
+                    }
                     setAttachments(prev => [...prev, attachment.file_url]);
                     toast({
                       title: "Bill photo uploaded",
