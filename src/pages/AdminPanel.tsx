@@ -116,6 +116,8 @@ export default function AdminPanel() {
   const [includeReceipts, setIncludeReceipts] = useState(false);
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const EXPENSES_PER_PAGE = 15;
 
   useEffect(() => {
     console.log("🔄 [AdminPanel] useEffect triggered");
@@ -415,7 +417,8 @@ export default function AdminPanel() {
       .select("*")
       .eq("organization_id", organizationId)
       .in("status", ["submitted", "verified", "approved", "rejected"])
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(200); // Only load the 200 most recent reviewed expenses for admin view
 
     console.log("🔍 [AdminPanel] Expenses query result (with org filter):");
     console.log("  - Data:", allExpenses);
@@ -666,7 +669,7 @@ export default function AdminPanel() {
 
   // Get expenses that can be bulk processed (submitted or verified status)
   const getSelectableExpenses = () => {
-    return filteredExpenses.filter(
+    return paginatedExpenses.filter(
       (e) => e.status === "submitted" || e.status === "verified"
     );
   };
@@ -1002,6 +1005,54 @@ export default function AdminPanel() {
     return matchesSearch && matchesStatus;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredExpenses.length / EXPENSES_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * EXPENSES_PER_PAGE;
+  const paginatedExpenses = filteredExpenses.slice(
+    pageStartIndex,
+    pageStartIndex + EXPENSES_PER_PAGE
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const getVisiblePageNumbers = () => {
+    const maxVisible = 7;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const pages = new Set<number>();
+    pages.add(1);
+    pages.add(totalPages);
+
+    const start = Math.max(2, safeCurrentPage - 1);
+    const end = Math.min(totalPages - 1, safeCurrentPage + 1);
+    for (let i = start; i <= end; i += 1) pages.add(i);
+
+    if (safeCurrentPage <= 3) {
+      pages.add(2);
+      pages.add(3);
+      pages.add(4);
+    }
+    if (safeCurrentPage >= totalPages - 2) {
+      pages.add(totalPages - 1);
+      pages.add(totalPages - 2);
+      pages.add(totalPages - 3);
+    }
+
+    return Array.from(pages)
+      .filter((p) => p >= 1 && p <= totalPages)
+      .sort((a, b) => a - b);
+  };
+
   // Helper function to escape CSV values
   const escapeCSV = (value: any): string => {
     if (value === null || value === undefined) return "";
@@ -1273,7 +1324,8 @@ export default function AdminPanel() {
             </div>
 
             <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
-              Showing {filteredExpenses.length} of {expenses.length} expenses
+              Showing {filteredExpenses.length === 0 ? 0 : pageStartIndex + 1}-
+              {Math.min(pageStartIndex + EXPENSES_PER_PAGE, filteredExpenses.length)} of {filteredExpenses.length} expenses
             </div>
           </CardContent>
         </Card>
@@ -1354,7 +1406,7 @@ export default function AdminPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredExpenses.map((expense) => {
+                      {paginatedExpenses.map((expense) => {
                         const isSelectable =
                           expense.status === "submitted" || expense.status === "verified";
                         const isSelected = selectedExpenseIds.has(expense.id);
@@ -1450,6 +1502,48 @@ export default function AdminPanel() {
                   </Table>
                 </div>
               </div>
+              {filteredExpenses.length > 0 && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs sm:text-sm text-gray-600">
+                    Page {safeCurrentPage} of {totalPages}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage === 1}
+                    >
+                      Prev
+                    </Button>
+                    {getVisiblePageNumbers().map((page, idx, pages) => {
+                      const previous = pages[idx - 1];
+                      const showEllipsis = previous !== undefined && page - previous > 1;
+                      return (
+                        <div key={`page-${page}`} className="flex items-center gap-1">
+                          {showEllipsis && <span className="px-1 text-gray-400">...</span>}
+                          <Button
+                            variant={page === safeCurrentPage ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            className="min-w-8 px-2"
+                          >
+                            {page}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={safeCurrentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
               </>
             )}
 
