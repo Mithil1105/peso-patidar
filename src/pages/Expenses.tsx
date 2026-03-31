@@ -311,27 +311,64 @@ export default function Expenses() {
         targetUserId = cashierUserId;
       } else if (userRole === "cashier") {
         targetRole = "admin";
-        
-        // For cashier returning to admin, find any admin
-        const { data: targetRoles, error: rolesError } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .eq("role", targetRole)
-          .limit(1);
 
-        if (rolesError) {
-          console.error("Error finding target role:", rolesError);
-          if (rolesError.message?.includes("permission") || rolesError.message?.includes("policy")) {
-            throw new Error(`Permission denied. Please ensure the database migration for return money feature has been applied.`);
+        // For cashier returning to admin, find an admin in the same active organization.
+        const { data: cashierMembership, error: membershipError } = await supabase
+          .from("organization_memberships")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .eq("role", "cashier")
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (membershipError) {
+          console.error("Error finding cashier organization:", membershipError);
+          throw new Error("Failed to identify cashier organization. Please contact an administrator.");
+        }
+
+        if (cashierMembership?.organization_id) {
+          const { data: adminMemberships, error: adminMembershipsError } = await supabase
+            .from("organization_memberships")
+            .select("user_id")
+            .eq("organization_id", cashierMembership.organization_id)
+            .eq("role", "admin")
+            .eq("is_active", true)
+            .limit(1);
+
+          if (adminMembershipsError) {
+            console.error("Error finding org admin:", adminMembershipsError);
+            throw new Error("Failed to find admin in your organization. Please contact an administrator.");
           }
-          throw rolesError;
+
+          if (adminMemberships && adminMemberships.length > 0) {
+            targetUserId = adminMemberships[0].user_id;
+          }
         }
 
-        if (!targetRoles || targetRoles.length === 0) {
-          throw new Error(`No ${targetRole} found in the system. Please contact an administrator.`);
+        // Backward-compatible fallback for older data models where membership data may be incomplete.
+        if (!targetUserId) {
+          const { data: targetRoles, error: rolesError } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .eq("role", targetRole)
+            .limit(1);
+
+          if (rolesError) {
+            console.error("Error finding target role fallback:", rolesError);
+            if (rolesError.message?.includes("permission") || rolesError.message?.includes("policy")) {
+              throw new Error(`Permission denied. Please ensure the database migration for return money feature has been applied.`);
+            }
+            throw rolesError;
+          }
+
+          if (targetRoles && targetRoles.length > 0) {
+            targetUserId = targetRoles[0].user_id;
+          }
         }
 
-        targetUserId = targetRoles[0].user_id;
+        if (!targetUserId) {
+          throw new Error("No admin found in your organization. Please contact an administrator.");
+        }
       }
 
       if (!targetRole || !targetUserId) {
