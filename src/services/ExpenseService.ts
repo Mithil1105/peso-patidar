@@ -241,22 +241,19 @@ export class ExpenseService {
    * If user is admin, automatically approves and deducts from their balance
    */
   static async submitExpense(expenseId: string, userId: string): Promise<Expense> {
-    // Get user's organization_id
-    const organizationId = await getUserOrganizationId(userId);
-    if (!organizationId) {
-      throw new Error("User is not associated with an organization");
-    }
-
-    // Get current expense first to check ownership (filtered by organization)
+    // Fetch the expense first so we can use its actual organization_id.
+    // This avoids update mismatches when a user has multiple org memberships.
     const { data: expense, error: fetchError } = await supabase
       .from("expenses")
       .select("*")
       .eq("id", expenseId)
-      .eq("organization_id", organizationId)
       .maybeSingle();
 
     if (fetchError) throw fetchError;
     if (!expense) throw new Error("Expense not found or you don't have access");
+
+    const organizationId = expense.organization_id as string | null;
+    if (!organizationId) throw new Error("Expense is missing organization_id");
 
     // Check if attachments are required based on amount (from organization_settings)
     const { data: orgSettings, error: orgSettingsSelectError } = await selectFirstOrgSettingsRow(
@@ -359,6 +356,11 @@ export class ExpenseService {
         submittedExpense = refetched ?? null;
       }
       if (!submittedExpense) throw new Error("Failed to submit expense (row not found after update)");
+      if (submittedExpense.status !== "submitted") {
+        throw new Error(
+          `Submission failed: expense status is still "${submittedExpense.status}". Please try again or contact support.`
+        );
+      }
 
       // Log the action
       const actionType = isResubmission ? "expense_resubmitted" : "expense_submitted";
@@ -445,6 +447,11 @@ export class ExpenseService {
       submittedExpense = refetched ?? null;
     }
     if (!submittedExpense) throw new Error("Failed to submit expense (row not found after update)");
+    if (submittedExpense.status !== "submitted") {
+      throw new Error(
+        `Submission failed: expense status is still "${submittedExpense.status}". Please try again or contact support.`
+      );
+    }
 
     // Get expense title and employee name
     const { data: expenseData } = await supabase
