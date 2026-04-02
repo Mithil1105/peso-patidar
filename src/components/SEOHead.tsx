@@ -13,7 +13,7 @@ export function SEOHead({
   title,
   description,
   canonicalUrl,
-  ogImage = "https://pesowise.unimisk.com/HERO.png",
+  ogImage = "https://pesowise.unimisk.com/placeholder.svg",
   structuredData,
   faqSchema
 }: SEOHeadProps) {
