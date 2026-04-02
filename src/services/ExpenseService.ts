@@ -124,11 +124,14 @@ export class ExpenseService {
         status: "draft",
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (expenseError) {
       console.error("Expense creation error:", expenseError);
       throw new Error(`Failed to create expense: ${expenseError.message || 'Unknown error'}`);
+    }
+    if (!expense) {
+      throw new Error("Failed to create expense: no row returned");
     }
 
     // No line items to insert
@@ -172,7 +175,7 @@ export class ExpenseService {
         .from("expenses")
         .select("user_id, status, organization_id")
         .eq("id", expenseId)
-        .single();
+        .maybeSingle();
       console.error('❌ [ExpenseService] Cannot edit expense:', {
         expenseUserId: expenseCheck?.user_id,
         expenseStatus: expenseCheck?.status,
@@ -189,9 +192,10 @@ export class ExpenseService {
       .select("*")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
+    if (!currentExpense) throw new Error("Expense not found or you don't have access");
 
     // Check if expense can be edited (submitted or rejected expenses can be edited, not verified or approved)
     if (currentExpense.status !== "submitted" && currentExpense.status !== "rejected" && currentExpense.status !== "draft" && !data.status) {
@@ -214,9 +218,10 @@ export class ExpenseService {
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updatedExpense) throw new Error("Failed to update expense (no row returned)");
 
     // No line item updates; fetch none
     const lineItems: LineItem[] = [];
@@ -248,9 +253,10 @@ export class ExpenseService {
       .select("*")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
+    if (!expense) throw new Error("Expense not found or you don't have access");
 
     // Check if attachments are required based on amount (from organization_settings)
     const { data: orgSettings, error: orgSettingsSelectError } = await selectFirstOrgSettingsRow(
@@ -336,9 +342,10 @@ export class ExpenseService {
         .eq("id", expenseId)
         .eq("organization_id", organizationId)
         .select()
-        .single();
+        .maybeSingle();
 
       if (updateError) throw updateError;
+      if (!updatedExpense) throw new Error("Failed to submit expense (no row returned)");
 
       // Log the action
       const actionType = isResubmission ? "expense_resubmitted" : "expense_submitted";
@@ -353,7 +360,7 @@ export class ExpenseService {
         .select("title")
         .eq("id", expenseId)
         .eq("organization_id", organizationId)
-        .single();
+        .maybeSingle();
 
       const { data: employeeProfileRow, error: employeeProfileErr } = await selectFirstProfileRow(
         userId,
@@ -410,16 +417,17 @@ export class ExpenseService {
       .update(updatePayload)
       .eq("id", expenseId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updatedExpense) throw new Error("Failed to submit expense (no row returned)");
 
     // Get expense title and employee name
     const { data: expenseData } = await supabase
       .from("expenses")
       .select("title")
       .eq("id", expenseId)
-      .single();
+      .maybeSingle();
 
     const { data: employeeProfileRow2, error: employeeProfileErr2 } = await selectFirstProfileRow(
       userId,
@@ -517,9 +525,10 @@ export class ExpenseService {
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updatedExpense) throw new Error("Failed to assign expense (no row returned)");
 
     // Log the action
     await this.logAction(expenseId, adminId, organizationId, "expense_assigned", `Assigned to engineer ${engineerId}`);
@@ -553,8 +562,9 @@ export class ExpenseService {
       .select("status")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
     if (curErr) throw curErr;
+    if (!current) throw new Error("Expense not found or you don't have access");
     if (current.status === "approved") {
       throw new Error("This expense is already approved and cannot be updated");
     }
@@ -572,9 +582,10 @@ export class ExpenseService {
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updatedExpense) throw new Error("Failed to verify (no row returned)");
 
     // Log the action
     await this.logAction(expenseId, engineerId, organizationId, "expense_verified", comment);
@@ -585,7 +596,7 @@ export class ExpenseService {
       .select("title, user_id, total_amount")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (!expenseFetchError && expenseData) {
       // Get engineer name
@@ -673,9 +684,10 @@ export class ExpenseService {
       .select('id, user_id, total_amount, title, status')
       .eq('id', expenseId)
       .eq('organization_id', organizationId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
+    if (!expense) throw new Error("Expense not found or you don't have access");
 
     // Check if expense is already approved
     if (expense.status === "approved") {
@@ -792,9 +804,10 @@ export class ExpenseService {
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updatedExpense) throw new Error("Failed to approve (no row returned)");
 
     // Deduct employee balance (allows negative balance)
     const newBalance = currentBalance - expenseAmount;
@@ -881,9 +894,10 @@ export class ExpenseService {
       .select("id, user_id, title, status")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
+    if (!expense) throw new Error("Expense not found or you don't have access");
 
     // Check if expense can be rejected (not already approved or rejected)
     if (expense.status === "approved") {
@@ -912,9 +926,10 @@ export class ExpenseService {
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updatedExpense) throw new Error("Failed to reject (no row returned)");
 
     // Log the action
     await this.logAction(expenseId, rejectorId, organizationId, "expense_rejected", comment);
@@ -952,9 +967,10 @@ export class ExpenseService {
       .select("*")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (expenseError) return null;
+    if (!expense) return null;
 
     // Get line items (filtered by organization)
     const { data: lineItems, error: lineItemsError } = await supabase
@@ -994,7 +1010,7 @@ export class ExpenseService {
       .select("user_id, status, organization_id")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('❌ [ExpenseService] Error fetching expense for edit check:', error);
@@ -1035,9 +1051,10 @@ export class ExpenseService {
       .select("assigned_engineer_id")
       .eq("id", expenseId)
       .eq("organization_id", organizationId)
-      .single();
+      .maybeSingle();
 
     if (error) return false;
+    if (!expense) return false;
 
     return expense.assigned_engineer_id === engineerId;
   }
