@@ -23,6 +23,38 @@ async function getUserOrganizationId(userId: string): Promise<string | null> {
   return data.organization_id;
 }
 
+/**
+ * Prefer over `.single()` on `profiles`: missing or duplicate rows cause PostgREST 406
+ * "Cannot coerce the result to a single JSON object".
+ */
+async function selectFirstProfileRow(
+  userId: string,
+  columns: string
+): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(columns)
+    .eq("user_id", userId)
+    .limit(1);
+  if (error) return { data: null, error };
+  const row = data && data.length > 0 ? (data[0] as Record<string, unknown>) : null;
+  return { data: row, error: null };
+}
+
+async function selectFirstOrgSettingsRow(
+  organizationId: string,
+  columns: string
+): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
+  const { data, error } = await supabase
+    .from("organization_settings")
+    .select(columns)
+    .eq("organization_id", organizationId)
+    .limit(1);
+  if (error) return { data: null, error };
+  const row = data && data.length > 0 ? (data[0] as Record<string, unknown>) : null;
+  return { data: row, error: null };
+}
+
 type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseInsert = Database["public"]["Tables"]["expenses"]["Insert"];
 type ExpenseUpdate = Database["public"]["Tables"]["expenses"]["Update"];
@@ -221,13 +253,17 @@ export class ExpenseService {
     if (fetchError) throw fetchError;
 
     // Check if attachments are required based on amount (from organization_settings)
-    const { data: orgSettings } = await supabase
-      .from("organization_settings")
-      .select("attachment_required_above_amount")
-      .eq("organization_id", organizationId)
-      .single();
-    
-    const attachmentLimit = orgSettings?.attachment_required_above_amount || 50;
+    const { data: orgSettings, error: orgSettingsSelectError } = await selectFirstOrgSettingsRow(
+      organizationId,
+      "attachment_required_above_amount"
+    );
+    if (orgSettingsSelectError) throw orgSettingsSelectError;
+
+    const rawLimit = orgSettings?.attachment_required_above_amount;
+    const attachmentLimit =
+      rawLimit !== null && rawLimit !== undefined && !Number.isNaN(Number(rawLimit))
+        ? Number(rawLimit)
+        : 50;
     const expenseAmount = Number(expense.total_amount);
     const requiresAttachment = expenseAmount > attachmentLimit;
 
@@ -319,11 +355,12 @@ export class ExpenseService {
         .eq("organization_id", organizationId)
         .single();
 
-      const { data: employeeProfile } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("user_id", userId)
-        .single();
+      const { data: employeeProfileRow, error: employeeProfileErr } = await selectFirstProfileRow(
+        userId,
+        "name"
+      );
+      if (employeeProfileErr) throw employeeProfileErr;
+      const employeeName = (employeeProfileRow?.name as string | undefined) || "Engineer";
 
       // Get all admin user IDs in this organization
       const { data: adminMemberships } = await supabase
@@ -341,7 +378,7 @@ export class ExpenseService {
         void notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
-          employeeProfile?.name || "Engineer",
+          employeeName,
           null, // No engineer assigned
           adminUserIds
         ).catch((e) => console.error("notifyExpenseSubmitted failed (admin notifications):", e));
@@ -351,21 +388,20 @@ export class ExpenseService {
     }
 
     // For employees: Find employee's reporting engineer
-    const { data: profileRaw, error: profileError } = await supabase
-      .from("profiles")
-      .select("reporting_engineer_id")
-      .eq("user_id", userId)
-      .single();
-
-    const profile = profileRaw as unknown as { reporting_engineer_id: string | null } | null;
-
+    const { data: profileRow, error: profileError } = await selectFirstProfileRow(
+      userId,
+      "reporting_engineer_id"
+    );
     if (profileError) throw profileError;
+
+    const reportingEngineerId =
+      (profileRow?.reporting_engineer_id as string | null | undefined) ?? null;
 
     // If employee has a reporting engineer, assign to them
     // If not, send directly to admin (assigned_engineer_id = null)
     const updatePayload: any = {
       status: "submitted",
-      assigned_engineer_id: profile?.reporting_engineer_id || null, // null if no engineer assigned
+      assigned_engineer_id: reportingEngineerId, // null if no engineer assigned
       updated_at: new Date().toISOString(),
     };
 
@@ -385,20 +421,22 @@ export class ExpenseService {
       .eq("id", expenseId)
       .single();
 
-    const { data: employeeProfile } = await supabase
-      .from("profiles")
-      .select("name")
-      .eq("user_id", userId)
-      .single();
+    const { data: employeeProfileRow2, error: employeeProfileErr2 } = await selectFirstProfileRow(
+      userId,
+      "name"
+    );
+    if (employeeProfileErr2) throw employeeProfileErr2;
+    const employeeName =
+      (employeeProfileRow2?.name as string | undefined) || "Employee";
 
     // Log resubmission if this was a rejected expense
     const actionType = isResubmission ? "expense_resubmitted" : "expense_submitted";
     
-    if (profile?.reporting_engineer_id) {
+    if (reportingEngineerId) {
       // Employee has reporting engineer - assign to engineer and notify them
       const logMsg = isResubmission 
-        ? `Expense resubmitted after rejection and auto-assigned to engineer ${profile.reporting_engineer_id}`
-        : `Expense submitted and auto-assigned to engineer ${profile.reporting_engineer_id}`;
+        ? `Expense resubmitted after rejection and auto-assigned to engineer ${reportingEngineerId}`
+        : `Expense submitted and auto-assigned to engineer ${reportingEngineerId}`;
       await this.logAction(expenseId, userId, organizationId, actionType, logMsg);
 
       // Notify assigned engineer
@@ -406,8 +444,8 @@ export class ExpenseService {
         void notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
-          employeeProfile?.name || "Employee",
-          profile.reporting_engineer_id
+          employeeName,
+          reportingEngineerId
         ).catch((e) => console.error("notifyExpenseSubmitted failed (engineer notifications):", e));
       }
     } else {
@@ -432,7 +470,7 @@ export class ExpenseService {
         void notifyExpenseSubmitted(
           expenseId,
           expenseData.title,
-          employeeProfile?.name || "Employee",
+          employeeName,
           null, // No engineer assigned
           adminUserIds
         ).catch((e) => console.error("notifyExpenseSubmitted failed (admin notifications no engineer):", e));
@@ -551,35 +589,34 @@ export class ExpenseService {
 
     if (!expenseFetchError && expenseData) {
       // Get engineer name
-      const { data: engineerProfile } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("user_id", engineerId)
-        .single();
+      const { data: engineerRow, error: engProfErr } = await selectFirstProfileRow(engineerId, "name");
+      if (engProfErr) console.error("verifyExpense: engineer profile", engProfErr);
+      const engineerName = (engineerRow?.name as string | undefined) || "Engineer";
 
       // Get employee name
-      const { data: employeeProfile } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("user_id", expenseData.user_id)
-        .single();
+      const { data: employeeRow, error: empProfErr } = await selectFirstProfileRow(
+        expenseData.user_id,
+        "name"
+      );
+      if (empProfErr) console.error("verifyExpense: employee profile", empProfErr);
+      const employeeName = (employeeRow?.name as string | undefined) || "Employee";
 
       // Create notification for employee
       await notifyExpenseVerified(
         expenseId,
         expenseData.title,
         expenseData.user_id,
-        engineerProfile?.name || "Engineer"
+        engineerName
       );
 
       // Check if expense is above threshold - if so, notify admins (from organization_settings)
-      const { data: orgSettings } = await supabase
-        .from("organization_settings")
-        .select("engineer_approval_limit")
-        .eq("organization_id", organizationId)
-        .single();
-      
-      const approvalLimit = orgSettings?.engineer_approval_limit || 50000;
+      const { data: orgSettings, error: orgLimErr } = await selectFirstOrgSettingsRow(
+        organizationId,
+        "engineer_approval_limit"
+      );
+      if (orgLimErr) console.error("verifyExpense: organization_settings", orgLimErr);
+
+      const approvalLimit = Number(orgSettings?.engineer_approval_limit ?? 50000) || 50000;
       const expenseAmount = Number(expenseData.total_amount);
       
       // If expense is at or above threshold, notify all admins in organization
@@ -597,8 +634,8 @@ export class ExpenseService {
           await notifyExpenseVerifiedToAdmin(
             expenseId,
             expenseData.title,
-            employeeProfile?.name || "Employee",
-            engineerProfile?.name || "Engineer",
+            employeeName,
+            engineerName,
             expenseAmount,
             adminUserIds
           );
@@ -653,18 +690,21 @@ export class ExpenseService {
     
     // Check engineer approval limit if engineer is trying to approve
     if (isEngineer) {
-      const { data: orgSettings, error: limitError } = await supabase
-        .from("organization_settings")
-        .select("engineer_approval_limit")
-        .eq("organization_id", organizationId)
-        .single();
-      
+      const { data: engineerLimitRow, error: limitError } = await selectFirstOrgSettingsRow(
+        organizationId,
+        "engineer_approval_limit"
+      );
+
       if (limitError) {
         console.error("Error fetching engineer approval limit:", limitError);
         throw new Error("Unable to verify approval limit. Please contact administrator.");
       }
-      
-      const approvalLimit = orgSettings?.engineer_approval_limit || 50000; // Default to 50000 if not set
+
+      const rawLimit = engineerLimitRow?.engineer_approval_limit;
+      const approvalLimit =
+        rawLimit !== null && rawLimit !== undefined && !Number.isNaN(Number(rawLimit))
+          ? Number(rawLimit)
+          : 50000;
       const expenseAmount = Number(expense.total_amount);
       
       console.log("Manager approval check:", { 
@@ -706,11 +746,12 @@ export class ExpenseService {
       await this.logAction(expenseId, approverId, organizationId, "expense_verified", "Auto-verified by admin during approval");
       
       // Get admin name for notification
-      const { data: adminProfile } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("user_id", approverId)
-        .single();
+      const { data: adminProfileRow, error: adminProfErr } = await selectFirstProfileRow(
+        approverId,
+        "name"
+      );
+      if (adminProfErr) console.error("approveExpense (auto-verify): admin profile", adminProfErr);
+      const adminProfile = adminProfileRow ? { name: adminProfileRow.name as string | undefined } : null;
       
       // Send verification notification to employee
       await notifyExpenseVerified(
@@ -725,15 +766,16 @@ export class ExpenseService {
     }
 
     // Get current balance before approval
-    const { data: profile, error: profError } = await supabase
-      .from('profiles')
-      .select('balance, name')
-      .eq('user_id', expense.user_id)
-      .single();
+    const { data: profile, error: profError } = await selectFirstProfileRow(expense.user_id, "balance, name");
 
     if (profError) throw profError;
+    if (!profile) {
+      throw new Error(
+        "Could not load your profile to update balance. Please contact support if this continues."
+      );
+    }
 
-    const currentBalance = Number(profile?.balance ?? 0);
+    const currentBalance = Number(profile.balance ?? 0);
     const expenseAmount = Number(expense.total_amount);
     
     // Allow negative balances - expense can be approved even if balance is insufficient
@@ -780,11 +822,11 @@ export class ExpenseService {
     await this.logAction(expenseId, approverId, organizationId, "expense_approved", logComment);
 
     // Get approver name for notification
-    const { data: approverProfile } = await supabase
-      .from("profiles")
-      .select("name")
-      .eq("user_id", approverId)
-      .single();
+    const { data: approverRow, error: approverProfErr } = await selectFirstProfileRow(approverId, "name");
+    if (approverProfErr) console.error("approveExpense: approver profile", approverProfErr);
+    const approverProfile = approverRow
+      ? { name: approverRow.name as string | undefined }
+      : null;
 
     // Check if the expense owner is an engineer in this organization
     const expenseOwnerIsEngineer = await this.hasOrgRole(expense.user_id, organizationId, "engineer");
@@ -878,11 +920,11 @@ export class ExpenseService {
     await this.logAction(expenseId, rejectorId, organizationId, "expense_rejected", comment);
 
     // Get rejector name for notification
-    const { data: rejectorProfile } = await supabase
-      .from("profiles")
-      .select("name")
-      .eq("user_id", rejectorId)
-      .single();
+    const { data: rejectorRow, error: rejectorProfErr } = await selectFirstProfileRow(rejectorId, "name");
+    if (rejectorProfErr) console.error("rejectExpense: rejector profile", rejectorProfErr);
+    const rejectorProfile = rejectorRow
+      ? { name: rejectorRow.name as string | undefined }
+      : null;
 
     // Send notification to expense owner
     await notifyExpenseRejected(
