@@ -345,7 +345,20 @@ export class ExpenseService {
         .maybeSingle();
 
       if (updateError) throw updateError;
-      if (!updatedExpense) throw new Error("Failed to submit expense (no row returned)");
+      // Some orgs/environments may block "UPDATE ... returning" via RLS/select policies.
+      // Treat it as success if the row can be refetched.
+      let submittedExpense = updatedExpense;
+      if (!submittedExpense) {
+        const { data: refetched, error: refetchErr } = await supabase
+          .from("expenses")
+          .select("id, status, title")
+          .eq("id", expenseId)
+          .eq("organization_id", organizationId)
+          .maybeSingle();
+        if (refetchErr) throw refetchErr;
+        submittedExpense = refetched ?? null;
+      }
+      if (!submittedExpense) throw new Error("Failed to submit expense (row not found after update)");
 
       // Log the action
       const actionType = isResubmission ? "expense_resubmitted" : "expense_submitted";
@@ -391,7 +404,7 @@ export class ExpenseService {
         ).catch((e) => console.error("notifyExpenseSubmitted failed (admin notifications):", e));
       }
 
-      return updatedExpense;
+      return submittedExpense as Expense;
     }
 
     // For employees: Find employee's reporting engineer
@@ -420,7 +433,18 @@ export class ExpenseService {
       .maybeSingle();
 
     if (updateError) throw updateError;
-    if (!updatedExpense) throw new Error("Failed to submit expense (no row returned)");
+    let submittedExpense = updatedExpense;
+    if (!submittedExpense) {
+      const { data: refetched, error: refetchErr } = await supabase
+        .from("expenses")
+        .select("id, status, title")
+        .eq("id", expenseId)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (refetchErr) throw refetchErr;
+      submittedExpense = refetched ?? null;
+    }
+    if (!submittedExpense) throw new Error("Failed to submit expense (row not found after update)");
 
     // Get expense title and employee name
     const { data: expenseData } = await supabase
@@ -485,7 +509,7 @@ export class ExpenseService {
       }
     }
 
-    return updatedExpense;
+    return submittedExpense as Expense;
   }
 
   /**
