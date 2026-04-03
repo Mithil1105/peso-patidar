@@ -1,4 +1,7 @@
 import { Link } from "react-router-dom";
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand } from "@/components/marketing";
 
 const LAST_UPDATED = "2025-02-04";
@@ -6,6 +9,16 @@ const LAST_UPDATED = "2025-02-04";
 export default function DisclaimerPage() {
   return (
     <MarketingShell>
+      <SEOHead
+        title="Legal Disclaimer | PesoWise"
+        description="General legal disclaimer for PesoWise marketing content from Unimisk—not financial or legal advice."
+        canonicalUrl={absoluteUrl("/disclaimer")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Disclaimer", path: "/disclaimer" },
+        ])}
+      />
       <FullBleedBand variant="hero" className="py-12 sm:py-20">
         <div className="mx-auto max-w-4xl">
           <h1 className="mb-4 text-3xl font-bold text-foreground md:text-4xl">

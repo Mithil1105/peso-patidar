@@ -1,4 +1,7 @@
 import { Link } from "react-router-dom";
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand } from "@/components/marketing";
 
 const LAST_UPDATED = "2025-02-04";
@@ -6,6 +9,16 @@ const LAST_UPDATED = "2025-02-04";
 export default function TermsPage() {
   return (
     <MarketingShell>
+      <SEOHead
+        title="Terms & Conditions | PesoWise"
+        description="Terms governing use of PesoWise marketing materials and services from Unimisk."
+        canonicalUrl={absoluteUrl("/toc")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Terms", path: "/toc" },
+        ])}
+      />
       <FullBleedBand variant="hero" className="py-12 sm:py-20">
         <div className="mx-auto max-w-4xl">
           <h1 className="mb-4 text-3xl font-bold text-foreground md:text-4xl">

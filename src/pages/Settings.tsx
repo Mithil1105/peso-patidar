@@ -985,7 +985,7 @@ export default function Settings() {
                 <CardTitle>Organization Logo</CardTitle>
               </div>
               <CardDescription>
-                Upload a custom logo for your organization. This will be displayed in the sidebar and throughout the app.
+                Optional image for your organization record. App navigation and sign-in use the PesoWise mark from <span className="font-medium">HERO.png</span>.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

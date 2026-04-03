@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema, faqPageSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
 import StaggerContainer, { StaggerItem } from "@/components/marketing/StaggerContainer";
 import { Testimonials, CTASection, FAQAccordion } from "@/components/marketing/sections";
@@ -179,6 +182,19 @@ export default function FeaturesPage() {
 
   return (
     <MarketingShell>
+      <SEOHead
+        title="Expense software features | PesoWise"
+        description="See how PesoWise handles expense capture, approvals, petty cash balances, receipts, multi-org setup, analytics, and audit trails—in one secure workspace."
+        canonicalUrl={absoluteUrl("/features")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Features", path: "/features" },
+          ]),
+          faqPageSchema(faqItems),
+        ]}
+      />
       {/* Hero */}
       <FullBleedBand variant="hero" className="py-20">
         <div className="grid items-center gap-12 lg:grid-cols-2">

@@ -1,4 +1,7 @@
 import { Link } from "react-router-dom";
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand } from "@/components/marketing";
 import { useConsent } from "@/components/legal/CookieConsentBanner";
 import { Button } from "@/components/ui/button";
@@ -10,6 +13,16 @@ export default function CookiePolicyPage() {
 
   return (
     <MarketingShell>
+      <SEOHead
+        title="Cookie Policy | PesoWise"
+        description="How PesoWise uses cookies and similar technologies on the marketing website, and how to manage preferences."
+        canonicalUrl={absoluteUrl("/cookies")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Cookie Policy", path: "/cookies" },
+        ])}
+      />
       <FullBleedBand variant="hero" className="py-12 sm:py-20">
         <div className="mx-auto max-w-4xl">
           <h1 className="mb-4 text-3xl font-bold text-foreground md:text-4xl">

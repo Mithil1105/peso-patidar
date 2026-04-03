@@ -135,8 +135,8 @@ export function useNotificationManager() {
       try {
         const desktopNotif = new Notification(notification.title, {
           body: notification.message,
-          icon: window.location.origin + "/favicon.ico",
-          badge: window.location.origin + "/favicon.ico",
+          icon: window.location.origin + "/HERO.png",
+          badge: window.location.origin + "/HERO.png",
           tag: notification.id,
           requireInteraction: false,
           silent: !settings.sound_enabled,

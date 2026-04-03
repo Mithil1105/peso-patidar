@@ -1,3 +1,6 @@
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema, faqPageSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
 import StaggerContainer, { StaggerItem } from "@/components/marketing/StaggerContainer";
 import { CTASection, FAQAccordion } from "@/components/marketing/sections";
@@ -124,6 +127,19 @@ const workflowFaqItems: FAQItem[] = [
 export default function HowItWorksPage() {
   return (
     <MarketingShell>
+      <SEOHead
+        title="How expense approvals work | PesoWise"
+        description="Learn PesoWise’s workflow from receipt upload to verification, admin approval, balance updates, and audit logging—for transparent petty cash operations."
+        canonicalUrl={absoluteUrl("/how-it-works")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "How it works", path: "/how-it-works" },
+          ]),
+          faqPageSchema(workflowFaqItems),
+        ]}
+      />
       {/* Hero */}
       <FullBleedBand variant="hero" className="py-20">
         <div className="grid items-center gap-12 lg:grid-cols-2">

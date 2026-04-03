@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, BUSINESS, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
+import { MapsEmbedPlaceholder } from "@/components/marketing/MapsEmbedPlaceholder";
 import { ContactIllustration } from "@/components/marketing/contact";
 import { DemoMotionPanel } from "@/components/marketing/mocks";
 import { Button } from "@/components/ui/button";
@@ -90,6 +94,16 @@ export default function ContactPage() {
 
   return (
     <MarketingShell>
+      <SEOHead
+        title="Contact & demo requests | PesoWise"
+        description="Reach PesoWise by Unimisk for demos, onboarding, and support. Share your workflow needs—petty cash, approvals, and multi-location finance."
+        canonicalUrl={absoluteUrl("/contact")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Contact", path: "/contact" },
+        ])}
+      />
       {/* Hero */}
       <FullBleedBand variant="hero" className="py-12 sm:py-20">
         <div className="grid items-center gap-12 lg:grid-cols-2">
@@ -107,10 +121,10 @@ export default function ContactPage() {
               <div className="absolute bottom-0 right-0 max-w-[200px] sm:-bottom-4">
                 <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3">
+                    <a href={`mailto:${BUSINESS.emailPrimary}`} className="flex items-center gap-3 hover:opacity-90">
                       <Mail className="h-4 w-4 text-primary" />
-                      <span className="text-xs text-muted-foreground">support@unimisk.com</span>
-                    </div>
+                      <span className="text-xs text-primary underline-offset-2 hover:underline">{BUSINESS.emailPrimary}</span>
+                    </a>
                     <div className="flex items-center gap-3">
                       <MessageSquare className="h-4 w-4 text-accent" />
                       <span className="text-xs text-muted-foreground">WhatsApp Support</span>
@@ -364,6 +378,12 @@ export default function ContactPage() {
         </div>
       </FullBleedBand>
 
+      <FullBleedBand className="py-12 sm:py-16">
+        <div className="mx-auto max-w-4xl">
+          <MapsEmbedPlaceholder />
+        </div>
+      </FullBleedBand>
+
       {/* Contact Options (three cards: Email, Phone/WhatsApp, Location) */}
       <FullBleedBand variant="soft" className="py-20">
         <ScrollReveal className="text-center mb-12">
@@ -388,10 +408,17 @@ export default function ContactPage() {
             <div className="rounded-2xl border border-border bg-card p-8 shadow-soft text-center">
               <Phone className="h-10 w-10 text-primary mx-auto mb-4" />
               <h3 className="font-bold text-foreground mb-3">Phone / WhatsApp</h3>
-              <div className="text-sm text-muted-foreground space-y-1">
-                <p>+91 9426049048</p>
-                <p>+91 8160325372</p>
-                <p>+91 80008 45035</p>
+              <div className="text-sm text-muted-foreground space-y-2">
+                {BUSINESS.phoneDisplay.map((phone) => (
+                  <p key={phone}>
+                    <a
+                      href={`tel:${phone.replace(/\s/g, "")}`}
+                      className="text-primary underline-offset-4 hover:underline"
+                    >
+                      {phone}
+                    </a>
+                  </p>
+                ))}
               </div>
             </div>
           </ScrollReveal>

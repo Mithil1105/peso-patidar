@@ -85,7 +85,10 @@ export default function CategoryManagement() {
   const [templateOptions, setTemplateOptions] = useState<string[]>([]);
   const [newOption, setNewOption] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
-  
+  const [templateDeleteDialogOpen, setTemplateDeleteDialogOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<FormFieldTemplate | null>(null);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
+
   // Category-Field Assignment state
   const [categoryFields, setCategoryFields] = useState<CategoryFormField[]>([]);
   const [selectedCategoriesForAssignment, setSelectedCategoriesForAssignment] = useState<Set<string>>(new Set());
@@ -466,6 +469,44 @@ export default function CategoryManagement() {
     }
   };
 
+  const openTemplateDeleteDialog = (template: FormFieldTemplate) => {
+    setTemplateToDelete(template);
+    setTemplateDeleteDialogOpen(true);
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+    try {
+      setDeletingTemplate(true);
+      const { error } = await supabase
+        .from("expense_form_field_templates")
+        .delete()
+        .eq("id", templateToDelete.id);
+      if (error) throw error;
+      toast({
+        title: "Template deleted",
+        description: `“${templateToDelete.name}” was removed. Category assignments were cleared automatically.`,
+      });
+      if (selectedTemplate?.id === templateToDelete.id) {
+        setTemplateDialogOpen(false);
+        setSelectedTemplate(null);
+      }
+      setTemplateDeleteDialogOpen(false);
+      setTemplateToDelete(null);
+      await fetchTemplates();
+      await fetchCategoryFields();
+    } catch (e: any) {
+      console.error("Failed to delete template:", e);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: e.message || "Failed to delete template",
+      });
+    } finally {
+      setDeletingTemplate(false);
+    }
+  };
+
   const fetchCategoryFields = async () => {
     try {
       if (!organizationId) return;
@@ -691,6 +732,13 @@ export default function CategoryManagement() {
                           }}
                         >
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => openTemplateDeleteDialog(template)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -1505,6 +1553,35 @@ Transportation`}
               disabled={deleting}
             >
               {deleting ? "Deleting..." : "Delete Category"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={templateDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setTemplateDeleteDialogOpen(open);
+          if (!open) setTemplateToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove “{templateToDelete?.name}” and unlink it from every
+              category. Values on existing expenses for this field will be removed. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTemplate}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deletingTemplate}
+            >
+              {deletingTemplate ? "Deleting..." : "Delete template"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

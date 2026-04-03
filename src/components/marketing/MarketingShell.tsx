@@ -26,7 +26,9 @@ export function MarketingShell({ children }: MarketingShellProps) {
           <div className="absolute bottom-0 left-0 w-[50vw] max-w-[600px] h-[600px] bg-gradient-to-tr from-primary/10 to-transparent rounded-full blur-3xl" />
         </div>
         <HomeNavbar />
-        <main className="min-w-0">{children}</main>
+        <main id="main-content" className="min-w-0">
+          {children}
+        </main>
         <MarketingFooter />
       </div>
     </CookieConsentProvider>

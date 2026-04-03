@@ -1,4 +1,7 @@
 import { Link } from "react-router-dom";
+import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema, faqPageSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
 import StaggerContainer, { StaggerItem } from "@/components/marketing/StaggerContainer";
 import { FAQAccordion } from "@/components/marketing/sections";
@@ -93,6 +96,19 @@ const pricingFaqItems: FAQItem[] = [
 export default function PricingPage() {
   return (
     <MarketingShell>
+      <SEOHead
+        title="Plans & pricing | PesoWise"
+        description="Starter, Growth, and Enterprise options for PesoWise. Compare capabilities and contact us for a tailored quote aligned to your team size and workflow."
+        canonicalUrl={absoluteUrl("/pricing")}
+        ogImage={DEFAULT_OG_IMAGE}
+        structuredData={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Pricing", path: "/pricing" },
+          ]),
+          faqPageSchema(pricingFaqItems),
+        ]}
+      />
       {/* Hero */}
       <FullBleedBand variant="hero" className="py-20">
         <ScrollReveal className="text-center">

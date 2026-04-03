@@ -8,6 +8,8 @@ import { HeroBackdrop } from "@/components/marketing/HeroBackdrop";
 import { FloatingOrbs } from "@/components/marketing/FloatingOrbs";
 import { ShieldLockIllustration } from "@/components/marketing/PageIllustrations";
 import { SEOHead } from "@/components/SEOHead";
+import { absoluteUrl, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
+import { breadcrumbSchema } from "@/lib/schema/jsonLd";
 import {
     Shield,
     Lock,
@@ -70,33 +72,18 @@ export default function SecurityPage() {
         ]
     };
 
-    const breadcrumbSchema = {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": [
-            {
-                "@type": "ListItem",
-                "position": 1,
-                "name": "Home",
-                "item": "https://pesowise.unimisk.com/"
-            },
-            {
-                "@type": "ListItem",
-                "position": 2,
-                "name": "Security",
-                "item": "https://pesowise.unimisk.com/security"
-            }
-        ]
-    };
-
     return (
         <>
             <SEOHead
-                title="Security & Compliance in Expense Management | PesoWise"
-                description="PesoWise uses role-based access control, row level security, and audit trails to protect expense and financial data."
-                canonicalUrl="https://pesowise.unimisk.com/security"
+                title="Security & compliance | PesoWise"
+                description="How PesoWise uses role-based access, row-level security, encryption, and audit trails to protect expense and petty cash data."
+                canonicalUrl={absoluteUrl("/security")}
+                ogImage={DEFAULT_OG_IMAGE}
                 faqSchema={faqSchema}
-                structuredData={breadcrumbSchema}
+                structuredData={breadcrumbSchema([
+                    { name: "Home", path: "/" },
+                    { name: "Security", path: "/security" },
+                ])}
             />
             <MarketingLayout>
                 {/* Hero */}

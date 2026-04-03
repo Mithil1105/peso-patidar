@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { RouteAnalytics } from "@/components/RouteAnalytics";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Layout } from "@/components/Layout";
 import Auth from "./pages/Auth";
@@ -45,6 +46,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ScrollToTop />
+        <RouteAnalytics />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/auth" element={<Auth />} />
@@ -87,7 +89,7 @@ const App = () => (
               </ProtectedRoute>
             }
           />
-          <Route path="/home" element={<HomePage />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
           <Route
             path="/expenses"
             element={

@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { useNotificationManager } from "@/hooks/useNotificationManager";
 import { NotificationPopup } from "@/components/NotificationPopup";
+import { Helmet } from "react-helmet-async";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization } = useAuth();
@@ -199,6 +200,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
+      <Helmet>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
         <AppSidebar />
         <main className="flex-1 flex flex-col min-w-0 relative">
@@ -207,9 +211,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex h-14 sm:h-16 items-center gap-2 sm:gap-4 px-3 sm:px-6">
               <SidebarTrigger className="hover:bg-gray-100 rounded-lg p-2 transition-colors flex-shrink-0" />
               <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3">
-                <img 
-                  src="/HERO.png" 
-                  alt="Hero" 
+                <img
+                  src="/HERO.png"
+                  alt="PesoWise"
                   className="h-5 w-auto sm:h-6 md:h-8 flex-shrink-0 hidden sm:block"
                 />
               <div className="flex-1 min-w-0 overflow-hidden">

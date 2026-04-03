@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Helmet } from "react-helmet-async";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,6 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string>("/HERO.png"); // Default Pesowise logo
   const [organizationName, setOrganizationName] = useState<string | null>(null); // Organization name from cache
   // signup removed
   const navigate = useNavigate();
@@ -35,38 +35,23 @@ export default function Auth() {
       }
     });
     
-    // Load most recent organization logo and name for initial display
     const recentOrg = getMostRecentOrganization();
-    if (recentOrg?.logo_url) {
-      setLogoUrl(recentOrg.logo_url);
-    }
     if (recentOrg?.name) {
       setOrganizationName(recentOrg.name);
     }
   }, [navigate]);
 
-  // Update logo and organization name when email changes (check cache for that email)
   useEffect(() => {
-    if (email && email.includes('@')) {
+    if (email && email.includes("@")) {
       const cachedOrg = getCachedOrganization(email);
-      if (cachedOrg?.logo_url) {
-        setLogoUrl(cachedOrg.logo_url);
-      } else {
-        // Fallback to most recent or default
-        const recentOrg = getMostRecentOrganization();
-        setLogoUrl(recentOrg?.logo_url || "/HERO.png");
-      }
       if (cachedOrg?.name) {
         setOrganizationName(cachedOrg.name);
       } else {
-        // Fallback to most recent or null
         const recentOrg = getMostRecentOrganization();
         setOrganizationName(recentOrg?.name || null);
       }
     } else {
-      // No email entered, show most recent or default
       const recentOrg = getMostRecentOrganization();
-      setLogoUrl(recentOrg?.logo_url || "/HERO.png");
       setOrganizationName(recentOrg?.name || null);
     }
   }, [email]);
@@ -109,17 +94,17 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/10 p-4">
+      <Helmet>
+        <title>Sign in | PesoWise</title>
+        <meta name="robots" content="noindex, nofollow" />
+      </Helmet>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <img 
-              src={logoUrl}
-              alt="Organization Logo" 
+            <img
+              src="/HERO.png"
+              alt="PesoWise"
               className="h-16 w-auto object-contain"
-              onError={(e) => {
-                // Fallback to default logo if cached logo fails to load
-                (e.target as HTMLImageElement).src = "/HERO.png";
-              }}
             />
           </div>
           {organizationName && (

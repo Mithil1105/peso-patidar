@@ -1,89 +1,91 @@
-import { useEffect } from "react";
+import { Helmet } from "react-helmet-async";
+import { DEFAULT_OG_IMAGE, SITE_ORIGIN } from "@/lib/siteConfig";
 
-interface SEOHeadProps {
+export interface SEOHeadProps {
+  /** HTML <title> — keep ≤ ~60 characters for SERP display */
   title: string;
+  /** Meta description — keep ≤ ~160 characters */
   description: string;
+  /** Absolute canonical URL (required for indexable public pages) */
   canonicalUrl?: string;
+  /** e.g. "noindex, nofollow" for auth, dashboards, 404 */
+  robots?: string;
   ogImage?: string;
-  structuredData?: object;
+  ogType?: string;
+  twitterCard?: "summary" | "summary_large_image";
+  /**
+   * One or more JSON-LD objects. Rendered as separate script tags.
+   * Use dangerouslySetInnerHTML-safe JSON serialization.
+   */
+  structuredData?: object | object[];
+  /** @deprecated Use structuredData array; kept for backward compatibility */
   faqSchema?: object;
 }
 
+/**
+ * App-wide head tags for public (and selectively private) routes.
+ * Requires <HelmetProvider> in main.tsx.
+ *
+ * Google Search Console (site verification):
+ * - Preferred: DNS TXT record in your domain registrar (no code deploy).
+ * - Optional: set VITE_GSC_VERIFICATION to the content value of the meta tag
+ *   Google gives you (not the whole tag — just the token string).
+ */
 export function SEOHead({
   title,
   description,
   canonicalUrl,
-  ogImage = "https://pesowise.unimisk.com/placeholder.svg",
+  robots,
+  ogImage = DEFAULT_OG_IMAGE,
+  ogType = "website",
+  twitterCard = "summary_large_image",
   structuredData,
-  faqSchema
+  faqSchema,
 }: SEOHeadProps) {
-  useEffect(() => {
-    // Update document title
-    document.title = title;
+  const gsc = import.meta.env.VITE_GSC_VERIFICATION as string | undefined;
 
-    // Update or create meta description
-    let metaDescription = document.querySelector('meta[name="description"]');
-    if (!metaDescription) {
-      metaDescription = document.createElement('meta');
-      metaDescription.setAttribute('name', 'description');
-      document.head.appendChild(metaDescription);
-    }
-    metaDescription.setAttribute('content', description);
+  const blocks: object[] = [];
+  if (structuredData) {
+    blocks.push(...(Array.isArray(structuredData) ? structuredData : [structuredData]));
+  }
+  if (faqSchema) {
+    blocks.push(faqSchema);
+  }
 
-    // Update Open Graph tags
-    const updateMetaTag = (property: string, content: string) => {
-      let tag = document.querySelector(`meta[property="${property}"]`);
-      if (!tag) {
-        tag = document.createElement('meta');
-        tag.setAttribute('property', property);
-        document.head.appendChild(tag);
-      }
-      tag.setAttribute('content', content);
-    };
+  return (
+    <Helmet prioritizeSeoTags htmlAttributes={{ lang: "en" }}>
+      <title>{title}</title>
+      <meta name="description" content={description} />
+      {robots ? <meta name="robots" content={robots} /> : <meta name="robots" content="index, follow" />}
+      {canonicalUrl ? <link rel="canonical" href={canonicalUrl} /> : null}
 
-    updateMetaTag('og:title', title);
-    updateMetaTag('og:description', description);
-    if (ogImage) {
-      updateMetaTag('og:image', ogImage);
-    }
-    if (canonicalUrl) {
-      updateMetaTag('og:url', canonicalUrl);
-    }
+      <meta property="og:title" content={title} />
+      <meta property="og:description" content={description} />
+      <meta property="og:type" content={ogType} />
+      <meta property="og:image" content={ogImage} />
+      <meta property="og:site_name" content="PesoWise" />
+      <meta property="og:locale" content="en_US" />
+      {canonicalUrl ? <meta property="og:url" content={canonicalUrl} /> : null}
 
-    // Update canonical URL
-    let canonical = document.querySelector('link[rel="canonical"]');
-    if (canonicalUrl) {
-      if (!canonical) {
-        canonical = document.createElement('link');
-        canonical.setAttribute('rel', 'canonical');
-        document.head.appendChild(canonical);
-      }
-      canonical.setAttribute('href', canonicalUrl);
-    }
+      <meta name="twitter:card" content={twitterCard} />
+      <meta name="twitter:title" content={title} />
+      <meta name="twitter:description" content={description} />
+      <meta name="twitter:image" content={ogImage} />
 
-    // Add structured data
-    const addStructuredData = (data: object, id: string) => {
-      // Remove existing script with same id
-      const existing = document.getElementById(id);
-      if (existing) {
-        existing.remove();
-      }
+      {gsc ? <meta name="google-site-verification" content={gsc} /> : null}
 
-      const script = document.createElement('script');
-      script.id = id;
-      script.type = 'application/ld+json';
-      script.textContent = JSON.stringify(data);
-      document.head.appendChild(script);
-    };
+      {blocks.map((data, i) => (
+        <script
+          key={`seo-ld-${i}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+        />
+      ))}
+    </Helmet>
+  );
+}
 
-    if (structuredData) {
-      addStructuredData(structuredData, 'page-structured-data');
-    }
-
-    if (faqSchema) {
-      addStructuredData(faqSchema, 'page-faq-schema');
-    }
-  }, [title, description, canonicalUrl, ogImage, structuredData, faqSchema]);
-
-  return null;
+/** Site origin for rare cases where components need it outside Helmet */
+export function getDefaultSiteOrigin(): string {
+  return SITE_ORIGIN;
 }
