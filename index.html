@@ -38,6 +38,7 @@
     <link rel="apple-touch-icon" href="/HERO.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/HERO.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/HERO.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
@@ -64,27 +65,48 @@
     <meta name="twitter:label1" content="Product" />
     <meta name="twitter:data1" content="Expense Management Software" />
     
-    <!-- Structured Data (JSON-LD) -->
+    <!-- Site name for Google SERP: single WebSite + Organization graph with @id (Search Central guidelines) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "PesoWise",
-      "alternateName": "PesoWise by Unimisk",
-      "url": "https://pesowise.unimisk.com",
-      "publisher": {
-        "@type": "Organization",
-        "name": "PesoWise",
-        "logo": {
-          "@type": "ImageObject",
-          "url": "https://pesowise.unimisk.com/HERO.png"
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://pesowise.unimisk.com/#website",
+          "name": "PesoWise",
+          "alternateName": "PesoWise by Unimisk",
+          "url": "https://pesowise.unimisk.com/",
+          "publisher": { "@id": "https://pesowise.unimisk.com/#organization" },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://pesowise.unimisk.com/?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://pesowise.unimisk.com/#organization",
+          "name": "PesoWise",
+          "alternateName": "PesoWise by Unimisk",
+          "legalName": "Unimisk",
+          "url": "https://pesowise.unimisk.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://pesowise.unimisk.com/HERO.png"
+          },
+          "description": "Expense management software that integrates with your ERP",
+          "foundingDate": "2024",
+          "sameAs": [
+            "https://twitter.com/pesowise",
+            "https://linkedin.com/company/pesowise"
+          ],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "Customer Support",
+            "email": "info@unimisk.com"
+          }
         }
-      },
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://pesowise.unimisk.com/?q={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
+      ]
     }
     </script>
 
@@ -116,36 +138,10 @@
         "Financial Analytics & Reporting",
         "Automated Approval Workflows"
       ],
-      "provider": {
-        "@type": "Organization",
-        "name": "Unimisk",
-        "url": "https://unimisk.com",
-        "logo": "https://pesowise.unimisk.com/HERO.png"
-      },
+      "provider": { "@id": "https://pesowise.unimisk.com/#organization" },
       "keywords": "pesowise, pesowise unimisk, expense tracking, expense management software, ERP integration",
       "alternateName": "PesoWise by Unimisk",
       "screenshot": "https://pesowise.unimisk.com/HERO.png"
-    }
-    </script>
-    
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "PesoWise",
-      "url": "https://pesowise.unimisk.com",
-      "logo": "https://pesowise.unimisk.com/HERO.png",
-      "description": "Expense management software that integrates with your ERP",
-      "foundingDate": "2024",
-      "sameAs": [
-        "https://twitter.com/pesowise",
-        "https://linkedin.com/company/pesowise"
-      ],
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "Customer Support",
-        "email": "info@unimisk.com"
-      }
     }
     </script>
     

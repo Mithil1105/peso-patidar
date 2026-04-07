@@ -20,7 +20,9 @@ function organizationNode(): Record<string, unknown> {
   return {
     "@type": "Organization",
     "@id": `${SITE_ORIGIN}/#organization`,
-    name: BUSINESS.displayName,
+    // Short brand for Google site name / consistency with WebSite.name
+    name: BUSINESS.productName,
+    alternateName: BUSINESS.displayName,
     legalName: BUSINESS.legalName,
     url: SITE_ORIGIN,
     logo: {

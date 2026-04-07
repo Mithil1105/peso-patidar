@@ -1,0 +1,17 @@
+{
+  "name": "PesoWise",
+  "short_name": "PesoWise",
+  "description": "Expense management by Unimisk — ERP-friendly approvals, reimbursements, and audit-ready records.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e40af",
+  "icons": [
+    {
+      "src": "/HERO.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
