@@ -27,7 +27,7 @@ function organizationNode(): Record<string, unknown> {
       "@type": "ImageObject",
       url: DEFAULT_OG_IMAGE,
     },
-    email: BUSINESS.emailPrimary,
+    email: BUSINESS.contactEmail,
     telephone: BUSINESS.phoneTel,
     address: {
       "@type": "PostalAddress",
@@ -51,7 +51,7 @@ function softwareApplicationNode(): Record<string, unknown> {
     operatingSystem: "Web",
     url: SITE_ORIGIN,
     description:
-      "PesoWise helps organizations manage petty cash, employee expenses, approvals, balances, and audit-ready records in one secure SaaS workspace.",
+      "PesoWise helps organizations manage employee expenses, approvals, balances, and audit-ready records in one secure SaaS workspace—designed to complement your ERP and finance systems.",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -61,7 +61,7 @@ function softwareApplicationNode(): Record<string, unknown> {
     publisher: { "@id": `${SITE_ORIGIN}/#organization` },
     image: DEFAULT_OG_IMAGE,
     featureList: [
-      "Petty cash and balance tracking",
+      "Spend and balance tracking",
       "Expense submission with receipts",
       "Configurable approval workflows",
       "Multi-organization isolation",
@@ -78,7 +78,7 @@ function localBusinessNode(): Record<string, unknown> {
     image: DEFAULT_OG_IMAGE,
     url: SITE_ORIGIN,
     telephone: BUSINESS.phoneTel,
-    email: BUSINESS.emailInfo,
+    email: BUSINESS.contactEmail,
     priceRange: "$$",
     address: {
       "@type": "PostalAddress",

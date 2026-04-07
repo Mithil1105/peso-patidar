@@ -5,7 +5,6 @@ import { SEOHead } from "@/components/SEOHead";
 import { absoluteUrl, BUSINESS, DEFAULT_OG_IMAGE } from "@/lib/siteConfig";
 import { breadcrumbSchema } from "@/lib/schema/jsonLd";
 import { MarketingShell, FullBleedBand, ScrollReveal } from "@/components/marketing";
-import { MapsEmbedPlaceholder } from "@/components/marketing/MapsEmbedPlaceholder";
 import { ContactIllustration } from "@/components/marketing/contact";
 import { DemoMotionPanel } from "@/components/marketing/mocks";
 import { Button } from "@/components/ui/button";
@@ -85,7 +84,7 @@ export default function ContactPage() {
       toast({
         variant: "destructive",
         title: "Could not send",
-        description: "Please try again or email support@unimisk.com directly.",
+        description: `Please try again or email ${BUSINESS.contactEmail} directly.`,
       });
     } finally {
       setIsSubmitting(false);
@@ -96,7 +95,7 @@ export default function ContactPage() {
     <MarketingShell>
       <SEOHead
         title="Contact & demo requests | PesoWise"
-        description="Reach PesoWise by Unimisk for demos, onboarding, and support. Share your workflow needs—petty cash, approvals, and multi-location finance."
+        description="Reach PesoWise by Unimisk for demos, onboarding, and support. Share your workflow needs—approvals, ERP integration, and multi-location finance."
         canonicalUrl={absoluteUrl("/contact")}
         ogImage={DEFAULT_OG_IMAGE}
         structuredData={breadcrumbSchema([
@@ -121,9 +120,9 @@ export default function ContactPage() {
               <div className="absolute bottom-0 right-0 max-w-[200px] sm:-bottom-4">
                 <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
                   <div className="space-y-3">
-                    <a href={`mailto:${BUSINESS.emailPrimary}`} className="flex items-center gap-3 hover:opacity-90">
+                    <a href={`mailto:${BUSINESS.contactEmail}`} className="flex items-center gap-3 hover:opacity-90">
                       <Mail className="h-4 w-4 text-primary" />
-                      <span className="text-xs text-primary underline-offset-2 hover:underline">{BUSINESS.emailPrimary}</span>
+                      <span className="text-xs text-primary underline-offset-2 hover:underline">{BUSINESS.contactEmail}</span>
                     </a>
                     <div className="flex items-center gap-3">
                       <MessageSquare className="h-4 w-4 text-accent" />
@@ -361,11 +360,11 @@ export default function ContactPage() {
                 </h4>
                 <div className="space-y-3">
                   <a
-                    href="mailto:support@unimisk.com"
+                    href={`mailto:${BUSINESS.contactEmail}`}
                     className="flex items-center gap-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <Mail className="h-4 w-4 text-primary" />
-                    support@unimisk.com
+                    {BUSINESS.contactEmail}
                   </a>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <MessageSquare className="h-4 w-4 text-accent" />
@@ -375,12 +374,6 @@ export default function ContactPage() {
               </div>
             </ScrollReveal>
           </div>
-        </div>
-      </FullBleedBand>
-
-      <FullBleedBand className="py-12 sm:py-16">
-        <div className="mx-auto max-w-4xl">
-          <MapsEmbedPlaceholder />
         </div>
       </FullBleedBand>
 
@@ -397,10 +390,10 @@ export default function ContactPage() {
               <Mail className="h-10 w-10 text-primary mx-auto mb-4" />
               <h3 className="font-bold text-foreground mb-3">Email</h3>
               <a
-                href="mailto:info@unimisk.com"
+                href={`mailto:${BUSINESS.contactEmail}`}
                 className="text-sm text-primary hover:underline"
               >
-                info@unimisk.com
+                {BUSINESS.contactEmail}
               </a>
             </div>
           </ScrollReveal>

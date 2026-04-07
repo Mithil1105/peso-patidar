@@ -20,8 +20,7 @@ export const BUSINESS = {
   legalName: "Unimisk",
   productName: "PesoWise",
   displayName: "PesoWise by Unimisk",
-  emailPrimary: "support@unimisk.com",
-  emailInfo: "info@unimisk.com",
+  contactEmail: "info@unimisk.com",
   /** First number is primary for tel: links */
   phoneTel: "+919426049048",
   phoneDisplay: ["+91 9426049048", "+91 8160325372", "+91 80008 45035"] as const,
@@ -54,9 +53,3 @@ export const SOCIAL_URLS = {
   youtube: import.meta.env.VITE_SOCIAL_YOUTUBE_URL || "",
 } as const;
 
-/**
- * Google Business Profile / Maps — paste your public place or Maps URL when ready.
- * Example: https://www.google.com/maps?cid=...
- */
-export const GOOGLE_BUSINESS_PROFILE_URL =
-  (import.meta.env.VITE_GOOGLE_BUSINESS_PROFILE_URL as string | undefined) || "";

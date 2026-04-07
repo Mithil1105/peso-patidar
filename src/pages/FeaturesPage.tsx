@@ -48,8 +48,8 @@ const workflowFeatures = [
   "Comments and feedback at each stage for clear communication",
 ];
 const balanceFeatures = [
-  "Real-time balance visibility across all petty cash accounts",
-  "Add funds to petty cash with proper documentation trail",
+  "Real-time balance visibility across all expense funds",
+  "Add funds to the right account with proper documentation trail",
   "Automatic balance deduction when expenses are approved",
   "Balance transfers between accounts with full audit trail",
   "Return request management for unused funds",
@@ -99,7 +99,7 @@ const featureCategories = [
     id: "balance",
     title: "Balance Management",
     description:
-      "Real-time petty cash balance tracking and control across all your accounts.",
+      "Real-time balance tracking and control across all your expense accounts.",
     icon: Wallet,
     features: balanceFeatures,
     mockComponent: MockBalanceTransfer,
@@ -136,7 +136,7 @@ const featureCategories = [
 const useCases = [
   {
     icon: FileCheck,
-    title: "Office Petty Cash",
+    title: "Office & field expenses",
     description:
       "Track daily office supplies, utilities, and miscellaneous expenses with proper documentation and approval workflows.",
   },
@@ -184,7 +184,7 @@ export default function FeaturesPage() {
     <MarketingShell>
       <SEOHead
         title="Expense software features | PesoWise"
-        description="See how PesoWise handles expense capture, approvals, petty cash balances, receipts, multi-org setup, analytics, and audit trails—in one secure workspace."
+        description="See how PesoWise handles expense capture, approvals, balances, receipts, multi-org setup, analytics, and audit trails—in one secure workspace built for ERP-aligned finance teams."
         canonicalUrl={absoluteUrl("/features")}
         ogImage={DEFAULT_OG_IMAGE}
         structuredData={[

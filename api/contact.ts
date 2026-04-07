@@ -41,7 +41,7 @@ export default async function handler(req: any, res: any) {
 
     // Get environment variables
     const resendApiKey = process.env.RESEND_API_KEY;
-    const contactToEmail = process.env.CONTACT_TO_EMAIL || 'support@unimisk.com';
+    const contactToEmail = process.env.CONTACT_TO_EMAIL || 'info@unimisk.com';
 
     // If Resend API key is not configured, return error with fallback
     if (!resendApiKey) {
@@ -51,7 +51,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ 
         ok: true,
         message: 'Thank you! We\'ll respond within 24 hours.',
-        note: 'Email service not configured. Please contact support@unimisk.com directly.'
+        note: 'Email service not configured. Please contact info@unimisk.com directly.'
       });
     }
 
@@ -117,7 +117,7 @@ Submitted at: ${new Date().toISOString()}
   } catch (error: any) {
     console.error('Contact form error:', error);
     return res.status(500).json({ 
-      error: 'An error occurred while processing your request. Please try again or contact support@unimisk.com directly.' 
+      error: 'An error occurred while processing your request. Please try again or contact info@unimisk.com directly.' 
     });
   }
 }

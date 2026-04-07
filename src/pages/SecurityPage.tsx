@@ -76,7 +76,7 @@ export default function SecurityPage() {
         <>
             <SEOHead
                 title="Security & compliance | PesoWise"
-                description="How PesoWise uses role-based access, row-level security, encryption, and audit trails to protect expense and petty cash data."
+                description="How PesoWise uses role-based access, row-level security, encryption, and audit trails to protect expense and financial workflow data."
                 canonicalUrl={absoluteUrl("/security")}
                 ogImage={DEFAULT_OG_IMAGE}
                 faqSchema={faqSchema}

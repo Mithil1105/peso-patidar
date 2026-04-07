@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
-  title: PesoWise Petty Cash Management API
+  title: PesoWise Expense Management API
   description: |
-    A comprehensive API for managing petty cash expenses with role-based access control.
+    A comprehensive API for managing employee expenses with role-based access control.
     
     ## Features
     - Admin-only user creation
-    - Petty cash draft/submit workflow
+    - Expense draft/submit workflow
     - Engineer verification process
     - Admin approval/rejection
     - File upload for receipts (PDF, PNG, JPG ≤10MB)
@@ -20,14 +20,14 @@ info:
     ```
     
     ## Roles
-    - **admin**: Full system access, user management, petty cash approval
-    - **engineer**: Review and verify assigned petty cash expenses
-    - **employee**: Create and submit petty cash claims
+    - **admin**: Full system access, user management, expense approval
+    - **engineer**: Review and verify assigned expenses
+    - **employee**: Create and submit expense claims
     
   version: 1.0.0
   contact:
     name: PesoWise Team
-    email: support@pesowise.unimisk.com
+    email: info@unimisk.com
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT

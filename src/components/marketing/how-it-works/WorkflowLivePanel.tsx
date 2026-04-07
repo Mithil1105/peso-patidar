@@ -85,7 +85,7 @@ export function WorkflowLivePanel() {
         </div>
         <div>
           <div className="flex justify-between text-xs mb-1">
-            <span className="text-muted-foreground">Petty Cash Used</span>
+            <span className="text-muted-foreground">Spend used</span>
             <span className="text-muted-foreground tabular-nums">{progress2}%</span>
           </div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">

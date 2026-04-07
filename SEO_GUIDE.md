@@ -8,7 +8,7 @@ This document outlines the comprehensive SEO strategy implemented for PesoWise b
 ### Primary Keywords
 - **pesowise**
 - **pesowise unimisk**
-- **petty cash management**
+- **ERP expense integration**
 - **expense tracking software**
 - **expense management software**
 
@@ -19,7 +19,7 @@ This document outlines the comprehensive SEO strategy implemented for PesoWise b
 - multi-tenant expense management
 - cash flow management software
 - expense approval system
-- petty cash software
+- expense management platform
 - corporate expense management
 - automated expense tracking
 - business expense software

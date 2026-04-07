@@ -274,7 +274,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                 )}
                 <p className="text-xs text-gray-500 hidden sm:block truncate">
-                  PesoWise - Powered by Unimisk • Petty Cash management app
+                  PesoWise - Powered by Unimisk • Expense management platform
                 </p>
                 </div>
               </div>

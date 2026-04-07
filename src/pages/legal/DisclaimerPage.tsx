@@ -86,10 +86,10 @@ export default function DisclaimerPage() {
             <p>
               For questions about this disclaimer, contact us at{" "}
               <a
-                href="mailto:support@unimisk.com"
+                href="mailto:info@unimisk.com"
                 className="text-primary underline hover:no-underline"
               >
-                support@unimisk.com
+                info@unimisk.com
               </a>
               .
             </p>

@@ -41,7 +41,7 @@ const workflowSteps = [
   },
   {
     label: "Balance Update",
-    description: "Petty cash balance deducted automatically",
+    description: "Approved spend reflected against the right balance automatically",
     icon: Wallet,
     color: "bg-info text-info-foreground",
   },
@@ -93,7 +93,7 @@ const roles = [
     icon: Coins,
     color: "bg-info/10 text-info",
     responsibilities: [
-      "Manage petty cash balances",
+      "Manage expense fund balances",
       "Process fund additions and transfers",
       "Handle return requests",
     ],
@@ -120,7 +120,7 @@ const workflowFaqItems: FAQItem[] = [
   {
     question: "How are balances updated after approval?",
     answer:
-      "Once an expense is approved, the corresponding petty cash balance is automatically deducted. This happens in real-time and is logged for audit purposes.",
+      "Once an expense is approved, the corresponding balance or fund is updated automatically. This happens in real-time and is logged for audit purposes.",
   },
 ];
 
@@ -129,7 +129,7 @@ export default function HowItWorksPage() {
     <MarketingShell>
       <SEOHead
         title="How expense approvals work | PesoWise"
-        description="Learn PesoWise’s workflow from receipt upload to verification, admin approval, balance updates, and audit logging—for transparent petty cash operations."
+        description="Learn PesoWise’s workflow from receipt upload to verification, admin approval, balance updates, and audit logging—for transparent expense operations that align with your ERP."
         canonicalUrl={absoluteUrl("/how-it-works")}
         ogImage={DEFAULT_OG_IMAGE}
         structuredData={[

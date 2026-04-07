@@ -116,7 +116,7 @@ export default function Auth() {
             PesoWise - Powered by Unimisk
           </CardTitle>
           <CardDescription>
-            Petty Cash management app
+            Expense management platform
           </CardDescription>
         </CardHeader>
         <CardContent>

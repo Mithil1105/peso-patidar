@@ -29,7 +29,7 @@ export function MockBalanceTransfer() {
           </div>
           <h3 className="text-base font-semibold text-foreground">Transfer confirmed</h3>
           <p className="text-sm text-muted-foreground">
-            ₹ 25,000 has been transferred to Branch A - Petty Cash. This message will disappear in 10 seconds.
+            ₹ 25,000 has been transferred to Branch A — expense fund. This message will disappear in 10 seconds.
           </p>
         </div>
       </div>
@@ -72,7 +72,7 @@ export function MockBalanceTransfer() {
         </div>
         <div className="flex-1 rounded-lg border border-border bg-muted/30 p-3">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wide">To</p>
-          <p className="text-xs font-medium text-foreground">Branch A - Petty Cash</p>
+          <p className="text-xs font-medium text-foreground">Branch A — expense fund</p>
           <p className="text-sm font-bold text-foreground">₹ 45,230.00</p>
           <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
             <div className="h-1.5 w-[40%] rounded-full bg-accent" />

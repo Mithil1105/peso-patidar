@@ -2,8 +2,7 @@ import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useConsent } from "@/components/legal/CookieConsentBanner";
 import { Button } from "@/components/ui/button";
-import { BUSINESS, GOOGLE_BUSINESS_PROFILE_URL, SOCIAL_URLS } from "@/lib/siteConfig";
-import { ExternalLink } from "lucide-react";
+import { BUSINESS, SOCIAL_URLS } from "@/lib/siteConfig";
 
 const PRODUCT_LINKS = [
   { to: "/", label: "Home" },
@@ -57,8 +56,8 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
               <span className="text-xl font-bold text-foreground">PesoWise</span>
             </Link>
             <p className="mt-4 max-w-md text-sm text-muted-foreground">
-              {BUSINESS.displayName} — petty cash and expense software for teams that need clarity,
-              control, and audit-ready records.
+              {BUSINESS.displayName} — expense management that works with your ERP: clarity, control,
+              and audit-ready records for finance-led teams.
             </p>
             <address className="mt-6 not-italic text-sm text-muted-foreground space-y-2">
               <span className="sr-only">Postal address</span>
@@ -70,16 +69,10 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
             </address>
             <div className="mt-4 flex flex-col gap-2 text-sm">
               <a
-                href={`mailto:${BUSINESS.emailPrimary}`}
+                href={`mailto:${BUSINESS.contactEmail}`}
                 className="text-primary underline-offset-4 hover:underline"
               >
-                {BUSINESS.emailPrimary}
-              </a>
-              <a
-                href={`mailto:${BUSINESS.emailInfo}`}
-                className="text-primary underline-offset-4 hover:underline"
-              >
-                {BUSINESS.emailInfo}
+                {BUSINESS.contactEmail}
               </a>
               <div className="flex flex-col gap-1">
                 {BUSINESS.phoneDisplay.map((phone) => (
@@ -92,23 +85,6 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
                   </a>
                 ))}
               </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-3 text-sm">
-              {GOOGLE_BUSINESS_PROFILE_URL ? (
-                <a
-                  href={GOOGLE_BUSINESS_PROFILE_URL}
-                  className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  View on Google Maps
-                  <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                </a>
-              ) : (
-                <span className="text-muted-foreground" title="Set VITE_GOOGLE_BUSINESS_PROFILE_URL">
-                  Google Business / Maps link — configure in deploy env
-                </span>
-              )}
             </div>
           </div>
 

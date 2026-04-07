@@ -1,10 +1,10 @@
-# PesoWise - Smart Petty Cash Management & Expense Tracking Software
+# PesoWise - Expense Management Software (ERP-friendly)
 
 <div align="center">
 
 ![PesoWise Logo](/HERO.png)
 
-**Streamline your expense management with PesoWise - A comprehensive SaaS platform for petty cash tracking, employee reimbursements, and automated approval workflows.**
+**Streamline expense management with PesoWise—a comprehensive SaaS platform for employee reimbursements, automated approval workflows, and finance processes that align with your ERP.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -38,7 +38,7 @@
 
 ## 🎯 Overview
 
-**PesoWise** is a modern, multi-tenant SaaS application designed to revolutionize how organizations manage petty cash expenses and employee reimbursements. Built with enterprise-grade security and scalability in mind, PesoWise provides a seamless experience for employees, engineers, administrators, and cashiers to track, approve, and manage financial workflows.
+**PesoWise** is a modern, multi-tenant SaaS application for expense management and employee reimbursements. Built with enterprise-grade security and scalability in mind, PesoWise provides a seamless experience for employees, engineers, administrators, and cashiers to track, approve, and manage financial workflows alongside your ERP or accounting stack.
 
 ### Why PesoWise?
 

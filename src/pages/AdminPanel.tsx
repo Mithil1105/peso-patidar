@@ -1068,12 +1068,12 @@ export default function AdminPanel() {
     try {
       // Build CSV with all requested fields
       const csvContent = [
-        ["Date of Transaction", "Category", "Amount", "Petty Cash", "Transaction ID", "Employee Name", "Location"],
+        ["Date of Transaction", "Category", "Amount", "Expense type", "Transaction ID", "Employee Name", "Location"],
         ...filteredExpenses.map(expense => [
           format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "yyyy-MM-dd"), // Date of transaction (expense date)
           escapeCSV((expense as any).category || "N/A"), // Category
           Number(expense.total_amount).toFixed(2), // Amount
-          "petty cash", // Petty Cash - always "petty cash" for each transaction
+          "expense",
           escapeCSV((expense as any).transaction_number || ''), // Transaction ID
           escapeCSV(expense.user_name), // Employee name
           escapeCSV(expense.destination || "Unassigned") // Location of the expense (not employee location)

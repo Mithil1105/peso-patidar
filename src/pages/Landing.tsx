@@ -44,7 +44,7 @@ export default function Landing() {
         "name": "PesoWise",
         "applicationCategory": "FinanceApplication",
         "operatingSystem": "Web",
-        "description": "PesoWise is a secure petty cash and expense management platform for teams. Track expenses, automate approvals, manage balances, and maintain audit-ready records.",
+        "description": "PesoWise is a secure expense management platform for teams. Track expenses, automate approvals, manage balances, and maintain audit-ready records—with workflows that complement your ERP.",
         "offers": {
             "@type": "Offer",
             "price": "0",
@@ -57,7 +57,7 @@ export default function Landing() {
             "url": "https://unimisk.com"
         },
         "featureList": [
-            "Petty cash management",
+            "Expense management",
             "Expense tracking",
             "Approval workflows",
             "Receipt management",
@@ -69,8 +69,8 @@ export default function Landing() {
     return (
         <>
             <SEOHead
-                title="PesoWise – Petty Cash & Expense Management Software for Teams"
-                description="PesoWise is a secure petty cash and expense management platform for teams. Track expenses, automate approvals, manage balances, and maintain audit-ready records."
+                title="PesoWise – Expense Management Software for Teams (ERP-friendly)"
+                description="PesoWise is a secure expense management platform for teams. Track expenses, automate approvals, manage balances, and maintain audit-ready records—built to work alongside your ERP."
                 canonicalUrl="https://pesowise.unimisk.com/"
                 structuredData={structuredData}
             />
@@ -84,7 +84,7 @@ export default function Landing() {
                     <div className="relative grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
                         <header className="space-y-6">
                             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900">
-                                Petty Cash & Expense Management — Simplified.
+                                Expense Management — Simplified. ERP-ready.
                             </h1>
                             <p className="text-xl text-gray-600 leading-relaxed">
                                 Track employee expenses, automate approvals, and control balances — all in one secure platform.
@@ -137,7 +137,7 @@ export default function Landing() {
                 <SectionBand>
                     <div className="text-center space-y-8">
                         <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">
-                            Still managing petty cash on spreadsheets, WhatsApp, or emails?
+                            Still managing expenses on spreadsheets, WhatsApp, or emails?
                         </h2>
                         <div className="grid sm:grid-cols-2 gap-6 pt-8">
                             <div className="flex items-start gap-3 text-left">
@@ -447,7 +447,7 @@ export default function Landing() {
                     <article className="max-w-3xl mx-auto">
                         <h2 className="text-2xl font-bold text-gray-900 mb-4">What does PesoWise do?</h2>
                         <p className="text-lg text-gray-700 leading-relaxed">
-                            PesoWise helps organizations manage petty cash and employee expenses. Teams can submit expenses, upload receipts, route approvals, track balances, and maintain secure audit trails. It's designed for businesses that need visibility, control, and compliance across employee spending without the complexity of traditional expense management systems.
+                            PesoWise helps organizations manage employee expenses end to end. Teams can submit expenses, upload receipts, route approvals, track balances, and maintain secure audit trails—with exports and discipline that align to your ERP.
                         </p>
                     </article>
                 </Section>
@@ -457,7 +457,7 @@ export default function Landing() {
                     <section className="max-w-4xl mx-auto">
                         <h2 className="text-2xl font-bold text-gray-900 mb-4 sr-only">About PesoWise</h2>
                         <p className="text-gray-700 text-lg leading-relaxed">
-                            PesoWise is a multi-tenant SaaS platform for petty cash and expense management. It helps organizations track employee expenses, automate approval workflows, manage balances, and maintain audit trails. The platform supports multiple organizations with strict data isolation, role-based access control, and real-time balance tracking for compliance-ready financial records.
+                            PesoWise is a multi-tenant SaaS platform for expense management. It helps organizations track employee expenses, automate approval workflows, manage balances, and maintain audit trails. The platform supports multiple organizations with strict data isolation, role-based access control, and real-time balance tracking for compliance-ready financial records.
                         </p>
                     </section>
                 </SectionBand>
@@ -466,7 +466,7 @@ export default function Landing() {
                 <SectionBand className="py-12">
                     <div className="max-w-4xl mx-auto text-center">
                         <p className="text-gray-700 text-lg leading-relaxed">
-                            PesoWise is a modern petty cash and expense management software designed for teams that need visibility, control, and compliance across employee spending. Whether you're managing office petty cash, travel reimbursements, or site operations expenses, PesoWise provides the tools to streamline your expense approval workflow and maintain audit-ready records.
+                            PesoWise is modern expense management software for teams that need visibility, control, and compliance across employee spending. Whether you're managing office spend, travel reimbursements, or site operations expenses, PesoWise streamlines approval workflows and keeps finance ERP-aligned with audit-ready records.
                         </p>
                     </div>
                 </SectionBand>

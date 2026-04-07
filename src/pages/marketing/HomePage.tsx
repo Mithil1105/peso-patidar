@@ -41,23 +41,23 @@ const CTASection = lazy(() =>
 
 const HOME_TITLE = "PesoWise | Smart Expense & Cash Flow Management";
 const HOME_DESCRIPTION =
-  "Simplify petty cash, expenses, and operational finance with PesoWise. Built for growing businesses that need better visibility and control.";
+  "PesoWise streamlines expense management and works alongside your ERP. Built for teams that need visibility, control, and audit-ready records.";
 
 const FAQ_ITEMS: FAQItem[] = [
   {
     question: "What is PesoWise?",
     answer:
-      "PesoWise is a cloud-based petty cash and expense management platform. Teams submit claims with receipts, follow configurable approval paths, and finance leaders see balances and history in one place—without spreadsheets or ad-hoc chat threads.",
+      "PesoWise is a cloud-based expense management platform. Teams submit claims with receipts, follow configurable approval paths, and finance leaders see balances and history in one place—without spreadsheets or ad-hoc chat threads. It complements your ERP rather than replacing it.",
   },
   {
     question: "Who is PesoWise for?",
     answer:
-      "It fits finance-led organizations, distributed operations teams, and SMEs that issue petty cash or reimburse employees regularly. Multi-location and multi-organization setups are supported with isolated data per tenant.",
+      "It fits finance-led organizations, distributed operations teams, and SMEs that reimburse employees and need ERP-aligned reporting. Multi-location and multi-organization setups are supported with isolated data per tenant.",
   },
   {
-    question: "Can PesoWise track petty cash?",
+    question: "Does PesoWise work with our ERP?",
     answer:
-      "Yes. You can track balances, transfers, and returns alongside expenses so cash on hand stays aligned with approved spend and audit expectations.",
+      "Yes. PesoWise is built for expense workflows—claims, approvals, receipts, and exports—so finance can reconcile and post into the ERP or accounting system you already use.",
   },
   {
     question: "Does PesoWise improve expense visibility?",
@@ -121,7 +121,7 @@ const whyPesoWise = [
     icon: TrendingUp,
     title: "Real-time Balances",
     description:
-      "Always know how much petty cash is available across people and locations you authorize.",
+      "Always know how much spend is authorized and available across people and locations you define.",
   },
   {
     icon: Shield,
@@ -157,7 +157,7 @@ const HomePage = () => {
         <div className="grid items-center gap-12 lg:grid-cols-2">
           <ScrollReveal variant="fade-up">
             <h1 className="mb-6 text-4xl font-bold leading-tight tracking-tight text-foreground md:text-5xl lg:text-[2.75rem]">
-              Smart Expense and Petty Cash Management for Growing Businesses
+              Smart Expense Management for Growing Businesses — ERP-Ready
             </h1>
             <p className="mb-4 text-lg text-muted-foreground md:text-xl">
               Track employee expenses, automate approvals, and control balances — all in one secure
@@ -230,8 +230,8 @@ const HomePage = () => {
         <div className="mx-auto max-w-3xl space-y-6 text-muted-foreground leading-relaxed">
           <h2 className="text-2xl font-bold text-foreground">What PesoWise is</h2>
           <p>
-            PesoWise is operations finance software for organizations that still wrestle with petty
-            cash, informal approvals, and scattered receipts. It replaces fragile spreadsheets and chat
+            PesoWise is operations finance software for organizations that still wrestle with informal
+            expense capture, ad-hoc approvals, and scattered receipts. It replaces fragile spreadsheets and chat
             threads with a single workflow: capture spend, route it to the right approvers, and keep
             balances truthful in near real time.
           </p>
@@ -273,7 +273,7 @@ const HomePage = () => {
       <FullBleedBand className="py-20">
         <ScrollReveal className="text-center mb-12">
           <h2 className="mb-4 text-2xl font-bold text-foreground md:text-3xl">
-            Still managing petty cash on spreadsheets, WhatsApp, or emails?
+            Still managing expenses on spreadsheets, WhatsApp, or emails?
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
             Most teams struggle with manual expense tracking that leads to:
@@ -360,7 +360,7 @@ const HomePage = () => {
             Frequently asked questions
           </h2>
           <p className="text-center text-muted-foreground mb-10 text-sm">
-            Direct answers for buyers and teams researching expense and petty cash software.
+            Direct answers for buyers and teams researching expense management and ERP-friendly tools.
           </p>
           <FAQAccordion items={FAQ_ITEMS} />
         </ScrollReveal>

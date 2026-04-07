@@ -39,7 +39,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-3 text-xl font-semibold text-foreground">Who we are</h2>
             <p>
-              PesoWise is a petty cash and expense management product offered by Unimisk. For
+              PesoWise is an expense management product offered by Unimisk. For
               privacy inquiries you may contact us at the details given at the end of this policy.
             </p>
           </section>
@@ -125,10 +125,10 @@ export default function PrivacyPage() {
             <p>
               For privacy-related requests or questions, contact us at{" "}
               <a
-                href="mailto:support@unimisk.com"
+                href="mailto:info@unimisk.com"
                 className="text-primary underline hover:no-underline"
               >
-                support@unimisk.com
+                info@unimisk.com
               </a>
               . We will respond within a reasonable time.
             </p>

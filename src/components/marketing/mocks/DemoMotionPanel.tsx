@@ -22,25 +22,25 @@ const STATUS_STYLES: Record<Status, { pill: string; dot: string }> = {
 const TICK_MS = 50;
 // Different cycle lengths so bars move out of sync (uneven / a bit chaotic)
 const MONTHLY_CYCLE_MS = 4200;
-const PETTY_CYCLE_MS = 3800;
+const SPEND_CYCLE_MS = 3800;
 
 export function DemoMotionPanel() {
   const [monthlyProgress, setMonthlyProgress] = useState(0);
-  const [pettyProgress, setPettyProgress] = useState(0);
+  const [spendProgress, setSpendProgress] = useState(0);
   const [statusIndex, setStatusIndex] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const monthlyStep = 100 / (MONTHLY_CYCLE_MS / TICK_MS);
-    const pettyStep = 100 / (PETTY_CYCLE_MS / TICK_MS);
+    const spendStep = 100 / (SPEND_CYCLE_MS / TICK_MS);
 
     intervalRef.current = setInterval(() => {
       setMonthlyProgress((prev) => {
         const next = Math.min(100, prev + monthlyStep);
         return next >= 100 ? 0 : next;
       });
-      setPettyProgress((prev) => {
-        const next = Math.min(100, prev + pettyStep);
+      setSpendProgress((prev) => {
+        const next = Math.min(100, prev + spendStep);
         if (next >= 100) {
           setStatusIndex((i) => (i + 1) % STATUS_WORKFLOW.length);
           return 0;
@@ -91,15 +91,15 @@ export function DemoMotionPanel() {
         </div>
         <div>
           <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-muted-foreground">Petty Cash Used</span>
+            <span className="text-muted-foreground">Spend used</span>
             <span className="text-muted-foreground tabular-nums">
-              {Math.min(100, Math.round(pettyProgress))}%
+              {Math.min(100, Math.round(spendProgress))}%
             </span>
           </div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full bg-success transition-[width] duration-75 ease-linear"
-              style={{ width: `${pettyProgress}%` }}
+              style={{ width: `${spendProgress}%` }}
             />
           </div>
         </div>

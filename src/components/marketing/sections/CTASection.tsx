@@ -9,7 +9,7 @@ export function CTASection() {
         Take control of your expenses — without complexity.
       </h2>
       <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-        Join teams who manage petty cash and expenses with clarity and control.
+        Join teams who manage expenses with clarity, control, and ERP-friendly workflows.
       </p>
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         <Button asChild size="lg" className="btn-glow group">

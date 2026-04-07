@@ -8,7 +8,7 @@ Add these environment variables to your Vercel project (or `.env.local` for loca
 
 ```
 RESEND_API_KEY=your_resend_api_key_here
-CONTACT_TO_EMAIL=support@unimisk.com
+CONTACT_TO_EMAIL=info@unimisk.com
 ```
 
 ## Setup Instructions
@@ -22,7 +22,7 @@ CONTACT_TO_EMAIL=support@unimisk.com
    - Go to your Vercel project settings
    - Navigate to "Environment Variables"
    - Add `RESEND_API_KEY` with your Resend API key
-   - Add `CONTACT_TO_EMAIL` (optional, defaults to support@unimisk.com)
+   - Add `CONTACT_TO_EMAIL` (optional, defaults to info@unimisk.com)
 
 3. **Domain Setup (Optional):**
    - For production, configure your sending domain in Resend
@@ -38,7 +38,7 @@ CONTACT_TO_EMAIL=support@unimisk.com
 
 ## Accessing Form Submissions
 
-Form submissions are delivered via email to the address configured in `CONTACT_TO_EMAIL` (default: support@unimisk.com).
+Form submissions are delivered via email to the address configured in `CONTACT_TO_EMAIL` (default: info@unimisk.com).
 
 Each submission includes:
 - Contact information (name, email, company, phone, role, team size)
@@ -52,7 +52,7 @@ If `RESEND_API_KEY` is not configured:
 - The endpoint returns a success response but logs an error
 - Users see a success message
 - You should check logs and configure the API key for actual email delivery
-- Users are advised to contact support@unimisk.com directly
+- Users are advised to contact info@unimisk.com directly
 
 ## Future Enhancements
 
