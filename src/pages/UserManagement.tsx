@@ -8,17 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Mail, User, Shield, Settings, Sparkles, CheckCircle, AlertCircle, Edit, Trash2, Eye, EyeOff, Search, Lock, Copy, Check, Table2, Network, MapPin } from "lucide-react";
+import { UserPlus, Mail, User, Shield, Settings, Sparkles, CheckCircle, AlertCircle, Edit, Trash2, Eye, EyeOff, Search, Lock, Copy, Check, Table2, Network, MapPin, Upload, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatINR } from "@/lib/format";
+import { parseBulkUsersCsv } from "@/lib/bulkUsersCsv";
 
 const createUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -96,6 +98,10 @@ export default function UserManagement() {
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [passwordCopied, setPasswordCopied] = useState(false);
   const [viewMode, setViewMode] = useState<"table" | "hierarchical">("table");
+  const [bulkUsersFile, setBulkUsersFile] = useState<File | null>(null);
+  const [bulkUsersDryRun, setBulkUsersDryRun] = useState(true);
+  const [bulkUsersLoading, setBulkUsersLoading] = useState(false);
+  const [bulkUsersResult, setBulkUsersResult] = useState<any | null>(null);
 
   useEffect(() => {
     // Load engineers for assignment dropdown
@@ -816,6 +822,72 @@ export default function UserManagement() {
     }
     setFormData(prev => ({ ...prev, password }));
     setShowPassword(true); // Automatically show the generated password
+  };
+
+  const downloadBulkUsersTemplate = () => {
+    const csv = [
+      "name,email,position,password,assigned_manager_email,location",
+      "John Manager,john.manager@company.com,manager,Password@123,,Mumbai",
+      "Alice Employee,alice.employee@company.com,employee,Password@123,john.manager@company.com,Mumbai",
+      "Bob Cashier,bob.cashier@company.com,cashier,Password@123,john.manager@company.com,Mumbai",
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bulk-users-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBulkUsersUpload = async () => {
+    if (!bulkUsersFile) {
+      toast({ variant: "destructive", title: "CSV required", description: "Please choose a CSV file." });
+      return;
+    }
+    if (!organizationId) {
+      toast({ variant: "destructive", title: "Organization missing", description: "Please re-login and try again." });
+      return;
+    }
+    try {
+      setBulkUsersLoading(true);
+      const text = await bulkUsersFile.text();
+      const parsed = parseBulkUsersCsv(text);
+      if (parsed.errors.length > 0) {
+        toast({
+          variant: "destructive",
+          title: "CSV validation failed",
+          description: parsed.errors.slice(0, 2).join(" | "),
+        });
+        setBulkUsersResult({ success: false, errors: parsed.errors });
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("bulk-users-import", {
+        body: {
+          organization_id: organizationId,
+          dry_run: bulkUsersDryRun,
+          rows: parsed.rows,
+        },
+      });
+
+      if (error) throw error;
+      setBulkUsersResult(data || null);
+      toast({
+        title: bulkUsersDryRun ? "Dry-run complete" : "Bulk upload complete",
+        description: `Processed ${data?.total ?? 0}: ${data?.ok ?? 0} success, ${data?.failed ?? 0} failed`,
+      });
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Bulk upload failed",
+        description: e?.message || "Unable to import CSV",
+      });
+    } finally {
+      setBulkUsersLoading(false);
+    }
   };
 
   const openEditDialog = (u: { user_id: string; name: string; email: string; balance: number; role: string }) => {
@@ -1993,6 +2065,57 @@ export default function UserManagement() {
             )}
           </CardContent>
         </Card>
+
+      <Card className="shadow-xl border-0 bg-white/90 backdrop-blur-sm">
+        <CardHeader className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-6">
+          <CardTitle className="text-xl font-bold flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Bulk Users Upload (CSV)
+          </CardTitle>
+          <CardDescription className="text-emerald-100">
+            Upload users with name, position, assigned manager, location, and password. Managers and employees can be in the same file.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="bulk-users-file">CSV file</Label>
+              <Input
+                id="bulk-users-file"
+                type="file"
+                accept=".csv"
+                onChange={(e) => setBulkUsersFile(e.target.files?.[0] || null)}
+              />
+              <p className="text-xs text-gray-600">
+                Required columns: <strong>name, email, position, password</strong>. Optional: assigned_manager_email, location.
+              </p>
+            </div>
+            <div className="flex md:flex-col gap-2 items-start">
+              <Button type="button" variant="outline" onClick={downloadBulkUsersTemplate}>
+                <FileText className="h-4 w-4 mr-2" />
+                Download Template
+              </Button>
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                <Label htmlFor="bulk-users-dry-run" className="text-sm">Dry-run</Label>
+                <Switch id="bulk-users-dry-run" checked={bulkUsersDryRun} onCheckedChange={setBulkUsersDryRun} />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" onClick={handleBulkUsersUpload} disabled={bulkUsersLoading || !bulkUsersFile}>
+              {bulkUsersLoading ? "Processing..." : (bulkUsersDryRun ? "Run Dry-Run" : "Upload Users")}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setBulkUsersResult(null)}>
+              Clear Result
+            </Button>
+          </div>
+          {bulkUsersResult && (
+            <pre className="max-h-72 overflow-auto rounded-md border bg-gray-50 p-3 text-xs">
+              {JSON.stringify(bulkUsersResult, null, 2)}
+            </pre>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Create User Card */}
         <Card id="create-user-section" className="shadow-2xl border-0 bg-white/80 backdrop-blur-sm overflow-hidden">

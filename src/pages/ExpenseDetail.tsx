@@ -252,13 +252,15 @@ export default function ExpenseDetail() {
         .select(`
           template_id,
           field_value,
-          expense_form_field_templates(name, field_type)
+          expense_form_field_templates(name, field_type, show_on_detail)
         `)
         .eq("expense_id", id)
         .eq("organization_id", organizationId);
 
       if (!fieldValuesError && fieldValuesData) {
-        const transformed = fieldValuesData.map((fv: any) => ({
+        const transformed = fieldValuesData
+          .filter((fv: any) => fv.expense_form_field_templates?.show_on_detail !== false)
+          .map((fv: any) => ({
           template_id: fv.template_id,
           template_name: fv.expense_form_field_templates?.name || "Unknown",
           field_type: fv.expense_form_field_templates?.field_type || "text",

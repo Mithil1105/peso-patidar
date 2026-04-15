@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Upload, X, FileText, Image, Download, Camera } from "lucide-react";
+import { Upload, X, FileText, Image, Download, Camera, ZoomIn, ZoomOut, RotateCcw, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { compressUploadFile, shouldUseServerFallback } from "@/lib/uploadCompression";
 
 interface Attachment {
   id: string;
@@ -41,9 +42,11 @@ export function FileUpload({
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<string>("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageZoom, setImageZoom] = useState(1);
   const totalSizeRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +116,16 @@ export function FileUpload({
     cameraInputRef.current?.click();
   };
 
+  const bytesToBase64 = (bytes: Uint8Array) => {
+    const chunkSize = 0x8000;
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    return btoa(binary);
+  };
+
   // Image compression removed as requested
 
   // PDF compression removed as requested
@@ -121,29 +134,20 @@ export function FileUpload({
     try {
       setUploading(true);
       setUploadProgress(0);
+      setUploadStatus("Preparing file...");
       
       // Calculate current total size of all attachments - 2MB combined limit
       const currentTotalSize = totalSizeRef.current;
       
-      // Check if adding this file would exceed total limit
-      if (currentTotalSize + file.size > MAX_TOTAL_SIZE) {
-        const currentTotalMB = (currentTotalSize / (1024 * 1024)).toFixed(2);
-        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-        throw new Error(`Total size limit exceeded. Current total: ${currentTotalMB}MB, adding ${fileSizeMB}MB would exceed 2MB limit.`);
-      }
-      
-      // Validate individual file size - 2MB max per file (combined total is 2MB)
-      const maxIndividualSize = 2 * 1024 * 1024; // 2MB max per file
-      
-      if (file.size > maxIndividualSize) {
-        throw new Error(`File size must be less than 2MB`);
-      }
+      const remainingBudget = Math.max(0, MAX_TOTAL_SIZE - currentTotalSize);
 
-      // Allow PNG, JPG images and PDF files
+      // Allow PNG, JPG, HEIC images and PDF files
       const allowedTypes = [
         'image/jpeg',
         'image/jpg', 
         'image/png',
+        'image/heic',
+        'image/heif',
         'application/pdf'
       ];
 
@@ -152,14 +156,46 @@ export function FileUpload({
       }
 
       // Additional validation for file extensions
-      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf'];
+      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.heic', '.heif', '.pdf'];
       const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
       if (!allowedExtensions.includes(fileExtension)) {
-        throw new Error("Only PNG, JPG image files and PDF files are allowed for bill uploads");
+        throw new Error("Only PNG/JPG/HEIC image files and PDF files are allowed for bill uploads");
       }
 
-      // Use file as-is (no compression)
-      const fileToUpload = file;
+      setUploadProgress(10);
+      setUploadStatus("Compressing file...");
+      const compressionResult = await compressUploadFile(file, {
+        targetBytes: Math.max(remainingBudget, 200 * 1024),
+        absoluteCapBytes: 2 * 1024 * 1024,
+        timeoutMs: 15000,
+      });
+      let fileToUpload = compressionResult.outputFile;
+
+      if (shouldUseServerFallback(compressionResult, remainingBudget)) {
+        setUploadStatus("Trying server-side compression...");
+        const base64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
+        const { data: fallbackData, error: fallbackError } = await supabase.functions.invoke("compress-upload", {
+          body: {
+            file_name: file.name,
+            mime_type: file.type,
+            file_base64: base64,
+            target_bytes: remainingBudget,
+            absolute_cap_bytes: 2 * 1024 * 1024,
+          },
+        });
+        if (!fallbackError && fallbackData?.ok && fallbackData?.compressed_base64) {
+          const compressedBytes = Uint8Array.from(atob(fallbackData.compressed_base64), (c) => c.charCodeAt(0));
+          const blob = new Blob([compressedBytes], { type: fallbackData.mime_type || file.type });
+          fileToUpload = new File([blob], fallbackData.file_name || file.name, { type: blob.type });
+        }
+      }
+
+      // Final size gates after compression/fallback
+      if (currentTotalSize + fileToUpload.size > MAX_TOTAL_SIZE) {
+        const currentTotalMB = (currentTotalSize / (1024 * 1024)).toFixed(2);
+        const fileSizeMB = (fileToUpload.size / (1024 * 1024)).toFixed(2);
+        throw new Error(`File could not be compressed enough. Current total: ${currentTotalMB}MB, file: ${fileSizeMB}MB, max allowed total is 2MB.`);
+      }
 
       // Create unique filename
       const fileExt = file.name.split('.').pop();
@@ -178,6 +214,7 @@ export function FileUpload({
       
       console.log('📤 Uploading file:', {
         fileName: file.name,
+        originalSize: file.size,
         fileSize: fileToUpload.size,
         fileType: fileToUpload.type,
         uploadPath,
@@ -185,7 +222,8 @@ export function FileUpload({
         userId: user.id
       });
       
-      setUploadProgress(30); // Show progress
+      setUploadProgress(30);
+      setUploadStatus("Uploading compressed file...");
       
       const uploadResult = await supabase.storage
         .from('receipts')
@@ -194,7 +232,8 @@ export function FileUpload({
           upsert: false,
           metadata: {
             originalFilename: file.name,
-            uploadByteLength: String(file.size),
+            uploadByteLength: String(fileToUpload.size),
+            originalByteLength: String(file.size),
           },
         });
 
@@ -240,9 +279,9 @@ export function FileUpload({
             line_item_id: lineItemId,
             file_url: urlData.publicUrl,
             filename: file.name,
-            content_type: file.type,
+            content_type: fileToUpload.type,
             uploaded_by: user?.id,
-            file_size: file.size,
+            file_size: fileToUpload.size,
           })
           .select()
           .single();
@@ -263,19 +302,22 @@ export function FileUpload({
       const tempAttachment = {
         id: `temp-${Date.now()}-${fileName}`,
         filename: file.name,
-        content_type: file.type,
+        content_type: fileToUpload.type,
         file_url: urlData.publicUrl,
         created_at: new Date().toISOString(),
-        file_size: file.size,
+        file_size: fileToUpload.size,
         storage_path: fileName,
       };
 
       setAttachments(prev => [...prev, attachmentData || tempAttachment]);
-      totalSizeRef.current += file.size;
+      totalSizeRef.current += fileToUpload.size;
       
       toast({
         title: "Upload successful",
-        description: `${file.name} has been uploaded successfully`,
+        description:
+          fileToUpload.size < file.size
+            ? `${file.name} compressed ${formatFileSize(file.size)} -> ${formatFileSize(fileToUpload.size)}`
+            : `${file.name} uploaded (${formatFileSize(fileToUpload.size)})`,
       });
 
       if (onUploadComplete) {
@@ -295,6 +337,7 @@ export function FileUpload({
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setUploadStatus("");
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -399,6 +442,11 @@ export function FileUpload({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const zoomIn = () => setImageZoom((z) => Math.min(5, Number((z + 0.25).toFixed(2))));
+  const zoomOut = () => setImageZoom((z) => Math.max(0.25, Number((z - 0.25).toFixed(2))));
+  const resetZoom = () => setImageZoom(1);
+  const fitToScreen = () => setImageZoom(0.9);
+
   return (
     <>
     <Card className={cn("w-full", className)}>
@@ -419,7 +467,7 @@ export function FileUpload({
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/jpg,application/pdf"
+            accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,application/pdf"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -462,7 +510,7 @@ export function FileUpload({
               {isMobile ? "Take a photo or choose from files" : "or drag and drop bill photos/PDFs here"}
               </p>
               <p className="text-xs text-muted-foreground">
-                PNG, JPG, PDF (max 2MB each) • Total limit: 2MB for all files combined
+                PNG, JPG, HEIC, PDF (auto-compressed) • Total limit: 2MB for all files combined
                 {required && (
                   <span className="text-red-500 font-medium"> * Required for submission</span>
                 )}
@@ -472,7 +520,7 @@ export function FileUpload({
           {uploading && (
             <div className="mt-4 space-y-2">
               <Progress value={uploadProgress} className="w-full" />
-              <p className="text-sm text-muted-foreground">Uploading...</p>
+              <p className="text-sm text-muted-foreground">{uploadStatus || "Uploading..."}</p>
             </div>
           )}
         </div>
@@ -513,6 +561,7 @@ export function FileUpload({
                       size="sm"
                       onClick={() => {
                         setImagePreviewUrl(attachment.file_url);
+                        setImageZoom(1);
                         setImagePreviewOpen(true);
                       }}
                     >
@@ -536,12 +585,72 @@ export function FileUpload({
 
     {/* Image Preview Dialog */}
     <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl">
         {imagePreviewUrl && (
           imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
-            <iframe src={imagePreviewUrl} className="w-full h-[600px] rounded" title="PDF Preview" />
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                PDF preview (browser native controls available inside the frame).
+              </div>
+              <iframe src={imagePreviewUrl} className="w-full h-[75vh] rounded border" title="PDF Preview" />
+            </div>
           ) : (
-            <img src={imagePreviewUrl} alt="Attachment preview" className="w-full h-auto rounded" />
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm text-muted-foreground">
+                  Zoom: {Math.round(imageZoom * 100)}%
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={zoomOut}>
+                    <ZoomOut className="h-4 w-4 mr-1" />
+                    Zoom Out
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={zoomIn}>
+                    <ZoomIn className="h-4 w-4 mr-1" />
+                    Zoom In
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={fitToScreen}>
+                    <Maximize2 className="h-4 w-4 mr-1" />
+                    Fit
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={resetZoom}>
+                    <RotateCcw className="h-4 w-4 mr-1" />
+                    Reset
+                  </Button>
+                </div>
+              </div>
+              <div
+                className="w-full h-[75vh] overflow-auto rounded border bg-muted/30"
+                onWheel={(e) => {
+                  if (!e.ctrlKey) return;
+                  e.preventDefault();
+                  if (e.deltaY < 0) {
+                    zoomIn();
+                  } else {
+                    zoomOut();
+                  }
+                }}
+              >
+                <div className="min-h-full min-w-full flex items-center justify-center p-4">
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Attachment preview"
+                    className="rounded shadow-sm select-none"
+                    style={{
+                      transform: `scale(${imageZoom})`,
+                      transformOrigin: "center center",
+                      transition: "transform 0.15s ease-out",
+                      maxWidth: imageZoom <= 1 ? "100%" : "none",
+                      height: "auto",
+                    }}
+                    draggable={false}
+                  />
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Tip: Hold <kbd>Ctrl</kbd> and use mouse wheel to zoom quickly.
+              </div>
+            </div>
           )
         )}
       </DialogContent>

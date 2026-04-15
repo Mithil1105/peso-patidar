@@ -8,8 +8,14 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   cacheDir: path.resolve(__dirname, ".vite"),
   server: {
-    host: "::",
+    host: "localhost",
     port: 3000,
+    strictPort: true,
+    hmr: {
+      protocol: "ws",
+      host: "localhost",
+      port: 3000,
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

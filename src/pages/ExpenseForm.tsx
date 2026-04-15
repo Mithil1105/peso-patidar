@@ -23,11 +23,12 @@ import { formatINR, parseLocalDate } from "@/lib/format";
 import { FileUpload } from "@/components/FileUpload";
 import { ExpenseService, CreateExpenseData, UpdateExpenseData } from "@/services/ExpenseService";
 import { z } from "zod";
+import { DEFAULT_BASE_FIELD_CONFIG, resolveBaseFieldConfig, type BaseExpenseFieldKey, type BaseFieldConfig } from "@/lib/expenseFormConfig";
 // line items removed
 
 const expenseSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  destination: z.string().min(1, "Destination is required"),
+  title: z.string().optional(),
+  destination: z.string().optional(),
   expense_date: z.date().refine(
     (date) => {
       const today = new Date();
@@ -40,7 +41,7 @@ const expenseSchema = z.object({
   ),
   purpose: z.string().optional(),
   amount: z.number().positive("Amount must be greater than 0"),
-  category: z.string().min(1, "Category is required"),
+  category: z.string().optional(),
 });
 
 // Line items schema removed
@@ -151,6 +152,24 @@ export default function ExpenseForm() {
   // Form fields state
   const [categoryFormFields, setCategoryFormFields] = useState<any[]>([]);
   const [formFieldValues, setFormFieldValues] = useState<Record<string, string>>({});
+  const [baseFieldConfig, setBaseFieldConfig] = useState<Record<BaseExpenseFieldKey, BaseFieldConfig>>(DEFAULT_BASE_FIELD_CONFIG);
+
+  const getBaseField = (key: BaseExpenseFieldKey): BaseFieldConfig => baseFieldConfig[key] || DEFAULT_BASE_FIELD_CONFIG[key];
+
+  const fetchBaseFieldConfig = async () => {
+    try {
+      if (!organizationId) return;
+      const { data, error } = await (supabase as any)
+        .from("organization_expense_form_fields")
+        .select("*")
+        .eq("organization_id", organizationId);
+      if (!error && data) {
+        setBaseFieldConfig(resolveBaseFieldConfig(data as Partial<BaseFieldConfig>[]));
+      }
+    } catch (e) {
+      console.warn("Unable to load organization_expense_form_fields, using defaults");
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -235,6 +254,7 @@ export default function ExpenseForm() {
       }
     };
     init();
+    fetchBaseFieldConfig();
     if (id && id !== "new") {
       fetchExpense();
       setIsEditing(true);
@@ -280,7 +300,11 @@ export default function ExpenseForm() {
       const fields = (assignments || []).map((assignment: any) => ({
         ...assignment,
         template: assignment.expense_form_field_templates
-      }));
+      })).filter((assignment: any) => {
+        const submitFlag = assignment.show_on_submit;
+        const templateSubmitFlag = assignment.template?.show_on_submit;
+        return (submitFlag ?? templateSubmitFlag ?? true) === true;
+      });
 
       setCategoryFormFields(fields);
 
@@ -702,6 +726,29 @@ export default function ExpenseForm() {
         expense_date: expense.expense_date,
       });
 
+      // Validate configurable base fields (org-level)
+      const titleCfg = getBaseField("title");
+      const destinationCfg = getBaseField("destination");
+      const categoryCfg = getBaseField("category");
+      const amountCfg = getBaseField("amount");
+      const dateCfg = getBaseField("expense_date");
+
+      if (titleCfg.is_visible && titleCfg.is_required && !String(validatedExpense.title || "").trim()) {
+        throw new Error(`${titleCfg.label || "Title"} is required`);
+      }
+      if (destinationCfg.is_visible && destinationCfg.is_required && !String(validatedExpense.destination || "").trim()) {
+        throw new Error(`${destinationCfg.label || "Vendor / Location"} is required`);
+      }
+      if (categoryCfg.is_visible && categoryCfg.is_required && !String(validatedExpense.category || "").trim()) {
+        throw new Error(`${categoryCfg.label || "Category"} is required`);
+      }
+      if (amountCfg.is_visible && amountCfg.is_required && !(Number(validatedExpense.amount) > 0)) {
+        throw new Error(`${amountCfg.label || "Amount"} must be greater than 0`);
+      }
+      if (dateCfg.is_visible && dateCfg.is_required && !validatedExpense.expense_date) {
+        throw new Error(`${dateCfg.label || "Expense Date"} is required`);
+      }
+
       // Validate form fields
       for (const field of categoryFormFields) {
         const template = field.template;
@@ -928,8 +975,8 @@ export default function ExpenseForm() {
             <CardDescription className="text-center">Basic information about your expense</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <Label htmlFor="category">Category *</Label>
+            <div className={cn("space-y-3", !getBaseField("category").is_visible && "hidden")}>
+              <Label htmlFor="category">{getBaseField("category").label}{getBaseField("category").is_required ? " *" : ""}</Label>
               
               <div className="flex items-center gap-2">
                 <Popover>
@@ -1163,8 +1210,8 @@ export default function ExpenseForm() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="title">Title *</Label>
+            <div className={cn("space-y-2", !getBaseField("title").is_visible && "hidden")}>
+              <Label htmlFor="title">{getBaseField("title").label}{getBaseField("title").is_required ? " *" : ""}</Label>
               <Input
                 id="title"
                 value={expense.title}
@@ -1173,8 +1220,8 @@ export default function ExpenseForm() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="destination">Vendor / Location *</Label>
+            <div className={cn("space-y-2", !getBaseField("destination").is_visible && "hidden")}>
+              <Label htmlFor="destination">{getBaseField("destination").label}{getBaseField("destination").is_required ? " *" : ""}</Label>
               <Input
                 id="destination"
                 value={expense.destination}
@@ -1183,8 +1230,8 @@ export default function ExpenseForm() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Expense Date *</Label>
+            <div className={cn("space-y-2", !getBaseField("expense_date").is_visible && "hidden")}>
+              <Label>{getBaseField("expense_date").label}{getBaseField("expense_date").is_required ? " *" : ""}</Label>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -1221,8 +1268,8 @@ export default function ExpenseForm() {
               </Popover>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="purpose">Purpose</Label>
+            <div className={cn("space-y-2", !getBaseField("purpose").is_visible && "hidden")}>
+              <Label htmlFor="purpose">{getBaseField("purpose").label}{getBaseField("purpose").is_required ? " *" : ""}</Label>
               <Textarea
                 id="purpose"
                 value={expense.purpose}
@@ -1232,8 +1279,8 @@ export default function ExpenseForm() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount *</Label>
+            <div className={cn("space-y-2", !getBaseField("amount").is_visible && "hidden")}>
+              <Label htmlFor="amount">{getBaseField("amount").label}{getBaseField("amount").is_required ? " *" : ""}</Label>
               <Input
                 id="amount"
                 type="number"

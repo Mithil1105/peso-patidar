@@ -11,6 +11,7 @@ import { Settings as SettingsIcon, Save, Bell, Volume2, VolumeX, MapPin, Plus, E
 import { fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs, restoreFromBackup, parseBackupFile, getBackupPreview, type BackupPayload } from "@/lib/backupData";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatINR } from "@/lib/format";
+import { DEFAULT_BASE_FIELD_CONFIG, resolveBaseFieldConfig, type BaseExpenseFieldKey, type BaseFieldConfig } from "@/lib/expenseFormConfig";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -30,6 +31,8 @@ export default function Settings() {
   const [allowCashierExpenseSubmission, setAllowCashierExpenseSubmission] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [baseFieldConfig, setBaseFieldConfig] = useState<Record<BaseExpenseFieldKey, BaseFieldConfig>>(DEFAULT_BASE_FIELD_CONFIG);
+  const [savingFormBuilder, setSavingFormBuilder] = useState(false);
   
   // Logo upload
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -68,6 +71,7 @@ export default function Settings() {
     if (userRole === "admin" && organizationId) {
       fetchSettings();
       fetchLocations();
+      fetchFormBuilderSettings();
     }
     if (user) {
       loadNotificationSettings();
@@ -157,6 +161,49 @@ export default function Settings() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFormBuilderSettings = async () => {
+    try {
+      if (!organizationId) return;
+      const { data, error } = await (supabase as any)
+        .from("organization_expense_form_fields")
+        .select("*")
+        .eq("organization_id", organizationId);
+      if (!error && data) {
+        setBaseFieldConfig(resolveBaseFieldConfig(data as Partial<BaseFieldConfig>[]));
+      }
+    } catch (e) {
+      console.warn("Unable to load organization_expense_form_fields");
+    }
+  };
+
+  const saveFormBuilderSettings = async () => {
+    if (!organizationId) return;
+    try {
+      setSavingFormBuilder(true);
+      const rows = (Object.keys(baseFieldConfig) as BaseExpenseFieldKey[]).map((key) => ({
+        organization_id: organizationId,
+        field_key: key,
+        label: baseFieldConfig[key].label,
+        help_text: baseFieldConfig[key].help_text ?? null,
+        is_visible: baseFieldConfig[key].is_visible,
+        is_required: baseFieldConfig[key].is_required,
+        display_order: baseFieldConfig[key].display_order,
+        show_on_submit: baseFieldConfig[key].show_on_submit,
+        show_on_review: baseFieldConfig[key].show_on_review,
+        show_on_detail: baseFieldConfig[key].show_on_detail,
+      }));
+      const { error } = await (supabase as any)
+        .from("organization_expense_form_fields")
+        .upsert(rows, { onConflict: "organization_id,field_key" });
+      if (error) throw error;
+      toast({ title: "Form builder updated", description: "Base expense fields have been saved." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Failed to save form builder", description: e?.message || "Try again." });
+    } finally {
+      setSavingFormBuilder(false);
     }
   };
 
@@ -976,6 +1023,102 @@ export default function Settings() {
             )}
           </CardContent>
         </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Expense Form Builder (Base Fields)</CardTitle>
+              <CardDescription>
+                Configure built-in fields used in the expense form.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <p className="font-medium">Quick guide</p>
+                <p className="text-muted-foreground mt-1">
+                  1) Edit label/order, 2) toggle visible/required, 3) save. Core fields (Category, Expense Date, Amount) stay visible.
+                </p>
+              </div>
+              <div className="hidden lg:grid grid-cols-[180px_minmax(220px,1fr)_90px_90px_90px] gap-2 px-2 text-xs font-medium text-muted-foreground">
+                <div>Field</div>
+                <div>Label</div>
+                <div>Order</div>
+                <div className="text-center">Visible</div>
+                <div className="text-center">Required</div>
+              </div>
+              <div className="space-y-2">
+                {(Object.keys(baseFieldConfig) as BaseExpenseFieldKey[])
+                  .sort((a, b) => baseFieldConfig[a].display_order - baseFieldConfig[b].display_order)
+                  .map((key) => {
+                    const cfg = baseFieldConfig[key];
+                    const forceVisible = key === "category" || key === "amount" || key === "expense_date";
+                    return (
+                      <div
+                        key={key}
+                        className="border rounded-lg p-3 lg:p-2 lg:grid lg:grid-cols-[180px_minmax(220px,1fr)_90px_90px_90px] lg:items-center lg:gap-2"
+                      >
+                        <div className="mb-2 lg:mb-0 flex items-center gap-2">
+                          <span className="font-medium text-sm">{cfg.field_key}</span>
+                          {forceVisible && <span className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Core</span>}
+                        </div>
+                        <div className="mb-2 lg:mb-0">
+                          <Input
+                            value={cfg.label}
+                            onChange={(e) =>
+                              setBaseFieldConfig((prev) => ({
+                                ...prev,
+                                [key]: { ...prev[key], label: e.target.value },
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="mb-3 lg:mb-0">
+                          <Input
+                            type="number"
+                            value={cfg.display_order}
+                            onChange={(e) =>
+                              setBaseFieldConfig((prev) => ({
+                                ...prev,
+                                [key]: { ...prev[key], display_order: Number(e.target.value || 0) },
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 lg:contents">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-[11px] text-muted-foreground lg:hidden">Visible</span>
+                            <Switch
+                              checked={forceVisible ? true : cfg.is_visible}
+                              disabled={forceVisible}
+                              onCheckedChange={(v) =>
+                                setBaseFieldConfig((prev) => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], is_visible: v },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-[11px] text-muted-foreground lg:hidden">Required</span>
+                            <Switch
+                              checked={cfg.is_required}
+                              onCheckedChange={(v) =>
+                                setBaseFieldConfig((prev) => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], is_required: v },
+                                }))
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              <Button onClick={saveFormBuilderSettings} disabled={savingFormBuilder} className="w-full sm:w-auto">
+                {savingFormBuilder ? "Saving..." : "Save Form Builder"}
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Organization Logo */}
           <Card>

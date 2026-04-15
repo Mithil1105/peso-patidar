@@ -84,6 +84,9 @@ export default function CategoryManagement() {
   const [templateMax, setTemplateMax] = useState("");
   const [templateOptions, setTemplateOptions] = useState<string[]>([]);
   const [newOption, setNewOption] = useState("");
+  const [optionSearchTerm, setOptionSearchTerm] = useState("");
+  const [bulkOptionsInput, setBulkOptionsInput] = useState("");
+  const [bulkOptionsFileName, setBulkOptionsFileName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateDeleteDialogOpen, setTemplateDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<FormFieldTemplate | null>(null);
@@ -541,6 +544,54 @@ export default function CategoryManagement() {
     }
   };
 
+  const normalizeOptionValue = (value: string) => value.trim().replace(/^"(.*)"$/, "$1").trim();
+
+  const parseBulkOptionValues = (raw: string): string[] => {
+    const tokens = raw
+      .split(/\r?\n/)
+      .flatMap((line) => line.split(","))
+      .map(normalizeOptionValue)
+      .filter((value) => value.length > 0);
+
+    if (tokens.length === 0) return [];
+
+    const first = tokens[0].toLowerCase();
+    if ((first === "option" || first === "options" || first === "value") && tokens.length > 1) {
+      return tokens.slice(1);
+    }
+    return tokens;
+  };
+
+  const appendTemplateOptions = (rawValues: string[]) => {
+    if (rawValues.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No options found",
+        description: "Add one option per line (or comma-separated values).",
+      });
+      return;
+    }
+
+    const existing = new Set(templateOptions.map((option) => option.trim().toLowerCase()));
+    const nextOptions = [...templateOptions];
+    let added = 0;
+
+    rawValues.forEach((value) => {
+      const normalized = value.trim();
+      const key = normalized.toLowerCase();
+      if (!normalized || existing.has(key)) return;
+      existing.add(key);
+      nextOptions.push(normalized);
+      added += 1;
+    });
+
+    setTemplateOptions(nextOptions);
+    toast({
+      title: "Options updated",
+      description: `${added} added, ${rawValues.length - added} skipped (duplicates/empty).`,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -552,7 +603,7 @@ export default function CategoryManagement() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
-              Mass Import
+              Import Categories
             </Button>
             <Button onClick={openAddDialog}>
               <Plus className="h-4 w-4 mr-2" />
@@ -573,6 +624,9 @@ export default function CategoryManagement() {
             setTemplateMax("");
             setTemplateOptions([]);
             setNewOption("");
+            setOptionSearchTerm("");
+            setBulkOptionsInput("");
+            setBulkOptionsFileName("");
             setTemplateDialogOpen(true);
           }}>
             <Plus className="h-4 w-4 mr-2" />
@@ -677,6 +731,7 @@ export default function CategoryManagement() {
           )}
         </CardContent>
       </Card>
+
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-6">
@@ -728,6 +783,9 @@ export default function CategoryManagement() {
                               setTemplateMin(template.validation_rules.min?.toString() || "");
                               setTemplateMax(template.validation_rules.max?.toString() || "");
                             }
+                            setOptionSearchTerm("");
+                            setBulkOptionsInput("");
+                            setBulkOptionsFileName("");
                             setTemplateDialogOpen(true);
                           }}
                         >
@@ -889,6 +947,9 @@ export default function CategoryManagement() {
           setTemplateMax("");
           setTemplateOptions([]);
           setNewOption("");
+          setOptionSearchTerm("");
+          setBulkOptionsInput("");
+          setBulkOptionsFileName("");
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -917,6 +978,9 @@ export default function CategoryManagement() {
                 // Clear options if not select type
                 if (value !== 'select') {
                   setTemplateOptions([]);
+                  setOptionSearchTerm("");
+                  setBulkOptionsInput("");
+                  setBulkOptionsFileName("");
                 }
               }}>
                 <SelectTrigger>
@@ -991,28 +1055,83 @@ export default function CategoryManagement() {
               </div>
             )}
 
-            {templateType === 'select' && (
+            {(templateType === 'select' || templateType === 'checkbox') && (
               <div className="space-y-2">
                 <Label>Options *</Label>
                 <div className="space-y-2">
-                  {templateOptions.map((option, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <Input value={option} onChange={(e) => {
-                        const newOptions = [...templateOptions];
-                        newOptions[idx] = e.target.value;
-                        setTemplateOptions(newOptions);
-                      }} />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setTemplateOptions(templateOptions.filter((_, i) => i !== idx));
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                  <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                    <Input
+                      value={optionSearchTerm}
+                      onChange={(e) => setOptionSearchTerm(e.target.value)}
+                      placeholder="Search options..."
+                    />
+                    <div className="text-xs text-muted-foreground md:text-right md:self-center">
+                      Showing {
+                        templateOptions.filter((option) =>
+                          option.toLowerCase().includes(optionSearchTerm.toLowerCase())
+                        ).length
+                      } of {templateOptions.length}
                     </div>
-                  ))}
+                  </div>
+                  {templateOptions
+                    .map((option, idx) => ({ option, idx }))
+                    .filter(({ option }) =>
+                      option.toLowerCase().includes(optionSearchTerm.toLowerCase())
+                    )
+                    .map(({ option, idx }) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input value={option} onChange={(e) => {
+                          const newOptions = [...templateOptions];
+                          newOptions[idx] = e.target.value;
+                          setTemplateOptions(newOptions);
+                        }} />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setTemplateOptions(templateOptions.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  <Textarea
+                    value={bulkOptionsInput}
+                    onChange={(e) => setBulkOptionsInput(e.target.value)}
+                    rows={4}
+                    placeholder={"Bulk paste options (one per line or comma-separated)\nExample:\nPetrol\nDiesel\nCNG"}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        appendTemplateOptions(parseBulkOptionValues(bulkOptionsInput));
+                        setBulkOptionsInput("");
+                      }}
+                    >
+                      Bulk Add Pasted Options
+                    </Button>
+                    <Input
+                      type="file"
+                      accept=".csv,.txt"
+                      className="max-w-xs"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const text = await file.text();
+                        appendTemplateOptions(parseBulkOptionValues(text));
+                        setBulkOptionsFileName(file.name);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                    {bulkOptionsFileName && (
+                      <span className="text-xs text-muted-foreground">
+                        Last uploaded: {bulkOptionsFileName}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <Input
                       value={newOption}
@@ -1066,6 +1185,14 @@ export default function CategoryManagement() {
             </Button>
             <Button
               onClick={async () => {
+                const cleanedTemplateOptions = templateOptions.reduce<string[]>((acc, option) => {
+                  const normalized = option.trim();
+                  if (!normalized) return acc;
+                  if (acc.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) return acc;
+                  acc.push(normalized);
+                  return acc;
+                }, []);
+
                 if (!templateName.trim()) {
                   toast({
                     variant: "destructive",
@@ -1075,11 +1202,11 @@ export default function CategoryManagement() {
                   return;
                 }
 
-                if (templateType === 'select' && templateOptions.length === 0) {
+                if ((templateType === 'select' || templateType === 'checkbox') && cleanedTemplateOptions.length === 0) {
                   toast({
                     variant: "destructive",
                     title: "Error",
-                    description: "At least one option is required for select type",
+                    description: "At least one option is required for dropdown/checkbox type",
                   });
                   return;
                 }
@@ -1105,7 +1232,7 @@ export default function CategoryManagement() {
                     help_text: templateHelpText || null,
                     default_value: templateDefaultValue || null,
                     validation_rules: Object.keys(validationRules).length > 0 ? validationRules : null,
-                    options: templateType === 'select' ? templateOptions : null,
+                    options: (templateType === 'select' || templateType === 'checkbox') ? cleanedTemplateOptions : null,
                     created_by: user?.id || null,
                   };
 
@@ -1148,7 +1275,7 @@ export default function CategoryManagement() {
                   setSavingTemplate(false);
                 }
               }}
-              disabled={savingTemplate || !templateName.trim() || (templateType === 'select' && templateOptions.length === 0)}
+              disabled={savingTemplate || !templateName.trim() || ((templateType === 'select' || templateType === 'checkbox') && templateOptions.length === 0)}
             >
               {savingTemplate ? "Saving..." : selectedTemplate ? "Update" : "Create"}
             </Button>
@@ -1393,7 +1520,7 @@ export default function CategoryManagement() {
       }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Mass Import Categories</DialogTitle>
+            <DialogTitle>Import Categories</DialogTitle>
             <DialogDescription>
               Upload a CSV file with category names. Each category should be on a new line. 
               Existing categories will be skipped. All imported categories will be set as active.
