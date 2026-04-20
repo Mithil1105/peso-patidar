@@ -27,6 +27,17 @@ interface ProfileRow {
   role: string;
 }
 
+interface BankAccountRow {
+  id: string;
+  organization_id: string;
+  bank_name: string;
+  account_holder_name: string;
+  account_number: string;
+  ifsc_code: string;
+  branch_name?: string | null;
+  is_active: boolean;
+}
+
 export default function Balances() {
   const { userRole, user, organizationId } = useAuth();
   const { toast } = useToast();
@@ -36,6 +47,8 @@ export default function Balances() {
   const [cashierBalance, setCashierBalance] = useState<number>(0);
   const [addAmounts, setAddAmounts] = useState<{ [key: string]: number }>({});
   const [addNotes, setAddNotes] = useState<{ [key: string]: string }>({});
+  const [allocationMode, setAllocationMode] = useState<"cash" | "bank_transfer">("cash");
+  const [selectedBankAccountByUser, setSelectedBankAccountByUser] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [bulkAddDialogOpen, setBulkAddDialogOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
@@ -51,6 +64,19 @@ export default function Balances() {
   const [transferSearchTerm, setTransferSearchTerm] = useState("");
   const [transferFilterType, setTransferFilterType] = useState<string>("all");
   const [transferFilterRole, setTransferFilterRole] = useState<string>("all");
+  const [transferFilterMode, setTransferFilterMode] = useState<string>("all");
+  const [transferFilterBank, setTransferFilterBank] = useState<string>("all");
+  const [bankAccounts, setBankAccounts] = useState<BankAccountRow[]>([]);
+  const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
+  const [manageBanksOpen, setManageBanksOpen] = useState(false);
+  const [newBank, setNewBank] = useState({
+    bank_name: "",
+    account_holder_name: "",
+    account_number: "",
+    ifsc_code: "",
+    branch_name: "",
+  });
+  const [savingBank, setSavingBank] = useState(false);
 
   // Edit transfer date (backdate) - admin only
   const [editTransferModalOpen, setEditTransferModalOpen] = useState(false);
@@ -79,6 +105,7 @@ export default function Balances() {
 
   useEffect(() => {
     fetchProfiles();
+    fetchBankAccounts();
     
     // Set up real-time balance subscription for cashiers
     if (userRole === "cashier" && user?.id) {
@@ -99,7 +126,7 @@ export default function Balances() {
       applyTransferFilters();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transfers, transferSearchTerm, transferFilterType, transferFilterRole, activeTab]);
+  }, [transfers, transferSearchTerm, transferFilterType, transferFilterRole, transferFilterMode, transferFilterBank, activeTab]);
 
   const setupBalanceRealtimeSubscription = () => {
     if (!user?.id) return () => {};
@@ -146,6 +173,83 @@ export default function Balances() {
       console.log('Cleaning up balances cashier subscription');
       supabase.removeChannel(channel);
     };
+  };
+
+  const maskAccountNumber = (accountNumber?: string | null) => {
+    if (!accountNumber) return "-";
+    const trimmed = accountNumber.replace(/\s+/g, "");
+    if (trimmed.length <= 4) return trimmed;
+    return `${"*".repeat(Math.max(0, trimmed.length - 4))}${trimmed.slice(-4)}`;
+  };
+
+  const fetchBankAccounts = async () => {
+    if (!organizationId || (userRole !== "admin" && userRole !== "cashier")) return;
+    try {
+      setBankAccountsLoading(true);
+      const { data, error } = await supabase
+        .from("organization_bank_accounts")
+        .select("id, organization_id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, is_active")
+        .eq("organization_id", organizationId)
+        .order("bank_name", { ascending: true });
+      if (error) throw error;
+      setBankAccounts((data || []) as BankAccountRow[]);
+    } catch (error) {
+      console.error("Failed to fetch bank accounts", error);
+      setBankAccounts([]);
+    } finally {
+      setBankAccountsLoading(false);
+    }
+  };
+
+  const saveBankAccount = async () => {
+    if (!organizationId) return;
+    if (userRole !== "admin") {
+      toast({ variant: "destructive", title: "Access denied", description: "Only admins can manage source bank accounts." });
+      return;
+    }
+    const payload = {
+      bank_name: newBank.bank_name.trim(),
+      account_holder_name: newBank.account_holder_name.trim(),
+      account_number: newBank.account_number.trim(),
+      ifsc_code: newBank.ifsc_code.trim().toUpperCase(),
+      branch_name: newBank.branch_name.trim() || null,
+    };
+    if (!payload.bank_name || !payload.account_holder_name || !payload.account_number || !payload.ifsc_code) {
+      toast({ variant: "destructive", title: "Missing details", description: "Please fill bank name, holder name, account number, and IFSC." });
+      return;
+    }
+    try {
+      setSavingBank(true);
+      const { error } = await supabase
+        .from("organization_bank_accounts")
+        .insert({ organization_id: organizationId, ...payload });
+      if (error) throw error;
+      setNewBank({ bank_name: "", account_holder_name: "", account_number: "", ifsc_code: "", branch_name: "" });
+      toast({ title: "Bank account saved", description: "Source bank account is now available for transfers." });
+      fetchBankAccounts();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Save failed", description: error?.message || "Could not save bank account." });
+    } finally {
+      setSavingBank(false);
+    }
+  };
+
+  const toggleBankAccountStatus = async (account: BankAccountRow) => {
+    if (userRole !== "admin") return;
+    try {
+      const { error } = await supabase
+        .from("organization_bank_accounts")
+        .update({ is_active: !account.is_active })
+        .eq("id", account.id);
+      if (error) throw error;
+      toast({
+        title: account.is_active ? "Bank account deactivated" : "Bank account activated",
+        description: `${account.bank_name} (${maskAccountNumber(account.account_number)}) updated.`,
+      });
+      fetchBankAccounts();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Update failed", description: error?.message || "Could not update bank account status." });
+    }
   };
 
   const fetchProfiles = async () => {
@@ -358,9 +462,17 @@ export default function Balances() {
     }
   };
 
-  const addAmountToUser = async (userId: string, amountToAdd: number, note: string) => {
+  const addAmountToUser = async (
+    userId: string,
+    amountToAdd: number,
+    note: string,
+    options?: { paymentMode?: "cash" | "bank_transfer"; sourceBankAccountId?: string }
+  ) => {
     try {
       setSavingId(userId);
+      const paymentMode = options?.paymentMode || "cash";
+      const sourceBankAccountId = options?.sourceBankAccountId;
+      const selectedBank = sourceBankAccountId ? bankAccounts.find((b) => b.id === sourceBankAccountId) : null;
       
       console.log('Adding amount:', amountToAdd, 'to user:', userId, 'by:', userRole);
       
@@ -377,6 +489,26 @@ export default function Balances() {
       
       const currentRow = rows.find(r => r.user_id === userId);
       if (!currentRow) throw new Error('User not found');
+      if (paymentMode === "bank_transfer") {
+        if (!sourceBankAccountId || !selectedBank) {
+          toast({
+            variant: "destructive",
+            title: "Bank account required",
+            description: "Please select an active source bank account for bank transfer.",
+          });
+          setSavingId(null);
+          return;
+        }
+        if (!selectedBank.is_active) {
+          toast({
+            variant: "destructive",
+            title: "Inactive bank account",
+            description: "Please select an active source bank account.",
+          });
+          setSavingId(null);
+          return;
+        }
+      }
       
       console.log('Current user balance:', currentRow.balance);
       
@@ -391,6 +523,9 @@ export default function Balances() {
         return;
       }
       
+      let deductionPerformed = false;
+      const startingCashierBalance = cashierBalance;
+
       // If cashier is adding funds, validate they can manage this employee
       if (userRole === 'cashier' && amountToAdd > 0 && user?.id) {
         // Check if cashier can manage this employee (must be under their assigned engineer)
@@ -422,34 +557,38 @@ export default function Balances() {
           }
         }
         
-        // Check if they have sufficient balance and deduct from their account
-        console.log('Cashier balance check - Current balance:', cashierBalance, 'Amount to add:', amountToAdd);
-        if (cashierBalance < amountToAdd) {
-          console.log('Insufficient balance - need:', amountToAdd, 'have:', cashierBalance);
-          toast({ 
-            variant: "destructive", 
-            title: "Insufficient Balance", 
-            description: `You need ${formatINR(amountToAdd)} but only have ${formatINR(cashierBalance)}` 
-          });
-          return;
+        if (paymentMode === "cash") {
+          // Cash mode: deduct from cashier wallet
+          console.log('Cashier balance check - Current balance:', cashierBalance, 'Amount to add:', amountToAdd);
+          if (cashierBalance < amountToAdd) {
+            console.log('Insufficient balance - need:', amountToAdd, 'have:', cashierBalance);
+            toast({ 
+              variant: "destructive", 
+              title: "Insufficient Balance", 
+              description: `You need ${formatINR(amountToAdd)} but only have ${formatINR(cashierBalance)}` 
+            });
+            return;
+          }
+          
+          console.log('Deducting from cashier balance:', cashierBalance, 'by:', amountToAdd);
+          
+          const { error: cashierError } = await supabase
+            .from("profiles")
+            .update({ balance: cashierBalance - amountToAdd })
+            .eq("user_id", user.id);
+          
+          if (cashierError) {
+            console.error('Cashier balance update error:', cashierError);
+            throw cashierError;
+          }
+          
+          setCashierBalance(cashierBalance - amountToAdd);
+          deductionPerformed = true;
+          console.log('Cashier balance updated in state');
+        } else {
+          // Bank transfer mode: only recipient gets credited; cashier wallet is unchanged.
+          console.log('Bank transfer mode selected for cashier, skipping sender wallet deduction');
         }
-        
-        console.log('Deducting from cashier balance:', cashierBalance, 'by:', amountToAdd);
-        
-        // Deduct from cashier's balance
-        const { error: cashierError } = await supabase
-          .from("profiles")
-          .update({ balance: cashierBalance - amountToAdd })
-          .eq("user_id", user.id);
-        
-        if (cashierError) {
-          console.error('Cashier balance update error:', cashierError);
-          throw cashierError;
-        }
-        
-        // Update cashier balance in state
-        setCashierBalance(cashierBalance - amountToAdd);
-        console.log('Cashier balance updated in state');
       }
       
       // Add to target user's balance
@@ -465,14 +604,14 @@ export default function Balances() {
       
       if (error) {
         console.error('User balance update error:', error);
-        // If user balance update fails, we should rollback cashier balance
-        if (userRole === 'cashier' && user?.id) {
+        // If user balance update fails, rollback cashier balance only if we actually deducted
+        if (userRole === 'cashier' && user?.id && deductionPerformed) {
           console.log('Rolling back cashier balance...');
           await supabase
             .from("profiles")
-            .update({ balance: cashierBalance })
+            .update({ balance: startingCashierBalance })
             .eq("user_id", user.id);
-          setCashierBalance(cashierBalance);
+          setCashierBalance(startingCashierBalance);
         }
         throw error;
       }
@@ -564,6 +703,11 @@ export default function Balances() {
               recipient_role: recipientRole,
               amount: amountToAdd,
               transfer_type: transferType,
+              payment_mode: paymentMode,
+              source_bank_account_id: paymentMode === "bank_transfer" ? sourceBankAccountId : null,
+              source_bank_name_snapshot: paymentMode === "bank_transfer" ? selectedBank?.bank_name || null : null,
+              source_account_holder_snapshot: paymentMode === "bank_transfer" ? selectedBank?.account_holder_name || null : null,
+              source_account_number_masked_snapshot: paymentMode === "bank_transfer" ? maskAccountNumber(selectedBank?.account_number) : null,
               notes: note,
             })
             .select();
@@ -612,7 +756,7 @@ export default function Balances() {
       
       toast({ 
         title: "Amount added", 
-        description: `${currentRow.name}'s account:${compensationMessage}` 
+        description: `${currentRow.name}'s account:${compensationMessage}${paymentMode === "bank_transfer" ? ` via ${selectedBank?.bank_name || "bank transfer"}.` : ""}` 
       });
       
       // Update both recipient's balance and cashier's balance in the rows state
@@ -620,9 +764,9 @@ export default function Balances() {
         if (r.user_id === userId) {
           // Update recipient's balance
           return { ...r, balance: newBalance };
-        } else if (userRole === 'cashier' && user?.id && r.user_id === user.id) {
+        } else if (userRole === 'cashier' && user?.id && deductionPerformed && r.user_id === user.id) {
           // Update cashier's balance in the table
-          const newCashierBalance = cashierBalance - amountToAdd;
+          const newCashierBalance = startingCashierBalance - amountToAdd;
           return { ...r, balance: newCashierBalance };
         }
         return r;
@@ -745,6 +889,7 @@ export default function Balances() {
               recipient_role: recipientRole,
               amount: balanceDifference,
               transfer_type: transferType,
+              payment_mode: "cash",
               notes: note || undefined,
             })
             .select();
@@ -844,7 +989,10 @@ export default function Balances() {
         (t) =>
           t.transferrer_name?.toLowerCase().includes(search) ||
           t.recipient_name?.toLowerCase().includes(search) ||
-          t.transfer_type.toLowerCase().includes(search)
+          t.transfer_type.toLowerCase().includes(search) ||
+          (t.payment_mode || "").toLowerCase().includes(search) ||
+          (t.source_bank_name_snapshot || "").toLowerCase().includes(search) ||
+          (t.source_account_number_masked_snapshot || "").toLowerCase().includes(search)
       );
     }
 
@@ -862,6 +1010,14 @@ export default function Balances() {
           (t) => t.transferrer_role === transferFilterRole || t.recipient_role === transferFilterRole
         );
       }
+    }
+
+    if (transferFilterMode !== "all") {
+      filtered = filtered.filter((t) => (t.payment_mode || "cash") === transferFilterMode);
+    }
+
+    if (transferFilterBank !== "all") {
+      filtered = filtered.filter((t) => (t.source_bank_account_id || "") === transferFilterBank);
     }
 
     setFilteredTransfers(filtered);
@@ -921,6 +1077,11 @@ export default function Balances() {
           recipient_role: t.recipient_role,
           amount: Number(t.amount),
           transfer_type: t.transfer_type,
+          payment_mode: t.payment_mode || "cash",
+          source_bank_account_id: t.source_bank_account_id ?? undefined,
+          source_bank_name_snapshot: t.source_bank_name_snapshot ?? undefined,
+          source_account_holder_snapshot: t.source_account_holder_snapshot ?? undefined,
+          source_account_number_masked_snapshot: t.source_account_number_masked_snapshot ?? undefined,
           transferred_at: t.transferred_at,
           notes: t.notes || undefined,
           transferred_at_original: t.transferred_at_original ?? undefined,
@@ -1027,7 +1188,7 @@ export default function Balances() {
 
   const exportTransferHistoryToCSV = () => {
     const csvRows = [
-      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Notes", "Original Date", "Edited Date", "Edited By"].join(","),
+      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Payment Mode", "Source Bank", "Source Account", "Notes", "Original Date", "Edited Date", "Edited By"].join(","),
       ...filteredTransfers.map((t) => {
         const row = [
           format(new Date(t.transferred_at), "yyyy-MM-dd HH:mm:ss"),
@@ -1037,6 +1198,9 @@ export default function Balances() {
           t.recipient_role,
           t.amount,
           getTransferTypeLabel(t.transfer_type, t.transferrer_role, t.recipient_role),
+          t.payment_mode === "bank_transfer" ? "Bank Transfer" : "Cash",
+          t.source_bank_name_snapshot ? `"${String(t.source_bank_name_snapshot).replace(/"/g, '""')}"` : "",
+          t.source_account_number_masked_snapshot ? `"${String(t.source_account_number_masked_snapshot).replace(/"/g, '""')}"` : "",
           t.notes ? `"${t.notes.replace(/"/g, '""')}"` : "",
           t.date_edited && t.transferred_at_original ? format(new Date(t.transferred_at_original), "yyyy-MM-dd HH:mm:ss") : "",
           t.date_edited && t.transferred_at_edited_at ? format(new Date(t.transferred_at_edited_at), "yyyy-MM-dd HH:mm:ss") : "",
@@ -1094,22 +1258,32 @@ export default function Balances() {
               <CardTitle>Balances</CardTitle>
               <CardDescription>
                 {userRole === 'cashier' 
-                  ? "Add funds to employee accounts. Amount will be deducted from your balance."
+                  ? "Add funds to employee accounts using cash or bank transfer."
                   : userRole === 'admin'
-                  ? "Add funds to employee accounts. No deduction from your account."
+                  ? "Add funds to employee accounts using cash or bank transfer."
                   : "Add funds to employee accounts"
                 }
               </CardDescription>
             </div>
-            {userRole === 'admin' && (
-              <Button 
-                onClick={() => setBulkAddDialogOpen(true)}
-                className="flex items-center gap-2"
-              >
-                <Users className="h-4 w-4" />
-                Add to Multiple Users
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {userRole === "admin" && (
+                <Button
+                  variant="outline"
+                  onClick={() => setManageBanksOpen(true)}
+                >
+                  Manage Bank Accounts
+                </Button>
+              )}
+              {userRole === 'admin' && (
+                <Button 
+                  onClick={() => setBulkAddDialogOpen(true)}
+                  className="flex items-center gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Add to Multiple Users
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -1124,6 +1298,33 @@ export default function Balances() {
                 className="pl-10"
               />
             </div>
+          </div>
+          <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="inline-flex rounded-lg border p-1 bg-muted/30">
+              <Button
+                type="button"
+                size="sm"
+                variant={allocationMode === "cash" ? "default" : "ghost"}
+                onClick={() => setAllocationMode("cash")}
+                className="h-8"
+              >
+                Cash Transfer
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={allocationMode === "bank_transfer" ? "default" : "ghost"}
+                onClick={() => setAllocationMode("bank_transfer")}
+                className="h-8"
+              >
+                Bank Transfer
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {allocationMode === "cash"
+                ? "Cash page: add amount + note."
+                : "Bank page: select source bank + amount + note."}
+            </p>
           </div>
           {loading ? (
             <div className="min-h-[400px] flex items-center justify-center">
@@ -1181,6 +1382,28 @@ export default function Balances() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2 flex-wrap">
+                        {allocationMode === "bank_transfer" && (
+                          <Select
+                            value={selectedBankAccountByUser[r.user_id] || undefined}
+                            onValueChange={(value) =>
+                              setSelectedBankAccountByUser((prev) => ({ ...prev, [r.user_id]: value }))
+                            }
+                            disabled={userRole === 'cashier' && user?.id === r.user_id}
+                          >
+                            <SelectTrigger className="w-56 h-9 min-w-[190px]">
+                              <SelectValue placeholder={bankAccountsLoading ? "Loading banks..." : "Source bank"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {bankAccounts
+                                .filter((b) => b.is_active)
+                                .map((bank) => (
+                                  <SelectItem key={bank.id} value={bank.id}>
+                                    {bank.bank_name} ({maskAccountNumber(bank.account_number)})
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                         <Input
                           type="number"
                           className="w-32 h-9 min-w-[120px]"
@@ -1227,24 +1450,34 @@ export default function Balances() {
                         <Button
                           size="sm"
                           className="w-20 min-w-[80px]"
-                          disabled={savingId === r.user_id || (userRole === 'cashier' && user?.id === r.user_id)}
+                          disabled={
+                            savingId === r.user_id ||
+                            (userRole === 'cashier' && user?.id === r.user_id) ||
+                            (allocationMode === "bank_transfer" && !selectedBankAccountByUser[r.user_id])
+                          }
                           onClick={() => {
                             console.log('Button clicked for user:', r.user_id, 'userRole:', userRole);
                             const amountToAdd = addAmounts[r.user_id] || 0;
                             const note = (addNotes[r.user_id] || "").trim();
+                            const paymentMode = allocationMode;
+                            const sourceBankAccountId = selectedBankAccountByUser[r.user_id];
                             console.log('Amount to add:', amountToAdd);
                             if (amountToAdd > 0) {
                               if (!note) {
                                 toast({ variant: "destructive", title: "Error", description: "Please add a note for this transfer" });
                                 return;
                               }
-                              addAmountToUser(r.user_id, amountToAdd, note);
+                              if (paymentMode === "bank_transfer" && !sourceBankAccountId) {
+                                toast({ variant: "destructive", title: "Error", description: "Please select a source bank account." });
+                                return;
+                              }
+                              addAmountToUser(r.user_id, amountToAdd, note, { paymentMode, sourceBankAccountId });
                             } else {
                               toast({ variant: "destructive", title: "Error", description: "Please enter an amount to add" });
                             }
                           }}
                         >
-                          {savingId === r.user_id ? "Adding..." : "Add"}
+                          {savingId === r.user_id ? "Adding..." : allocationMode === "bank_transfer" ? "Transfer" : "Add"}
                         </Button>
                       </div>
                     </TableCell>
@@ -1473,6 +1706,7 @@ export default function Balances() {
                             recipient_role: recipientRole,
                             amount: bulkAmount,
                             transfer_type: transferType,
+                            payment_mode: "cash",
                             notes: trimmedBulkNote,
                           })
                           .select();
@@ -1563,6 +1797,112 @@ export default function Balances() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={manageBanksOpen} onOpenChange={setManageBanksOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manage Source Bank Accounts</DialogTitle>
+            <DialogDescription>
+              These accounts are available when using Bank Transfer mode.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Bank Name</Label>
+                <Input
+                  value={newBank.bank_name}
+                  onChange={(e) => setNewBank((prev) => ({ ...prev, bank_name: e.target.value }))}
+                  placeholder="HDFC Bank"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Account Holder Name</Label>
+                <Input
+                  value={newBank.account_holder_name}
+                  onChange={(e) => setNewBank((prev) => ({ ...prev, account_holder_name: e.target.value }))}
+                  placeholder="Company Name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Account Number</Label>
+                <Input
+                  value={newBank.account_number}
+                  onChange={(e) => setNewBank((prev) => ({ ...prev, account_number: e.target.value }))}
+                  placeholder="123456789012"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>IFSC Code</Label>
+                <Input
+                  value={newBank.ifsc_code}
+                  onChange={(e) => setNewBank((prev) => ({ ...prev, ifsc_code: e.target.value.toUpperCase() }))}
+                  placeholder="HDFC0001234"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Branch Name (optional)</Label>
+                <Input
+                  value={newBank.branch_name}
+                  onChange={(e) => setNewBank((prev) => ({ ...prev, branch_name: e.target.value }))}
+                  placeholder="Ahmedabad Main Branch"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={saveBankAccount} disabled={savingBank}>
+                {savingBank ? "Saving..." : "Save Bank Account"}
+              </Button>
+            </div>
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bank</TableHead>
+                    <TableHead>Holder</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>IFSC</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bankAccounts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                        {bankAccountsLoading ? "Loading bank accounts..." : "No bank accounts configured"}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    bankAccounts.map((bank) => (
+                      <TableRow key={bank.id}>
+                        <TableCell>{bank.bank_name}</TableCell>
+                        <TableCell>{bank.account_holder_name}</TableCell>
+                        <TableCell>{maskAccountNumber(bank.account_number)}</TableCell>
+                        <TableCell>{bank.ifsc_code}</TableCell>
+                        <TableCell>
+                          <Badge variant={bank.is_active ? "default" : "secondary"}>
+                            {bank.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleBankAccountStatus(bank)}
+                          >
+                            {bank.is_active ? "Deactivate" : "Activate"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit balance dialog - admin only */}
       <Dialog
         open={editBalanceDialogOpen}
@@ -1648,9 +1988,9 @@ export default function Balances() {
       
           <div className="text-sm text-muted-foreground">
             {userRole === 'cashier' 
-              ? "Note: When you add funds to an employee's account, the amount will be deducted from your balance. Balance is automatically reduced when an expense is approved by admin."
+              ? `Note: ${allocationMode === "cash" ? "Cash mode deducts from your balance." : "Bank Transfer mode credits employee without deducting your wallet."} Source bank is logged for audit.`
               : userRole === 'admin'
-              ? "Note: You can add funds to employee accounts without any deduction from your account. Balance is automatically reduced when an expense is approved by admin."
+              ? `Note: You are on ${allocationMode === "cash" ? "Cash Transfer" : "Bank Transfer"} page. Bank transfers log source account details for tracking.`
               : "Note: Balance is automatically reduced when an expense is approved by admin."
             }
           </div>
@@ -1661,9 +2001,9 @@ export default function Balances() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Cash Transfer History</CardTitle>
+                  <CardTitle>Transfer History</CardTitle>
                   <CardDescription>
-                    View complete history of all cash transfers
+                    View complete history of cash and bank transfers
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -1692,7 +2032,7 @@ export default function Balances() {
             </CardHeader>
             <CardContent>
               {/* Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Search</label>
                   <Input
@@ -1714,6 +2054,9 @@ export default function Balances() {
                       <SelectItem value="admin_to_engineer">Admin → Manager</SelectItem>
                       <SelectItem value="cashier_to_employee">Cashier → Employee</SelectItem>
                       <SelectItem value="cashier_to_engineer">Cashier → Manager</SelectItem>
+                      <SelectItem value="cashier_to_admin">Cashier → Admin</SelectItem>
+                      <SelectItem value="employee_to_cashier">Employee → Cashier</SelectItem>
+                      <SelectItem value="engineer_to_cashier">Manager → Cashier</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1729,6 +2072,35 @@ export default function Balances() {
                       <SelectItem value="cashier">Cashier</SelectItem>
                       <SelectItem value="engineer">Manager</SelectItem>
                       <SelectItem value="employee">Employee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Payment Mode</label>
+                  <Select value={transferFilterMode} onValueChange={setTransferFilterMode}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Modes</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Source Bank</label>
+                  <Select value={transferFilterBank} onValueChange={setTransferFilterBank}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Banks</SelectItem>
+                      {bankAccounts.map((bank) => (
+                        <SelectItem key={bank.id} value={bank.id}>
+                          {bank.bank_name} ({maskAccountNumber(bank.account_number)})
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1754,6 +2126,8 @@ export default function Balances() {
                         <TableHead className="whitespace-nowrap">To</TableHead>
                         <TableHead className="whitespace-nowrap">Amount</TableHead>
                         <TableHead className="whitespace-nowrap">Type</TableHead>
+                        <TableHead className="whitespace-nowrap">Mode</TableHead>
+                        <TableHead className="whitespace-nowrap">Source</TableHead>
                         <TableHead className="whitespace-nowrap">Notes</TableHead>
                         {userRole === "admin" && <TableHead className="whitespace-nowrap text-right">Actions</TableHead>}
                       </TableRow>
@@ -1812,6 +2186,23 @@ export default function Balances() {
                               <Badge variant="secondary">
                                 {getTransferTypeLabel(transfer.transfer_type, transfer.transferrer_role, transfer.recipient_role)}
                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={transfer.payment_mode === "bank_transfer" ? "default" : "secondary"}>
+                                {transfer.payment_mode === "bank_transfer" ? "Bank Transfer" : "Cash"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[220px]">
+                              {transfer.payment_mode === "bank_transfer" ? (
+                                <div className="text-xs">
+                                  <div className="font-medium truncate">{transfer.source_bank_name_snapshot || "-"}</div>
+                                  <div className="text-muted-foreground truncate">
+                                    {transfer.source_account_number_masked_snapshot || "-"}
+                                  </div>
+                                </div>
+                              ) : (
+                                "-"
+                              )}
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate">
                               {transfer.notes || "-"}

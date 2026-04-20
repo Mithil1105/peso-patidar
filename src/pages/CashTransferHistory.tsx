@@ -30,12 +30,22 @@ interface CashTransfer {
   recipient_role: string;
   amount: number;
   transfer_type: string;
+  payment_mode?: "cash" | "bank_transfer";
+  source_bank_account_id?: string | null;
+  source_bank_name_snapshot?: string | null;
+  source_account_number_masked_snapshot?: string | null;
   transferred_at: string;
   notes?: string;
 }
 
+interface BankAccountRow {
+  id: string;
+  bank_name: string;
+  account_number: string;
+}
+
 export default function CashTransferHistory() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, organizationId } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [transfers, setTransfers] = useState<CashTransfer[]>([]);
@@ -43,16 +53,43 @@ export default function CashTransferHistory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterRole, setFilterRole] = useState<string>("all");
+  const [filterMode, setFilterMode] = useState<string>("all");
+  const [filterBank, setFilterBank] = useState<string>("all");
+  const [bankAccounts, setBankAccounts] = useState<BankAccountRow[]>([]);
 
   useEffect(() => {
     if (user && (userRole === "admin" || userRole === "cashier")) {
       fetchTransfers();
+      fetchBankAccounts();
     }
-  }, [user, userRole]);
+  }, [user, userRole, organizationId]);
 
   useEffect(() => {
     applyFilters();
-  }, [transfers, searchTerm, filterType, filterRole]);
+  }, [transfers, searchTerm, filterType, filterRole, filterMode, filterBank]);
+
+  const maskAccountNumber = (accountNumber?: string | null) => {
+    if (!accountNumber) return "-";
+    const trimmed = accountNumber.replace(/\s+/g, "");
+    if (trimmed.length <= 4) return trimmed;
+    return `${"*".repeat(Math.max(0, trimmed.length - 4))}${trimmed.slice(-4)}`;
+  };
+
+  const fetchBankAccounts = async () => {
+    if (!organizationId) return;
+    try {
+      const { data, error } = await supabase
+        .from("organization_bank_accounts")
+        .select("id, bank_name, account_number")
+        .eq("organization_id", organizationId)
+        .order("bank_name", { ascending: true });
+      if (error) throw error;
+      setBankAccounts((data || []) as BankAccountRow[]);
+    } catch (error) {
+      console.warn("Failed to fetch bank accounts for history", error);
+      setBankAccounts([]);
+    }
+  };
 
   const applyFilters = () => {
     let filtered = [...transfers];
@@ -64,7 +101,10 @@ export default function CashTransferHistory() {
         (t) =>
           t.transferrer_name?.toLowerCase().includes(search) ||
           t.recipient_name?.toLowerCase().includes(search) ||
-          t.transfer_type.toLowerCase().includes(search)
+          t.transfer_type.toLowerCase().includes(search) ||
+          (t.payment_mode || "").toLowerCase().includes(search) ||
+          (t.source_bank_name_snapshot || "").toLowerCase().includes(search) ||
+          (t.source_account_number_masked_snapshot || "").toLowerCase().includes(search)
       );
     }
 
@@ -84,6 +124,14 @@ export default function CashTransferHistory() {
           (t) => t.transferrer_role === filterRole || t.recipient_role === filterRole
         );
       }
+    }
+
+    if (filterMode !== "all") {
+      filtered = filtered.filter((t) => (t.payment_mode || "cash") === filterMode);
+    }
+
+    if (filterBank !== "all") {
+      filtered = filtered.filter((t) => (t.source_bank_account_id || "") === filterBank);
     }
 
     setFilteredTransfers(filtered);
@@ -144,6 +192,10 @@ export default function CashTransferHistory() {
           recipient_role: t.recipient_role,
           amount: Number(t.amount),
           transfer_type: t.transfer_type,
+          payment_mode: t.payment_mode || "cash",
+          source_bank_account_id: t.source_bank_account_id ?? undefined,
+          source_bank_name_snapshot: t.source_bank_name_snapshot ?? undefined,
+          source_account_number_masked_snapshot: t.source_account_number_masked_snapshot ?? undefined,
           transferred_at: t.transferred_at,
           notes: t.notes || undefined,
         }));
@@ -171,13 +223,16 @@ export default function CashTransferHistory() {
       admin_to_engineer: "Admin → Manager",
       cashier_to_employee: "Cashier → Employee",
       cashier_to_engineer: "Cashier → Manager",
+      cashier_to_admin: "Cashier → Admin",
+      employee_to_cashier: "Employee → Cashier",
+      engineer_to_cashier: "Manager → Cashier",
     };
     return labels[type] || type;
   };
 
   const exportToCSV = () => {
     const csvRows = [
-      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Notes"].join(","),
+      ["Date", "Transferrer", "Transferrer Role", "Recipient", "Recipient Role", "Amount", "Type", "Payment Mode", "Source Bank", "Source Account", "Notes"].join(","),
       ...filteredTransfers.map((t) => {
         const row = [
           format(new Date(t.transferred_at), "yyyy-MM-dd HH:mm:ss"),
@@ -187,6 +242,9 @@ export default function CashTransferHistory() {
           t.recipient_role,
           t.amount,
           getTransferTypeLabel(t.transfer_type),
+          t.payment_mode === "bank_transfer" ? "Bank Transfer" : "Cash",
+          t.source_bank_name_snapshot ? `"${String(t.source_bank_name_snapshot).replace(/"/g, '""')}"` : "",
+          t.source_account_number_masked_snapshot ? `"${String(t.source_account_number_masked_snapshot).replace(/"/g, '""')}"` : "",
           t.notes ? `"${t.notes.replace(/"/g, '""')}"` : "",
         ];
         return row.join(",");
@@ -228,9 +286,9 @@ export default function CashTransferHistory() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Cash Transfer History</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Transfer History</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            View complete history of all cash transfers
+            View complete history of cash and bank transfers
           </p>
         </div>
         <div className="flex gap-2">
@@ -260,7 +318,7 @@ export default function CashTransferHistory() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="text-sm font-medium mb-2 block">Search</label>
               <Input
@@ -282,6 +340,9 @@ export default function CashTransferHistory() {
                   <SelectItem value="admin_to_engineer">Admin → Manager</SelectItem>
                   <SelectItem value="cashier_to_employee">Cashier → Employee</SelectItem>
                   <SelectItem value="cashier_to_engineer">Cashier → Manager</SelectItem>
+                  <SelectItem value="cashier_to_admin">Cashier → Admin</SelectItem>
+                  <SelectItem value="employee_to_cashier">Employee → Cashier</SelectItem>
+                  <SelectItem value="engineer_to_cashier">Manager → Cashier</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -297,6 +358,35 @@ export default function CashTransferHistory() {
                   <SelectItem value="cashier">Cashier</SelectItem>
                   <SelectItem value="engineer">Manager</SelectItem>
                   <SelectItem value="employee">Employee</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Payment Mode</label>
+              <Select value={filterMode} onValueChange={setFilterMode}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Modes</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Source Bank</label>
+              <Select value={filterBank} onValueChange={setFilterBank}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Banks</SelectItem>
+                  {bankAccounts.map((bank) => (
+                    <SelectItem key={bank.id} value={bank.id}>
+                      {bank.bank_name} ({maskAccountNumber(bank.account_number)})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -331,6 +421,8 @@ export default function CashTransferHistory() {
                     <TableHead className="whitespace-nowrap">To</TableHead>
                     <TableHead className="whitespace-nowrap">Amount</TableHead>
                     <TableHead className="whitespace-nowrap">Type</TableHead>
+                    <TableHead className="whitespace-nowrap">Mode</TableHead>
+                    <TableHead className="whitespace-nowrap">Source</TableHead>
                     <TableHead className="whitespace-nowrap">Notes</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -367,6 +459,23 @@ export default function CashTransferHistory() {
                         <Badge variant="secondary">
                           {getTransferTypeLabel(transfer.transfer_type)}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={transfer.payment_mode === "bank_transfer" ? "default" : "secondary"}>
+                          {transfer.payment_mode === "bank_transfer" ? "Bank Transfer" : "Cash"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[220px]">
+                        {transfer.payment_mode === "bank_transfer" ? (
+                          <div className="text-xs">
+                            <div className="font-medium truncate">{transfer.source_bank_name_snapshot || "-"}</div>
+                            <div className="text-muted-foreground truncate">
+                              {transfer.source_account_number_masked_snapshot || "-"}
+                            </div>
+                          </div>
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate">
                         {transfer.notes || "-"}
