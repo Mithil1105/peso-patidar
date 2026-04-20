@@ -81,6 +81,7 @@ interface Expense {
   isResubmitted?: boolean;
   category?: string | null;
   purpose?: string | null;
+  transaction_number?: string | null;
 }
 
 export default function AdminPanel() {
@@ -1066,23 +1067,123 @@ export default function AdminPanel() {
     return str;
   };
 
+  const chunkIds = <T,>(arr: T[], size: number): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  };
+
   const exportExpenses = async () => {
     try {
-      // Build CSV with all requested fields
-      const csvContent = [
-        ["Date of Transaction", "Category", "Amount", "Expense type", "Transaction ID", "Employee Name", "Location"],
-        ...filteredExpenses.map(expense => [
-          format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "yyyy-MM-dd"), // Date of transaction (expense date)
-          escapeCSV((expense as any).category || "N/A"), // Category
-          Number(expense.total_amount).toFixed(2), // Amount
-          "expense",
-          escapeCSV((expense as any).transaction_number || ''), // Transaction ID
-          escapeCSV(expense.user_name), // Employee name
-          escapeCSV(expense.destination || "Unassigned") // Location of the expense (not employee location)
-        ])
-      ].map(row => row.join(",")).join("\n");
+      const expenseIds = filteredExpenses.map((e) => e.id);
+      const customByExpense: Record<string, Record<string, string>> = {};
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      if (organizationId && expenseIds.length > 0) {
+        for (const batch of chunkIds(expenseIds, 100)) {
+          const { data, error } = await supabase
+            .from("expense_form_field_values")
+            .select("expense_id, field_value, expense_form_field_templates(name)")
+            .in("expense_id", batch)
+            .eq("organization_id", organizationId);
+
+          if (error) {
+            console.warn("Failed to fetch custom fields for export", error);
+            continue;
+          }
+
+          for (const row of data || []) {
+            const r = row as {
+              expense_id: string;
+              field_value: string;
+              expense_form_field_templates: { name: string } | null;
+            };
+            const fieldName = r.expense_form_field_templates?.name ?? "Unknown field";
+            if (!customByExpense[r.expense_id]) customByExpense[r.expense_id] = {};
+            customByExpense[r.expense_id][fieldName] = String(r.field_value ?? "");
+          }
+        }
+      }
+
+      const customHeaders = Array.from(
+        new Set(
+          filteredExpenses.flatMap((e) =>
+            Object.keys(customByExpense[e.id] || {})
+          )
+        )
+      ).sort((a, b) => a.localeCompare(b));
+
+      // Running balances per employee:
+      // approved => deducted from wallet (-amount), other statuses => no wallet deduction.
+      // Start from inferred opening so last row closes at current profile balance.
+      const balanceByExpenseId = new Map<string, { opening: number; closing: number }>();
+      const byUser = new Map<string, Expense[]>();
+      filteredExpenses.forEach((e) => {
+        if (!byUser.has(e.user_id)) byUser.set(e.user_id, []);
+        byUser.get(e.user_id)!.push(e);
+      });
+      for (const [, rows] of byUser) {
+        const sorted = [...rows].sort((a, b) => {
+          const d = new Date(a.trip_start).getTime() - new Date(b.trip_start).getTime();
+          if (d !== 0) return d;
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+        const currentBalance = Number(sorted[0]?.user_balance ?? 0);
+        const totalEffect = sorted.reduce((sum, e) => {
+          const amt = Number(e.total_amount || 0);
+          return sum + (e.status === "approved" ? -amt : 0);
+        }, 0);
+        let running = currentBalance - totalEffect;
+        for (const e of sorted) {
+          const opening = running;
+          const amt = Number(e.total_amount || 0);
+          const effect = e.status === "approved" ? -amt : 0;
+          running += effect;
+          balanceByExpenseId.set(e.id, { opening, closing: running });
+        }
+      }
+
+      const headers = [
+        "Employee Name",
+        "Employee Email",
+        "Date of Transaction",
+        "Submitted Date",
+        "Status",
+        "Transaction ID",
+        "Title",
+        "Purpose",
+        "Category",
+        "Location",
+        "Amount",
+        ...customHeaders,
+        "Opening Balance",
+        "Closing Balance",
+      ];
+
+      const csvContent = [
+        headers,
+        ...filteredExpenses.map((expense) => {
+          const custom = customByExpense[expense.id] || {};
+          const bal = balanceByExpenseId.get(expense.id) ?? { opening: 0, closing: 0 };
+          return [
+            escapeCSV(expense.user_name || ""),
+            escapeCSV(expense.user_email || ""),
+            format(parseLocalDate(expense.trip_start) ?? new Date(expense.trip_start), "yyyy-MM-dd"),
+            format(new Date(expense.created_at), "yyyy-MM-dd"),
+            escapeCSV(expense.status || ""),
+            escapeCSV(expense.transaction_number || ""),
+            escapeCSV(expense.title || ""),
+            escapeCSV(expense.purpose || ""),
+            escapeCSV(expense.category || "N/A"),
+            escapeCSV(expense.destination || "Unassigned"),
+            Number(expense.total_amount || 0).toFixed(2),
+            ...customHeaders.map((h) => escapeCSV(custom[h] ?? "")),
+            Number(bal.opening).toFixed(2),
+            Number(bal.closing).toFixed(2),
+          ];
+        }),
+      ].map((row) => row.join(",")).join("\n");
+
+      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

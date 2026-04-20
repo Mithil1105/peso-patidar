@@ -16,6 +16,82 @@ import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+function chunkIds<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Pending verified claims are not deducted from wallet yet: forward from balance + sum(amounts in this export). */
+function computeRowBalancesForVerification(
+  expenses: { id: string; user_id: string; trip_start: string; created_at: string; total_amount: number | null }[],
+  userBalances: Record<string, number>
+): Map<string, { opening: number; closing: number }> {
+  type Row = (typeof expenses)[number];
+  const byUser = new Map<string, Row[]>();
+  for (const e of expenses) {
+    if (!byUser.has(e.user_id)) byUser.set(e.user_id, []);
+    byUser.get(e.user_id)!.push(e);
+  }
+  const result = new Map<string, { opening: number; closing: number }>();
+  for (const [uid, list] of byUser) {
+    const sorted = [...list].sort((a, b) => {
+      const d = new Date(a.trip_start).getTime() - new Date(b.trip_start).getTime();
+      if (d !== 0) return d;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+    const total = sorted.reduce((s, e) => s + Number(e.total_amount || 0), 0);
+    let run = (userBalances[uid] ?? 0) + total;
+    for (const e of sorted) {
+      const amt = Number(e.total_amount || 0);
+      const opening = run;
+      const closing = run - amt;
+      result.set(e.id, { opening, closing });
+      run = closing;
+    }
+  }
+  return result;
+}
+
+/** Approved amounts are reflected in current balance: walk backward from profile balance. */
+function computeRowBalancesForApproval(
+  expenses: { id: string; user_id: string; trip_start: string; created_at: string; total_amount: number | null }[],
+  userBalances: Record<string, number>
+): Map<string, { opening: number; closing: number }> {
+  type Row = (typeof expenses)[number];
+  const byUser = new Map<string, Row[]>();
+  for (const e of expenses) {
+    if (!byUser.has(e.user_id)) byUser.set(e.user_id, []);
+    byUser.get(e.user_id)!.push(e);
+  }
+  const result = new Map<string, { opening: number; closing: number }>();
+  for (const [uid, list] of byUser) {
+    const sorted = [...list].sort((a, b) => {
+      const d = new Date(a.trip_start).getTime() - new Date(b.trip_start).getTime();
+      if (d !== 0) return d;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+    let run = userBalances[uid] ?? 0;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const e = sorted[i];
+      const amt = Number(e.total_amount || 0);
+      const closing = run;
+      const opening = run + amt;
+      result.set(e.id, { opening, closing });
+      run = opening;
+    }
+  }
+  return result;
+}
+
+function sortedCustomFieldKeys(rows: { custom_fields?: Record<string, string> }[]): string[] {
+  const keys = new Set<string>();
+  rows.forEach((r) => {
+    Object.keys(r.custom_fields || {}).forEach((k) => keys.add(k));
+  });
+  return [...keys].sort((a, b) => a.localeCompare(b));
+}
+
 interface ExpenseWithUser {
   id: string;
   user_id: string;
@@ -28,8 +104,10 @@ interface ExpenseWithUser {
   category: string | null;
   purpose?: string | null;
   destination?: string | null;
+  transaction_number?: string | null;
   user_name: string;
   user_email: string;
+  custom_fields?: Record<string, string>;
 }
 
 interface UserRow {
@@ -49,7 +127,7 @@ interface AllocationRecord {
 }
 
 export default function Reports() {
-  const { userRole } = useAuth();
+  const { userRole, organizationId } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"verification" | "approval" | "detailed">("verification");
   
@@ -123,6 +201,35 @@ export default function Reports() {
     }
   };
 
+  const fetchCustomFieldValuesForExpenseIds = async (
+    expenseIds: string[]
+  ): Promise<Record<string, Record<string, string>>> => {
+    if (!organizationId || expenseIds.length === 0) return {};
+    const result: Record<string, Record<string, string>> = {};
+    for (const batch of chunkIds(expenseIds, 100)) {
+      const { data, error } = await supabase
+        .from("expense_form_field_values")
+        .select("expense_id, field_value, expense_form_field_templates(name)")
+        .in("expense_id", batch)
+        .eq("organization_id", organizationId);
+      if (error) {
+        console.warn("expense_form_field_values (reports)", error);
+        continue;
+      }
+      for (const row of data || []) {
+        const r = row as {
+          expense_id: string;
+          field_value: string;
+          expense_form_field_templates: { name: string } | null;
+        };
+        const name = r.expense_form_field_templates?.name ?? "Unknown field";
+        if (!result[r.expense_id]) result[r.expense_id] = {};
+        result[r.expense_id][name] = String(r.field_value ?? "");
+      }
+    }
+    return result;
+  };
+
   const fetchCategories = async () => {
     try {
       let { data, error } = await supabase
@@ -160,7 +267,7 @@ export default function Reports() {
       setLoading(true);
       let query = supabase
         .from("expenses")
-        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category")
+        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category, purpose, destination, transaction_number")
         .eq("status", "verified");
       
       if (selectedEmployee !== "all") query = query.eq("user_id", selectedEmployee);
@@ -182,12 +289,15 @@ export default function Reports() {
 
       if (profilesError) throw profilesError;
 
+      const customByExpense = await fetchCustomFieldValuesForExpenseIds(data.map((e) => e.id));
+
       const expensesWithUsers: ExpenseWithUser[] = data.map(expense => {
         const profile = profiles?.find(p => p.user_id === expense.user_id);
         return {
           ...expense,
           user_name: profile?.name || "Unknown User",
           user_email: profile?.email || "",
+          custom_fields: customByExpense[expense.id] ?? {},
         } as ExpenseWithUser;
       });
 
@@ -204,7 +314,7 @@ export default function Reports() {
       setLoading(true);
       let query = supabase
         .from("expenses")
-        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category")
+        .select("id, user_id, title, total_amount, status, created_at, trip_start, trip_end, category, purpose, destination, transaction_number")
         .eq("status", "approved");
       
       if (selectedEmployee !== "all") query = query.eq("user_id", selectedEmployee);
@@ -226,12 +336,15 @@ export default function Reports() {
 
       if (profilesError) throw profilesError;
 
+      const customByExpense = await fetchCustomFieldValuesForExpenseIds(data.map((e) => e.id));
+
       const expensesWithUsers: ExpenseWithUser[] = data.map(expense => {
         const profile = profiles?.find(p => p.user_id === expense.user_id);
         return {
           ...expense,
           user_name: profile?.name || "Unknown User",
           user_email: profile?.email || "",
+          custom_fields: customByExpense[expense.id] ?? {},
         } as ExpenseWithUser;
       });
 
@@ -287,12 +400,15 @@ export default function Reports() {
 
       if (profilesError) throw profilesError;
 
+      const customByExpense = await fetchCustomFieldValuesForExpenseIds(data.map((e) => e.id));
+
       const expensesWithUsers: ExpenseWithUser[] = data.map(expense => {
         const profile = profiles?.find(p => p.user_id === expense.user_id);
         return {
           ...expense,
           user_name: profile?.name || "Unknown User",
           user_email: profile?.email || "",
+          custom_fields: customByExpense[expense.id] ?? {},
         } as ExpenseWithUser;
       });
 
@@ -372,20 +488,53 @@ export default function Reports() {
 
   const exportVerificationList = (format: ExportFormat) => {
     const baseName = `claim-verification-list-${new Date().toISOString().slice(0, 10)}`;
-    const headers = ["Employee", "Expense Type", "LPO Number", "Bill Date (DD-MM-YYYY)", "Bill Amount", "Manager Approval", "HO Approval", "Submitted On (DD-MM-YYYY)"];
-    const rows = verificationExpenses.map((exp) => ({
-      Employee: exp.user_name,
-      "Expense Type": exp.category || "-",
-      "LPO Number": "-",
-      "Bill Date (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_start),
-      "Bill Amount": formatINR(Number(exp.total_amount || 0)),
-      "Manager Approval": "Verified",
-      "HO Approval": "Pending",
-      "Submitted On (DD-MM-YYYY)": formatDateDDMMYYYY(exp.created_at),
-    }));
+    const fixedHeaders = [
+      "Employee",
+      "Employee Email",
+      "Transaction #",
+      "Title",
+      "Purpose",
+      "Destination",
+      "Expense Type",
+      "LPO Number",
+      "Bill Date (DD-MM-YYYY)",
+      "Trip End (DD-MM-YYYY)",
+      "Bill Amount",
+      "Status",
+      "Manager Approval",
+      "HO Approval",
+      "Submitted On (DD-MM-YYYY)",
+    ];
+    const headers = [...fixedHeaders, ...verificationCustomKeys, "Opening Balance", "Closing Balance"];
+    const rows = verificationExpenses.map((exp) => {
+      const bal = verificationRowBalances.get(exp.id) ?? { opening: 0, closing: 0 };
+      const row: Record<string, string> = {
+        Employee: exp.user_name,
+        "Employee Email": exp.user_email,
+        "Transaction #": exp.transaction_number || "",
+        Title: exp.title || "",
+        Purpose: exp.purpose || "",
+        Destination: exp.destination || "",
+        "Expense Type": exp.category || "-",
+        "LPO Number": "-",
+        "Bill Date (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_start),
+        "Trip End (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_end),
+        "Bill Amount": formatINR(Number(exp.total_amount || 0)),
+        Status: exp.status || "",
+        "Manager Approval": "Verified",
+        "HO Approval": "Pending",
+        "Submitted On (DD-MM-YYYY)": formatDateDDMMYYYY(exp.created_at),
+        "Opening Balance": formatINR(bal.opening),
+        "Closing Balance": formatINR(bal.closing),
+      };
+      verificationCustomKeys.forEach((k) => {
+        row[k] = exp.custom_fields?.[k] ?? "";
+      });
+      return row;
+    });
 
     if (format === "csv") {
-      const csv = [headers.map(escapeCsv).join(","), ...rows.map((r) => headers.map((h) => escapeCsv((r as Record<string, string>)[h])).join(","))].join("\n");
+      const csv = [headers.map(escapeCsv).join(","), ...rows.map((r) => headers.map((h) => escapeCsv((r as Record<string, string>)[h] ?? "")).join(","))].join("\n");
       downloadBlob(`${baseName}.csv`, new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
     } else if (format === "json") {
       downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }));
@@ -409,13 +558,13 @@ export default function Reports() {
       autoTable(doc, {
         startY: 32,
         head: [headers],
-        body: rows.map((r) => headers.map((h) => (r as Record<string, string>)[h])),
+        body: rows.map((r) => headers.map((h) => (r as Record<string, string>)[h] ?? "")),
         theme: "striped",
-        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 9 },
-        bodyStyles: { fontSize: 8, textColor: [33, 37, 41] },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 7 },
+        bodyStyles: { fontSize: 6, textColor: [33, 37, 41] },
         alternateRowStyles: { fillColor: [248, 249, 250] },
-        margin: { left: 14, right: 14 },
-        columnStyles: { 4: { halign: "right" } },
+        margin: { left: 10, right: 10 },
+        styles: { fontSize: 6, cellPadding: 1 },
       });
       doc.save(`${baseName}.pdf`);
     }
@@ -423,20 +572,53 @@ export default function Reports() {
 
   const exportApprovalList = (format: ExportFormat) => {
     const baseName = `claim-approval-list-${new Date().toISOString().slice(0, 10)}`;
-    const headers = ["Employee", "Expense Type", "LPO Number", "Bill Date (DD-MM-YYYY)", "Bill Amount", "Manager Approval", "HO Approval", "Submitted On (DD-MM-YYYY)"];
-    const rows = approvalExpenses.map((exp) => ({
-      Employee: exp.user_name,
-      "Expense Type": exp.category || "-",
-      "LPO Number": "-",
-      "Bill Date (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_start),
-      "Bill Amount": formatINR(Number(exp.total_amount || 0)),
-      "Manager Approval": "Verified",
-      "HO Approval": "Approved",
-      "Submitted On (DD-MM-YYYY)": formatDateDDMMYYYY(exp.created_at),
-    }));
+    const fixedHeaders = [
+      "Employee",
+      "Employee Email",
+      "Transaction #",
+      "Title",
+      "Purpose",
+      "Destination",
+      "Expense Type",
+      "LPO Number",
+      "Bill Date (DD-MM-YYYY)",
+      "Trip End (DD-MM-YYYY)",
+      "Bill Amount",
+      "Status",
+      "Manager Approval",
+      "HO Approval",
+      "Submitted On (DD-MM-YYYY)",
+    ];
+    const headers = [...fixedHeaders, ...approvalCustomKeys, "Opening Balance", "Closing Balance"];
+    const rows = approvalExpenses.map((exp) => {
+      const bal = approvalRowBalances.get(exp.id) ?? { opening: 0, closing: 0 };
+      const row: Record<string, string> = {
+        Employee: exp.user_name,
+        "Employee Email": exp.user_email,
+        "Transaction #": exp.transaction_number || "",
+        Title: exp.title || "",
+        Purpose: exp.purpose || "",
+        Destination: exp.destination || "",
+        "Expense Type": exp.category || "-",
+        "LPO Number": "-",
+        "Bill Date (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_start),
+        "Trip End (DD-MM-YYYY)": formatDateDDMMYYYY(exp.trip_end),
+        "Bill Amount": formatINR(Number(exp.total_amount || 0)),
+        Status: exp.status || "",
+        "Manager Approval": "Verified",
+        "HO Approval": "Approved",
+        "Submitted On (DD-MM-YYYY)": formatDateDDMMYYYY(exp.created_at),
+        "Opening Balance": formatINR(bal.opening),
+        "Closing Balance": formatINR(bal.closing),
+      };
+      approvalCustomKeys.forEach((k) => {
+        row[k] = exp.custom_fields?.[k] ?? "";
+      });
+      return row;
+    });
 
     if (format === "csv") {
-      const csv = [headers.map(escapeCsv).join(","), ...rows.map((r) => headers.map((h) => escapeCsv((r as Record<string, string>)[h])).join(","))].join("\n");
+      const csv = [headers.map(escapeCsv).join(","), ...rows.map((r) => headers.map((h) => escapeCsv((r as Record<string, string>)[h] ?? "")).join(","))].join("\n");
       downloadBlob(`${baseName}.csv`, new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
     } else if (format === "json") {
       downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }));
@@ -460,13 +642,13 @@ export default function Reports() {
       autoTable(doc, {
         startY: 32,
         head: [headers],
-        body: rows.map((r) => headers.map((h) => (r as Record<string, string>)[h])),
+        body: rows.map((r) => headers.map((h) => (r as Record<string, string>)[h] ?? "")),
         theme: "striped",
-        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 9 },
-        bodyStyles: { fontSize: 8, textColor: [33, 37, 41] },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 7 },
+        bodyStyles: { fontSize: 6, textColor: [33, 37, 41] },
         alternateRowStyles: { fillColor: [248, 249, 250] },
-        margin: { left: 14, right: 14 },
-        columnStyles: { 4: { halign: "right" } },
+        margin: { left: 10, right: 10 },
+        styles: { fontSize: 6, cellPadding: 1 },
       });
       doc.save(`${baseName}.pdf`);
     }
@@ -477,18 +659,38 @@ export default function Reports() {
     const safeName = employeeName.replace(/[^a-zA-Z0-9-_]/g, "-");
     const baseName = `detailed-expense-report-${safeName}-${selectedYear}-${new Date().toISOString().slice(0, 10)}`;
 
-    const headers = ["Bill Date", "Type of Expense", "Purpose", "Destination", "Credit", "Debit", "Notes", "Opening Balance", "Closing Balance"];
-    const detailRows = detailedListWithBalances.map((row) => ({
-      "Bill Date": formatDateDDMMYYYY(row.date),
-      "Type of Expense": row.category,
-      Purpose: row.purpose ?? "-",
-      Destination: row.destination ?? "-",
-      Credit: row.type === "allocation" ? formatINR(row.credit) : "",
-      Debit: row.type === "expense" ? formatINR(row.debit) : "",
-      Notes: row.notes,
-      "Opening Balance": formatINR(row.openingBalance),
-      "Closing Balance": formatINR(row.closingBalance),
-    }));
+    const headers = [
+      "Bill Date",
+      "Title",
+      "Type of Expense",
+      "Purpose",
+      "Destination",
+      ...detailedCustomKeys,
+      "Credit",
+      "Debit",
+      "Notes",
+      "Opening Balance",
+      "Closing Balance",
+    ];
+
+    const detailRows = detailedListWithBalances.map((row) => {
+      const r: Record<string, string> = {
+        "Bill Date": formatDateDDMMYYYY(row.date),
+        Title: row.type === "expense" ? row.title ?? "" : "",
+        "Type of Expense": row.category,
+        Purpose: row.purpose ?? "-",
+        Destination: row.destination ?? "-",
+        Credit: row.type === "allocation" ? formatINR(row.credit) : "",
+        Debit: row.type === "expense" ? formatINR(row.debit) : "",
+        Notes: row.notes,
+        "Opening Balance": formatINR(row.openingBalance),
+        "Closing Balance": formatINR(row.closingBalance),
+      };
+      detailedCustomKeys.forEach((k) => {
+        r[k] = row.type === "expense" ? row.customFields?.[k] ?? "" : "";
+      });
+      return r;
+    });
 
     const summaryRows: Record<string, string>[] = [];
     if (totalAllocationsInPeriod > 0) summaryRows.push({ Category: "Account Credited", Amount: formatINR(totalAllocationsInPeriod) });
@@ -497,16 +699,30 @@ export default function Reports() {
 
     const reconstructedClosing = detailedListWithBalances.length > 0 ? detailedListWithBalances[detailedListWithBalances.length - 1].closingBalance : balanceInfo.closing;
 
+    const emptyHeaderRow = (): Record<string, string> => {
+      const o: Record<string, string> = {};
+      headers.forEach((h) => {
+        o[h] = "";
+      });
+      return o;
+    };
+
     if (format === "csv") {
       const lines: string[] = [headers.map(escapeCsv).join(",")];
       if (selectedUser) {
-        lines.push(["", "", "", "", "", "", "Opening Balance", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)].map(escapeCsv).join(","));
-        detailedListWithBalances.forEach((row) => {
-          const creditStr = row.type === "allocation" ? formatINR(row.credit) : "";
-          const debitStr = row.type === "expense" ? formatINR(row.debit) : "";
-          lines.push([formatDateDDMMYYYY(row.date), row.category, row.purpose ?? "-", row.destination ?? "-", creditStr, debitStr, row.notes, formatINR(row.openingBalance), formatINR(row.closingBalance)].map(escapeCsv).join(","));
+        const openMeta = emptyHeaderRow();
+        openMeta["Type of Expense"] = "Opening Balance";
+        openMeta["Opening Balance"] = formatINR(balanceInfo.opening);
+        openMeta["Closing Balance"] = formatINR(balanceInfo.opening);
+        lines.push(headers.map((h) => escapeCsv(openMeta[h] ?? "")).join(","));
+        detailRows.forEach((dr) => {
+          lines.push(headers.map((h) => escapeCsv(dr[h] ?? "")).join(","));
         });
-        lines.push(["", "", "", "", "", "", "Closing Balance", formatINR(reconstructedClosing), formatINR(reconstructedClosing)].map(escapeCsv).join(","));
+        const closeMeta = emptyHeaderRow();
+        closeMeta["Type of Expense"] = "Closing Balance";
+        closeMeta["Opening Balance"] = formatINR(reconstructedClosing);
+        closeMeta["Closing Balance"] = formatINR(reconstructedClosing);
+        lines.push(headers.map((h) => escapeCsv(closeMeta[h] ?? "")).join(","));
         lines.push("");
         lines.push(["Summary", ""].map(escapeCsv).join(","));
         if (totalAllocationsInPeriod > 0) lines.push(["Account Credited", formatINR(totalAllocationsInPeriod)].map(escapeCsv).join(","));
@@ -526,8 +742,14 @@ export default function Reports() {
       downloadBlob(`${baseName}.json`, new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     } else if (format === "xlsx") {
       const wb = XLSX.utils.book_new();
-      const openingRow: Record<string, string> = { "Bill Date": "", "Type of Expense": "Opening Balance", Purpose: "", Destination: "", Credit: "", Debit: "", Notes: "", "Opening Balance": formatINR(balanceInfo.opening), "Closing Balance": formatINR(balanceInfo.opening) };
-      const closingRow: Record<string, string> = { "Bill Date": "", "Type of Expense": "Closing Balance", Purpose: "", Destination: "", Credit: "", Debit: "", Notes: "", "Opening Balance": formatINR(reconstructedClosing), "Closing Balance": formatINR(reconstructedClosing) };
+      const openingRow: Record<string, string> = emptyHeaderRow();
+      openingRow["Type of Expense"] = "Opening Balance";
+      openingRow["Opening Balance"] = formatINR(balanceInfo.opening);
+      openingRow["Closing Balance"] = formatINR(balanceInfo.opening);
+      const closingRow: Record<string, string> = emptyHeaderRow();
+      closingRow["Type of Expense"] = "Closing Balance";
+      closingRow["Opening Balance"] = formatINR(reconstructedClosing);
+      closingRow["Closing Balance"] = formatINR(reconstructedClosing);
       const wsDetail = XLSX.utils.json_to_sheet([openingRow, ...detailRows, closingRow]);
       XLSX.utils.book_append_sheet(wb, wsDetail, "Detailed List");
       const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
@@ -538,7 +760,6 @@ export default function Reports() {
       const pageW = doc.internal.pageSize.getWidth();
       const margin = 14;
 
-      // Header block
       doc.setFillColor(30, 58, 95);
       doc.rect(0, 0, pageW, 36, "F");
       doc.setTextColor(255, 255, 255);
@@ -552,40 +773,51 @@ export default function Reports() {
       doc.text(`Generated: ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`, pageW - margin, 26, { align: "right" });
       doc.setTextColor(0, 0, 0);
 
-      // Truncate long notes for table layout (max ~40 chars for landscape)
       const truncate = (s: string, maxLen: number) => (s.length <= maxLen ? s : s.slice(0, maxLen - 2) + "…");
 
+      const openMeta = emptyHeaderRow();
+      openMeta["Type of Expense"] = "Opening Balance";
+      openMeta["Opening Balance"] = formatINR(balanceInfo.opening);
+      openMeta["Closing Balance"] = formatINR(balanceInfo.opening);
+      const closeMeta = emptyHeaderRow();
+      closeMeta["Type of Expense"] = "Closing Balance";
+      closeMeta["Opening Balance"] = formatINR(reconstructedClosing);
+      closeMeta["Closing Balance"] = formatINR(reconstructedClosing);
+
+      const pdfDetailRows = detailRows.map((dr) =>
+        headers.map((h) => {
+          const v = dr[h] ?? "";
+          if (h === "Notes" || h === "Purpose" || h === "Destination" || detailedCustomKeys.includes(h)) return truncate(v, 28);
+          return v;
+        })
+      );
+
       const detailBody: string[][] = [
-        ["", "Opening Balance", "", "", "", "", "", formatINR(balanceInfo.opening), formatINR(balanceInfo.opening)],
-        ...detailedListWithBalances.map((row) => [
-          formatDateDDMMYYYY(row.date),
-          row.category,
-          truncate(row.purpose ?? "-", 30),
-          truncate(row.destination ?? "-", 20),
-          row.type === "allocation" ? formatINR(row.credit) : "",
-          row.type === "expense" ? formatINR(row.debit) : "",
-          truncate(row.notes, 42),
-          formatINR(row.openingBalance),
-          formatINR(row.closingBalance),
-        ]),
-        ["", "Closing Balance", "", "", "", "", "", formatINR(reconstructedClosing), formatINR(reconstructedClosing)],
+        headers.map((h) => truncate(openMeta[h] ?? "", 28)),
+        ...pdfDetailRows,
+        headers.map((h) => truncate(closeMeta[h] ?? "", 28)),
       ];
+
+      const idxCredit = headers.indexOf("Credit");
+      const idxDebit = headers.indexOf("Debit");
+      const idxOb = headers.indexOf("Opening Balance");
+      const idxCb = headers.indexOf("Closing Balance");
+      const columnStyles: Record<number, { halign: string }> = {};
+      [idxCredit, idxDebit, idxOb, idxCb].forEach((i) => {
+        if (i >= 0) columnStyles[i] = { halign: "right" };
+      });
 
       autoTable(doc, {
         startY: 42,
         head: [headers],
         body: detailBody,
         theme: "striped",
-        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 8 },
-        bodyStyles: { fontSize: 7, textColor: [33, 37, 41] },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold", fontSize: 6 },
+        bodyStyles: { fontSize: 6, textColor: [33, 37, 41] },
         alternateRowStyles: { fillColor: [248, 249, 250] },
         margin: { left: margin, right: margin },
-        columnStyles: {
-          4: { halign: "right" },
-          5: { halign: "right" },
-          7: { halign: "right" },
-          8: { halign: "right" },
-        },
+        columnStyles,
+        styles: { fontSize: 6, cellPadding: 1 },
         didDrawTable: (data) => {
           (doc as any).lastAutoTable = data;
         },
@@ -705,9 +937,11 @@ export default function Reports() {
       debit: 0,
       notes: a.transferrer_role === "admin" ? "By Admin" : "By Cashier",
       category: "Account Credited",
+      title: "",
       purpose: a.transferrer_role === "admin" ? "Account credited by Admin" : "Account credited by Cashier",
       destination: "-",
       isApproved: true,
+      customFields: {} as Record<string, string>,
     }));
 
     const expenseRows = detailedExpenses.map((e) => ({
@@ -719,9 +953,11 @@ export default function Reports() {
       debit: Number(e.total_amount || 0),
       notes: e.purpose || "-",
       category: e.category || "-",
+      title: e.title || "",
       purpose: e.purpose || "-",
       destination: e.destination || "-",
       isApproved: e.status === "approved",
+      customFields: e.custom_fields ?? {},
     }));
 
     const combined = [...allocationRows, ...expenseRows].sort((a, b) => {
@@ -740,6 +976,25 @@ export default function Reports() {
       return { ...row, openingBalance: opening, closingBalance: running };
     });
   }, [selectedUser, detailedAllocations, detailedExpenses, balanceInfo.opening]);
+
+  const userBalancesByUserId = useMemo(
+    () => Object.fromEntries(users.map((u) => [u.user_id, u.balance])),
+    [users]
+  );
+
+  const verificationRowBalances = useMemo(
+    () => computeRowBalancesForVerification(verificationExpenses, userBalancesByUserId),
+    [verificationExpenses, userBalancesByUserId]
+  );
+
+  const approvalRowBalances = useMemo(
+    () => computeRowBalancesForApproval(approvalExpenses, userBalancesByUserId),
+    [approvalExpenses, userBalancesByUserId]
+  );
+
+  const verificationCustomKeys = useMemo(() => sortedCustomFieldKeys(verificationExpenses), [verificationExpenses]);
+  const approvalCustomKeys = useMemo(() => sortedCustomFieldKeys(approvalExpenses), [approvalExpenses]);
+  const detailedCustomKeys = useMemo(() => sortedCustomFieldKeys(detailedExpenses), [detailedExpenses]);
 
   if (userRole !== "admin") {
     return (
@@ -826,10 +1081,15 @@ export default function Reports() {
                   <thead className="bg-slate-100 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Employee</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Transaction #</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Title</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Purpose</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Expense Type</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO Number</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date (DD-MM-YYYY)</th>
                       <th className="px-4 py-3 text-right font-semibold text-slate-700">Bill Amount</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-700">Opening Balance</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-700">Closing Balance</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Manager Approval</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">HO Approval</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted On (DD-MM-YYYY)</th>
@@ -839,20 +1099,25 @@ export default function Reports() {
                   <tbody className="divide-y">
                     {loading ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                        <td colSpan={14} className="px-4 py-8 text-center text-slate-500">Loading...</td>
                       </tr>
                     ) : verificationExpenses.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
+                        <td colSpan={14} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
                       </tr>
                     ) : (
                       verificationExpenses.map(exp => (
                         <tr key={exp.id} className="hover:bg-slate-50">
                           <td className="px-4 py-3">{exp.user_name}</td>
+                          <td className="px-4 py-3">{exp.transaction_number || "-"}</td>
+                          <td className="px-4 py-3 max-w-[140px] truncate" title={exp.title || ""}>{exp.title || "-"}</td>
+                          <td className="px-4 py-3 max-w-[160px] truncate" title={exp.purpose || ""}>{exp.purpose || "-"}</td>
                           <td className="px-4 py-3">{exp.category || "-"}</td>
                           <td className="px-4 py-3">-</td>
                           <td className="px-4 py-3">{formatDateDDMMYYYY(exp.trip_start)}</td>
                           <td className="px-4 py-3 text-right font-medium">{formatINR(Number(exp.total_amount || 0))}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatINR(verificationRowBalances.get(exp.id)?.opening ?? 0)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-medium">{formatINR(verificationRowBalances.get(exp.id)?.closing ?? 0)}</td>
                           <td className="px-4 py-3">
                             <StatusBadge status="verified" />
                           </td>
@@ -954,10 +1219,15 @@ export default function Reports() {
                   <thead className="bg-slate-100 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Employee</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Transaction #</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Title</th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">Purpose</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Expense Type</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">LPO Number</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date (DD-MM-YYYY)</th>
                       <th className="px-4 py-3 text-right font-semibold text-slate-700">Bill Amount</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-700">Opening Balance</th>
+                      <th className="px-4 py-3 text-right font-semibold text-slate-700">Closing Balance</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Manager Approval</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">HO Approval</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Submitted On (DD-MM-YYYY)</th>
@@ -967,20 +1237,25 @@ export default function Reports() {
                   <tbody className="divide-y">
                     {loading ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                        <td colSpan={14} className="px-4 py-8 text-center text-slate-500">Loading...</td>
                       </tr>
                     ) : approvalExpenses.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
+                        <td colSpan={14} className="px-4 py-8 text-center text-slate-500">No expenses found</td>
                       </tr>
                     ) : (
                       approvalExpenses.map(exp => (
                         <tr key={exp.id} className="hover:bg-slate-50">
                           <td className="px-4 py-3">{exp.user_name}</td>
+                          <td className="px-4 py-3">{exp.transaction_number || "-"}</td>
+                          <td className="px-4 py-3 max-w-[140px] truncate" title={exp.title || ""}>{exp.title || "-"}</td>
+                          <td className="px-4 py-3 max-w-[160px] truncate" title={exp.purpose || ""}>{exp.purpose || "-"}</td>
                           <td className="px-4 py-3">{exp.category || "-"}</td>
                           <td className="px-4 py-3">-</td>
                           <td className="px-4 py-3">{formatDateDDMMYYYY(exp.trip_start)}</td>
                           <td className="px-4 py-3 text-right font-medium">{formatINR(Number(exp.total_amount || 0))}</td>
+                          <td className="px-4 py-3 text-right text-sm">{formatINR(approvalRowBalances.get(exp.id)?.opening ?? 0)}</td>
+                          <td className="px-4 py-3 text-right text-sm font-medium">{formatINR(approvalRowBalances.get(exp.id)?.closing ?? 0)}</td>
                           <td className="px-4 py-3">
                             <StatusBadge status="verified" />
                           </td>
@@ -1116,9 +1391,13 @@ export default function Reports() {
                       <thead className="bg-slate-100 border-b">
                         <tr>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Bill Date</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-700">Title</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Type of Expense</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Purpose</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Destination</th>
+                          {detailedCustomKeys.map((k) => (
+                            <th key={k} className="px-4 py-3 text-left font-semibold text-slate-700 whitespace-nowrap">{k}</th>
+                          ))}
                           <th className="px-4 py-3 text-right font-semibold text-slate-700">Credit</th>
                           <th className="px-4 py-3 text-right font-semibold text-slate-700">Debit</th>
                           <th className="px-4 py-3 text-left font-semibold text-slate-700">Notes</th>
@@ -1130,26 +1409,32 @@ export default function Reports() {
                         {selectedUser && (
                           <>
                             <tr className="bg-slate-50 font-medium">
-                              <td className="px-4 py-3" colSpan={6}></td>
+                              <td className="px-4 py-3" colSpan={5 + detailedCustomKeys.length + 2}></td>
                               <td className="px-4 py-3">Opening Balance</td>
                               <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
                               <td className="px-4 py-3 text-right font-medium">{formatINR(balanceInfo.opening)}</td>
                             </tr>
                             {loading ? (
                               <tr>
-                                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading...</td>
+                                <td colSpan={10 + detailedCustomKeys.length} className="px-4 py-8 text-center text-slate-500">Loading...</td>
                               </tr>
                             ) : detailedListWithBalances.length === 0 ? (
                               <tr>
-                                <td colSpan={9} className="px-4 py-6 text-center text-slate-500">No allocations or expenses in this period</td>
+                                <td colSpan={10 + detailedCustomKeys.length} className="px-4 py-6 text-center text-slate-500">No allocations or expenses in this period</td>
                               </tr>
                             ) : (
                               detailedListWithBalances.map((row) => (
                                 <tr key={row.id} className="hover:bg-slate-50">
                                   <td className="px-4 py-3">{formatDateDDMMYYYY(row.date)}</td>
+                                  <td className="px-4 py-3 max-w-[120px] truncate" title={row.type === "expense" ? row.title : ""}>{row.type === "expense" ? row.title || "-" : "-"}</td>
                                   <td className="px-4 py-3">{row.category}</td>
                                   <td className="px-4 py-3">{row.purpose ?? "-"}</td>
                                   <td className="px-4 py-3">{row.destination ?? "-"}</td>
+                                  {detailedCustomKeys.map((k) => (
+                                    <td key={k} className="px-4 py-3 max-w-[140px] truncate text-sm" title={row.type === "expense" ? row.customFields?.[k] ?? "" : ""}>
+                                      {row.type === "expense" ? row.customFields?.[k] ?? "" : ""}
+                                    </td>
+                                  ))}
                                   <td className="px-4 py-3 text-right font-medium">{row.type === "allocation" ? formatINR(row.credit) : ""}</td>
                                   <td className="px-4 py-3 text-right font-medium">{row.type === "expense" ? formatINR(row.debit) : ""}</td>
                                   <td className="px-4 py-3">{row.notes}</td>
@@ -1160,7 +1445,7 @@ export default function Reports() {
                             )}
                             {selectedUser && !loading && detailedListWithBalances.length > 0 && (
                               <tr className="bg-slate-50 font-medium">
-                                <td className="px-4 py-3" colSpan={6}></td>
+                                <td className="px-4 py-3" colSpan={5 + detailedCustomKeys.length + 2}></td>
                                 <td className="px-4 py-3">Closing Balance</td>
                                 <td className="px-4 py-3 text-right font-medium">{formatINR(detailedListWithBalances[detailedListWithBalances.length - 1].closingBalance)}</td>
                                 <td className="px-4 py-3 text-right font-medium">{formatINR(detailedListWithBalances[detailedListWithBalances.length - 1].closingBalance)}</td>
@@ -1170,7 +1455,7 @@ export default function Reports() {
                         )}
                         {!selectedUser && (
                           <tr>
-                            <td colSpan={9} className="px-4 py-8 text-center text-slate-500">Select an employee to view detailed report</td>
+                            <td colSpan={10 + detailedCustomKeys.length} className="px-4 py-8 text-center text-slate-500">Select an employee to view detailed report</td>
                           </tr>
                         )}
                       </tbody>
