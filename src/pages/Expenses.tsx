@@ -267,6 +267,7 @@ export default function Expenses() {
       // Determine target role and find target user
       let targetRole: "cashier" | "admin" | null = null;
       let targetUserId: string | null = null;
+      let transferOrganizationId: string | null = null;
 
       if (userRole === "engineer" || userRole === "employee") {
         targetRole = "cashier";
@@ -327,6 +328,7 @@ export default function Expenses() {
         }
 
         if (cashierMembership?.organization_id) {
+          transferOrganizationId = cashierMembership.organization_id;
           const { data: adminMemberships, error: adminMembershipsError } = await supabase
             .from("organization_memberships")
             .select("user_id")
@@ -422,6 +424,37 @@ export default function Expenses() {
         .eq("user_id", targetUserId);
 
       if (targetBalanceError) throw targetBalanceError;
+
+      // Log cashier -> admin return in transfer history for audit and reporting.
+      if (userRole === "cashier" && targetRole === "admin") {
+        if (!transferOrganizationId) {
+          const { data: profileOrg } = await supabase
+            .from("profiles")
+            .select("organization_id")
+            .eq("user_id", user.id)
+            .single();
+          transferOrganizationId = (profileOrg as any)?.organization_id || null;
+        }
+
+        if (transferOrganizationId) {
+          const { error: historyError } = await supabase
+            .from("cash_transfer_history")
+            .insert({
+              organization_id: transferOrganizationId,
+              transferrer_id: user.id,
+              transferrer_role: "cashier",
+              recipient_id: targetUserId,
+              recipient_role: "admin",
+              amount,
+              transfer_type: "cashier_to_admin",
+              payment_mode: "cash",
+              notes: "Cashier returned money to admin",
+            });
+          if (historyError) {
+            console.error("Failed to log cashier return in transfer history:", historyError);
+          }
+        }
+      }
 
       // Update local state
       setUserBalance(newUserBalance);

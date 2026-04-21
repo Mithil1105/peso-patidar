@@ -665,6 +665,8 @@ export default function Balances() {
             transferType = 'admin_to_employee';
           } else if (recipientRole === 'engineer') {
             transferType = 'admin_to_engineer';
+          } else if (recipientRole === 'admin') {
+            transferType = 'admin_to_admin';
           }
         } else {
           // cashier
@@ -852,6 +854,8 @@ export default function Balances() {
             transferType = 'admin_to_employee';
           } else if (recipientRole === 'engineer') {
             transferType = 'admin_to_engineer';
+          } else if (recipientRole === 'admin') {
+            transferType = 'admin_to_admin';
           }
         } else {
           // cashier
@@ -1679,6 +1683,8 @@ export default function Balances() {
                           transferType = 'admin_to_employee';
                         } else if (recipientRole === 'engineer') {
                           transferType = 'admin_to_engineer';
+                        } else if (recipientRole === 'admin') {
+                          transferType = 'admin_to_admin';
                         }
                         
                         console.log('Logging cash transfer history (bulk):', {
@@ -2052,6 +2058,7 @@ export default function Balances() {
                       <SelectItem value="admin_to_cashier">Admin → Cashier</SelectItem>
                       <SelectItem value="admin_to_employee">Admin → Employee</SelectItem>
                       <SelectItem value="admin_to_engineer">Admin → Manager</SelectItem>
+                      <SelectItem value="admin_to_admin">Admin → Admin</SelectItem>
                       <SelectItem value="cashier_to_employee">Cashier → Employee</SelectItem>
                       <SelectItem value="cashier_to_engineer">Cashier → Manager</SelectItem>
                       <SelectItem value="cashier_to_admin">Cashier → Admin</SelectItem>

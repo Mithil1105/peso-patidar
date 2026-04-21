@@ -19,6 +19,85 @@ export interface MoneyReturnRequest {
 }
 
 export class MoneyReturnService {
+  private static async getOrganizationIdForUser(userId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from("organization_memberships")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    if (error) return null;
+    return data?.organization_id ?? null;
+  }
+
+  private static async getPrimaryRoleForUser(userId: string, organizationId: string): Promise<"employee" | "engineer" | "cashier" | "admin" | null> {
+    const { data, error } = await supabase
+      .from("organization_memberships")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("organization_id", organizationId)
+      .eq("is_active", true);
+
+    if (error || !data || data.length === 0) return null;
+
+    const roles = data.map((r) => r.role);
+    if (roles.includes("admin")) return "admin";
+    if (roles.includes("cashier")) return "cashier";
+    if (roles.includes("engineer")) return "engineer";
+    if (roles.includes("employee")) return "employee";
+    return null;
+  }
+
+  private static async logApprovedReturnToTransferHistory(request: any, cashierId: string): Promise<void> {
+    const amount = Number(request.amount);
+    const approvedAt = request.approved_at || new Date().toISOString();
+    const organizationId =
+      request.organization_id ||
+      (await this.getOrganizationIdForUser(cashierId));
+
+    if (!organizationId || !amount || amount <= 0) return;
+
+    const requesterRole = await this.getPrimaryRoleForUser(request.requester_id, organizationId);
+    if (requesterRole !== "employee" && requesterRole !== "engineer") return;
+
+    const transferType = requesterRole === "engineer" ? "engineer_to_cashier" : "employee_to_cashier";
+
+    // Avoid duplicate insert when DB trigger already wrote the history row.
+    const { data: existing } = await supabase
+      .from("cash_transfer_history")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("transferrer_id", request.requester_id)
+      .eq("recipient_id", cashierId)
+      .eq("transfer_type", transferType)
+      .eq("amount", amount)
+      .eq("transferred_at", approvedAt)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) return;
+
+    const { error: historyError } = await supabase
+      .from("cash_transfer_history")
+      .insert({
+        organization_id: organizationId,
+        transferrer_id: request.requester_id,
+        transferrer_role: requesterRole,
+        recipient_id: cashierId,
+        recipient_role: "cashier",
+        amount,
+        transfer_type: transferType,
+        transferred_at: approvedAt,
+        payment_mode: "cash",
+        notes: `Money return request approved (${request.id})`,
+      });
+
+    if (historyError) {
+      console.error("Failed to log money return transfer history:", historyError);
+    }
+  }
+
   /**
    * Create a money return request (requires cashier approval)
    */
@@ -174,6 +253,8 @@ export class MoneyReturnService {
       throw updateError;
     }
 
+    await this.logApprovedReturnToTransferHistory(request, cashierId);
+
     // Mark money assignments as returned (FIFO)
     let remainingAmount = amount;
     const { data: assignments, error: assignmentsError } = await supabase
@@ -187,7 +268,7 @@ export class MoneyReturnService {
     if (!assignmentsError && assignments && assignments.length > 0) {
       for (const assignment of assignments) {
         if (remainingAmount <= 0) break;
-        
+
         const assignmentAmount = Number(assignment.amount);
         if (assignmentAmount <= remainingAmount) {
           await supabase

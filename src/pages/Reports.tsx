@@ -123,7 +123,10 @@ interface AllocationRecord {
   transferred_at: string;
   amount: number;
   transfer_type: string;
+  transferrer_id: string;
   transferrer_role: string;
+  recipient_id: string;
+  recipient_role: string;
 }
 
 export default function Reports() {
@@ -428,8 +431,8 @@ export default function Reports() {
     try {
       let query = supabase
         .from("cash_transfer_history")
-        .select("id, transferred_at, amount, transfer_type, transferrer_role")
-        .eq("recipient_id", selectedEmployee)
+        .select("id, transferred_at, amount, transfer_type, transferrer_id, transferrer_role, recipient_id, recipient_role")
+        .or(`recipient_id.eq.${selectedEmployee},transferrer_id.eq.${selectedEmployee}`)
         .order("transferred_at", { ascending: true });
 
       if (selectedYear) {
@@ -461,7 +464,10 @@ export default function Reports() {
         transferred_at: r.transferred_at,
         amount: Number(r.amount ?? 0),
         transfer_type: r.transfer_type ?? "",
+        transferrer_id: r.transferrer_id ?? "",
         transferrer_role: r.transferrer_role ?? "",
+        recipient_id: r.recipient_id ?? "",
+        recipient_role: r.recipient_role ?? "",
       })));
     } catch (e) {
       console.error("Failed to fetch allocation history", e);
@@ -680,8 +686,8 @@ export default function Reports() {
         "Type of Expense": row.category,
         Purpose: row.purpose ?? "-",
         Destination: row.destination ?? "-",
-        Credit: row.type === "allocation" ? formatINR(row.credit) : "",
-        Debit: row.type === "expense" ? formatINR(row.debit) : "",
+        Credit: row.credit > 0 ? formatINR(row.credit) : "",
+        Debit: row.debit > 0 ? formatINR(row.debit) : "",
         Notes: row.notes,
         "Opening Balance": formatINR(row.openingBalance),
         "Closing Balance": formatINR(row.closingBalance),
@@ -694,6 +700,7 @@ export default function Reports() {
 
     const summaryRows: Record<string, string>[] = [];
     if (totalAllocationsInPeriod > 0) summaryRows.push({ Category: "Account Credited", Amount: formatINR(totalAllocationsInPeriod) });
+    if (totalReturnsInPeriod > 0) summaryRows.push({ Category: "Money Returned", Amount: formatINR(totalReturnsInPeriod) });
     Object.entries(detailedSummary).forEach(([category, amount]) => summaryRows.push({ Category: category, Amount: formatINR(amount) }));
     summaryRows.push({ Category: "Total", Amount: formatINR(totalAmount) });
 
@@ -726,6 +733,7 @@ export default function Reports() {
         lines.push("");
         lines.push(["Summary", ""].map(escapeCsv).join(","));
         if (totalAllocationsInPeriod > 0) lines.push(["Account Credited", formatINR(totalAllocationsInPeriod)].map(escapeCsv).join(","));
+        if (totalReturnsInPeriod > 0) lines.push(["Money Returned", formatINR(totalReturnsInPeriod)].map(escapeCsv).join(","));
         Object.entries(detailedSummary).forEach(([category, amount]) => lines.push([category, formatINR(amount)].map(escapeCsv).join(",")));
         lines.push(["Total", formatINR(totalAmount)].map(escapeCsv).join(","));
       }
@@ -905,8 +913,19 @@ export default function Reports() {
 
   // Total allocations (money added to employee) in the report period
   const totalAllocationsInPeriod = useMemo(() => {
-    return detailedAllocations.reduce((sum, a) => sum + a.amount, 0);
-  }, [detailedAllocations]);
+    if (!selectedUser) return 0;
+    return detailedAllocations
+      .filter((a) => a.recipient_id === selectedUser.user_id)
+      .reduce((sum, a) => sum + a.amount, 0);
+  }, [detailedAllocations, selectedUser]);
+
+  // Total returns (money sent back by employee) in the report period
+  const totalReturnsInPeriod = useMemo(() => {
+    if (!selectedUser) return 0;
+    return detailedAllocations
+      .filter((a) => a.transferrer_id === selectedUser.user_id)
+      .reduce((sum, a) => sum + a.amount, 0);
+  }, [detailedAllocations, selectedUser]);
 
   // Total approved expenses (money spent/deducted) in the report period
   const totalApprovedExpensesInPeriod = useMemo(() => {
@@ -919,30 +938,65 @@ export default function Reports() {
   const balanceInfo = useMemo(() => {
     if (!selectedUser) return { opening: 0, allocated: 0, closing: 0 };
     const closing = Number(selectedUser.balance);
-    // Period opening = current - allocations added in period + expenses deducted in period
-    const opening = closing - totalAllocationsInPeriod + totalApprovedExpensesInPeriod;
+    // Period opening = current - incoming credits + approved expense debits + return debits
+    const opening = closing - totalAllocationsInPeriod + totalApprovedExpensesInPeriod + totalReturnsInPeriod;
     return { opening, allocated: totalAllocationsInPeriod, closing };
-  }, [selectedUser, totalAllocationsInPeriod, totalApprovedExpensesInPeriod]);
+  }, [selectedUser, totalAllocationsInPeriod, totalApprovedExpensesInPeriod, totalReturnsInPeriod]);
 
   // Combined list: allocations + expenses, sorted by date, with running opening/closing balance per row
   const detailedListWithBalances = useMemo(() => {
     if (!selectedUser) return [];
 
-    const allocationRows = detailedAllocations.map((a) => ({
-      id: `alloc-${a.id}`,
-      date: a.transferred_at,
-      type: "allocation" as const,
-      amount: a.amount,
-      credit: a.amount,
-      debit: 0,
-      notes: a.transferrer_role === "admin" ? "By Admin" : "By Cashier",
-      category: "Account Credited",
-      title: "",
-      purpose: a.transferrer_role === "admin" ? "Account credited by Admin" : "Account credited by Cashier",
-      destination: "-",
-      isApproved: true,
-      customFields: {} as Record<string, string>,
-    }));
+    const allocationRows = detailedAllocations
+      .map((a) => {
+        const isIncoming = a.recipient_id === selectedUser.user_id;
+        const isOutgoing = a.transferrer_id === selectedUser.user_id;
+        if (!isIncoming && !isOutgoing) return null;
+
+        const transferNoteMap: Record<string, string> = {
+          admin_to_employee: "Account credited by Admin",
+          admin_to_engineer: "Account credited by Admin",
+          cashier_to_employee: "Account credited by Cashier",
+          cashier_to_engineer: "Account credited by Cashier",
+          employee_to_cashier: "Money returned to Cashier",
+          engineer_to_cashier: "Money returned to Cashier",
+          cashier_to_admin: "Money returned to Admin",
+          admin_to_admin: "Transfer between Admin accounts",
+        };
+
+        const note = transferNoteMap[a.transfer_type] || (isIncoming ? "Account credited" : "Money returned");
+
+        return {
+          id: `alloc-${a.id}`,
+          date: a.transferred_at,
+          type: "allocation" as const,
+          amount: a.amount,
+          credit: isIncoming ? a.amount : 0,
+          debit: isOutgoing ? a.amount : 0,
+          notes: note,
+          category: isIncoming ? "Account Credited" : "Money Returned",
+          title: "",
+          purpose: note,
+          destination: "-",
+          isApproved: true,
+          customFields: {} as Record<string, string>,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        date: string;
+        type: "allocation";
+        amount: number;
+        credit: number;
+        debit: number;
+        notes: string;
+        category: string;
+        title: string;
+        purpose: string;
+        destination: string;
+        isApproved: boolean;
+        customFields: Record<string, string>;
+      }>;
 
     const expenseRows = detailedExpenses.map((e) => ({
       id: e.id,
@@ -1435,8 +1489,8 @@ export default function Reports() {
                                       {row.type === "expense" ? row.customFields?.[k] ?? "" : ""}
                                     </td>
                                   ))}
-                                  <td className="px-4 py-3 text-right font-medium">{row.type === "allocation" ? formatINR(row.credit) : ""}</td>
-                                  <td className="px-4 py-3 text-right font-medium">{row.type === "expense" ? formatINR(row.debit) : ""}</td>
+                                  <td className="px-4 py-3 text-right font-medium">{row.credit > 0 ? formatINR(row.credit) : ""}</td>
+                                  <td className="px-4 py-3 text-right font-medium">{row.debit > 0 ? formatINR(row.debit) : ""}</td>
                                   <td className="px-4 py-3">{row.notes}</td>
                                   <td className="px-4 py-3 text-right">{formatINR(row.openingBalance)}</td>
                                   <td className="px-4 py-3 text-right font-medium">{formatINR(row.closingBalance)}</td>
@@ -1478,6 +1532,12 @@ export default function Reports() {
                           <tr className="hover:bg-slate-50">
                             <td className="px-4 py-3">Account Credited</td>
                             <td className="px-4 py-3 text-right font-medium">{formatINR(totalAllocationsInPeriod)}</td>
+                          </tr>
+                        )}
+                        {totalReturnsInPeriod > 0 && (
+                          <tr className="hover:bg-slate-50">
+                            <td className="px-4 py-3">Money Returned</td>
+                            <td className="px-4 py-3 text-right font-medium">{formatINR(totalReturnsInPeriod)}</td>
                           </tr>
                         )}
                         {Object.entries(detailedSummary).map(([category, amount]) => (

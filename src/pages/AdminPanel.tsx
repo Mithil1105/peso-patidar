@@ -420,8 +420,7 @@ export default function AdminPanel() {
       .select("*")
       .eq("organization_id", organizationId)
       .in("status", ["submitted", "verified", "approved", "rejected"])
-      .order("created_at", { ascending: false })
-      .limit(200); // Only load the 200 most recent reviewed expenses for admin view
+      .order("created_at", { ascending: false });
 
     console.log("🔍 [AdminPanel] Expenses query result (with org filter):");
     console.log("  - Data:", allExpenses);

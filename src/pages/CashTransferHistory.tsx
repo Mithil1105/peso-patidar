@@ -221,6 +221,7 @@ export default function CashTransferHistory() {
       admin_to_cashier: "Admin → Cashier",
       admin_to_employee: "Admin → Employee",
       admin_to_engineer: "Admin → Manager",
+      admin_to_admin: "Admin → Admin",
       cashier_to_employee: "Cashier → Employee",
       cashier_to_engineer: "Cashier → Manager",
       cashier_to_admin: "Cashier → Admin",
@@ -338,6 +339,7 @@ export default function CashTransferHistory() {
                   <SelectItem value="admin_to_cashier">Admin → Cashier</SelectItem>
                   <SelectItem value="admin_to_employee">Admin → Employee</SelectItem>
                   <SelectItem value="admin_to_engineer">Admin → Manager</SelectItem>
+                  <SelectItem value="admin_to_admin">Admin → Admin</SelectItem>
                   <SelectItem value="cashier_to_employee">Cashier → Employee</SelectItem>
                   <SelectItem value="cashier_to_engineer">Cashier → Manager</SelectItem>
                   <SelectItem value="cashier_to_admin">Cashier → Admin</SelectItem>
