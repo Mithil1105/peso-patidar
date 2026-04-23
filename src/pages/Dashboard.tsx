@@ -504,6 +504,10 @@ export default function Dashboard() {
         const newIds = notificationData.map(n => n.id).sort().join(',');
         if (prevIds !== newIds) {
           console.log('📬 Dashboard: New notifications detected, updating...');
+          // Polling can detect balance-related notifications even when realtime
+          // profile updates are missed, so refresh balance/stats as a fallback.
+          fetchUserBalance();
+          fetchStats();
           return notificationData;
         }
         return prev;
@@ -660,56 +664,130 @@ export default function Dashboard() {
       let targetUserId: string | null = null;
 
       if (userRole === "employee" || userRole === "engineer") {
-        // For employees: Find cashier assigned to their manager (engineer)
-        // For engineers: Find cashier assigned to them
-        let managerId: string | null = null;
-        
-        if (userRole === "employee") {
-          // Get employee's reporting engineer (manager)
-          const { data: employeeProfile, error: profileError } = await supabase
-            .from("profiles")
-            .select("reporting_engineer_id")
-            .eq("user_id", user.id)
-            .single();
+        // Resolve cashier with multiple fallbacks:
+        // 1) explicit assigned_cashier_id on profile
+        // 2) RPC get_cashier_for_engineer
+        // 3) direct cashier_assigned_engineer_id match
+        // 4) location-based cashier_assigned_location_id match
+        const { data: requesterProfile, error: requesterProfileError } = await supabase
+          .from("profiles")
+          .select("assigned_cashier_id, reporting_engineer_id, organization_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-          if (profileError) throw profileError;
-          managerId = (employeeProfile as any)?.reporting_engineer_id || null;
-          
-          if (!managerId) {
-            toast({
-              variant: "destructive",
-              title: "No Manager Assigned",
-              description: "You don't have a manager assigned. Please contact an administrator.",
-            });
-            setReturningMoney(false);
-            return;
-          }
-        } else if (userRole === "engineer") {
-          // For engineers, they are their own manager
-          managerId = user.id;
-        }
+        if (requesterProfileError) throw requesterProfileError;
 
-        // Find cashier assigned to this manager using location-based or direct assignment
-        // This function prioritizes location-based assignment and falls back to direct assignment
-        const { data: cashierUserId, error: cashierError } = await supabase
-          .rpc('get_cashier_for_engineer', { engineer_user_id: managerId });
+        const requesterOrgId = (requesterProfile as any)?.organization_id || null;
+        let managerId: string | null =
+          userRole === "employee"
+            ? ((requesterProfile as any)?.reporting_engineer_id || null)
+            : user.id;
 
-        if (cashierError) {
-          console.error("Error finding cashier:", cashierError);
-          throw cashierError;
-        }
-
-        if (!cashierUserId) {
+        if (userRole === "employee" && !managerId) {
           toast({
             variant: "destructive",
-            title: "No Cashier Assigned",
-            description: "Your manager doesn't have a cashier assigned. Please contact an administrator.",
+            title: "No Manager Assigned",
+            description: "You don't have a manager assigned. Please contact an administrator.",
           });
           setReturningMoney(false);
           return;
         }
 
-        targetUserId = cashierUserId;
+        // 1) Profile-level assignment has highest priority
+        const assignedCashierId = (requesterProfile as any)?.assigned_cashier_id || null;
+        if (assignedCashierId) {
+          targetUserId = assignedCashierId;
+        }
+
+        // Helper to ensure selected user is an active cashier in the same org
+        const pickActiveCashier = async (candidateIds: string[]): Promise<string | null> => {
+          if (!candidateIds.length) return null;
+          let membershipQuery = supabase
+            .from("organization_memberships")
+            .select("user_id")
+            .in("user_id", candidateIds)
+            .eq("role", "cashier")
+            .eq("is_active", true);
+
+          if (requesterOrgId) {
+            membershipQuery = membershipQuery.eq("organization_id", requesterOrgId);
+          }
+
+          const { data: memberships, error: membershipsError } = await membershipQuery;
+          if (membershipsError) {
+            console.error("Error validating cashier memberships:", membershipsError);
+            return null;
+          }
+          return memberships?.[0]?.user_id || null;
+        };
+
+        // 2) Preferred existing RPC flow
+        if (!targetUserId && managerId) {
+          const { data: cashierUserId, error: cashierError } = await supabase
+            .rpc("get_cashier_for_engineer", { engineer_user_id: managerId });
+
+          if (cashierError) {
+            console.warn("RPC get_cashier_for_engineer failed, using fallback lookup:", cashierError);
+          } else if (cashierUserId) {
+            targetUserId = await pickActiveCashier([cashierUserId]) || cashierUserId;
+          }
+        }
+
+        // 3) Direct assignment fallback
+        if (!targetUserId && managerId) {
+          let directQuery = supabase
+            .from("profiles")
+            .select("user_id")
+            .eq("cashier_assigned_engineer_id", managerId)
+            .limit(10);
+
+          if (requesterOrgId) {
+            directQuery = directQuery.eq("organization_id", requesterOrgId);
+          }
+
+          const { data: directCashiers, error: directError } = await directQuery;
+          if (!directError && directCashiers?.length) {
+            targetUserId = await pickActiveCashier(directCashiers.map((c: any) => c.user_id));
+          }
+        }
+
+        // 4) Location-based fallback
+        if (!targetUserId && managerId) {
+          const { data: managerLocation } = await supabase
+            .from("engineer_locations")
+            .select("location_id")
+            .eq("engineer_id", managerId)
+            .limit(1)
+            .maybeSingle();
+
+          const locationId = (managerLocation as any)?.location_id || null;
+          if (locationId) {
+            let locationQuery = supabase
+              .from("profiles")
+              .select("user_id")
+              .eq("cashier_assigned_location_id", locationId)
+              .limit(10);
+
+            if (requesterOrgId) {
+              locationQuery = locationQuery.eq("organization_id", requesterOrgId);
+            }
+
+            const { data: locationCashiers, error: locationError } = await locationQuery;
+            if (!locationError && locationCashiers?.length) {
+              targetUserId = await pickActiveCashier(locationCashiers.map((c: any) => c.user_id));
+            }
+          }
+        }
+
+        if (!targetUserId) {
+          toast({
+            variant: "destructive",
+            title: "No Cashier Assigned",
+            description: "Could not find an active cashier assignment for your manager. Please contact an administrator.",
+          });
+          setReturningMoney(false);
+          return;
+        }
       } else {
         toast({
           variant: "destructive",
@@ -802,7 +880,11 @@ export default function Dashboard() {
   }> = [
     {
       title: "Current Balance",
-      value: formatINR(stats.currentBalance),
+      value: formatINR(
+        userRole === "admin"
+          ? stats.currentBalance
+          : (userBalance ?? stats.currentBalance)
+      ),
       icon: Wallet,
       description: "Available balance",
       highlight: true,

@@ -600,7 +600,7 @@ export default function Balances() {
         .from("profiles")
         .update({ balance: newBalance })
         .eq("user_id", userId)
-        .select();
+        .select("user_id, balance");
       
       if (error) {
         console.error('User balance update error:', error);
@@ -614,6 +614,17 @@ export default function Balances() {
           setCashierBalance(startingCashierBalance);
         }
         throw error;
+      }
+      if (!data || data.length === 0) {
+        // RLS can block UPDATE without returning an error, so guard explicitly.
+        if (userRole === 'cashier' && user?.id && deductionPerformed) {
+          await supabase
+            .from("profiles")
+            .update({ balance: startingCashierBalance })
+            .eq("user_id", user.id);
+          setCashierBalance(startingCashierBalance);
+        }
+        throw new Error("Balance update was not permitted for this account.");
       }
       
       console.log('User balance updated successfully:', data);
@@ -835,12 +846,16 @@ export default function Balances() {
       }
       
       // Update target user's balance
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
         .update({ balance: newBalance })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .select("user_id");
       
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Balance update was not permitted for this account.");
+      }
       
       // Log to cash transfer history if balance increased (transfer occurred)
       if ((userRole === 'admin' || userRole === 'cashier') && user?.id && balanceDifference > 0) {
@@ -1665,12 +1680,16 @@ export default function Balances() {
                       const newBalance = currentBalance + bulkAmount;
 
                       // Update balance in database
-                      const { error: updateError } = await supabase
+                      const { data: updateData, error: updateError } = await supabase
                         .from("profiles")
                         .update({ balance: newBalance })
-                        .eq("user_id", userId);
+                        .eq("user_id", userId)
+                        .select("user_id");
 
                       if (updateError) throw updateError;
+                      if (!updateData || updateData.length === 0) {
+                        throw new Error("Balance update was not permitted for this account.");
+                      }
 
                       // Log to cash transfer history (admin bulk transfers)
                       if (userRole === 'admin' && user?.id) {

@@ -120,13 +120,38 @@ export class MoneyReturnService {
       throw new Error(`Insufficient balance. You only have ${formatINR(currentBalance)}`);
     }
 
+    // Resolve organization for this return request. Some deployments enforce
+    // money_return_requests.organization_id as NOT NULL.
+    const organizationId = await this.getOrganizationIdForUser(requesterId);
+    if (!organizationId) {
+      throw new Error("Could not determine your organization. Please contact an administrator.");
+    }
+
+    // Ensure selected cashier/admin belongs to the same active organization.
+    const { data: cashierMembership, error: cashierMembershipError } = await supabase
+      .from("organization_memberships")
+      .select("user_id")
+      .eq("user_id", cashierId)
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .in("role", ["cashier", "admin"])
+      .maybeSingle();
+
+    if (cashierMembershipError) {
+      throw cashierMembershipError;
+    }
+    if (!cashierMembership?.user_id) {
+      throw new Error("Assigned cashier is not active in your organization.");
+    }
+
     // Create the return request
-    const { data: request, error: requestError } = await supabase
+    const { data: request, error: requestError } = await (supabase as any)
       .from("money_return_requests")
       .insert({
         requester_id: requesterId,
         cashier_id: cashierId,
         amount: amount,
+        organization_id: organizationId,
         status: "pending",
       })
       .select()
