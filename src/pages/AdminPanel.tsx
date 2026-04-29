@@ -31,7 +31,8 @@ import {
   Search,
   Download,
   Database,
-  RotateCcw
+  RotateCcw,
+  ExternalLink
 } from "lucide-react";
 import { fetchOrgBackup, downloadBackup, downloadBackupWithReceipts, fetchReceiptBlobs } from "@/lib/backupData";
 import { useToast } from "@/hooks/use-toast";
@@ -1996,15 +1997,33 @@ export default function AdminPanel() {
         {/* Image/PDF Preview Dialog - outside the table */}
         <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Attachment Preview</DialogTitle>
+              <DialogDescription>
+                View uploaded attachments. PDFs open in a new tab because embedded frames are blocked by CSP.
+              </DialogDescription>
+            </DialogHeader>
             {imagePreviewUrl && (
               previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
-                <div className="w-full" style={{ height: '80vh' }}>
-                  <iframe
-                    src={imagePreviewUrl}
-                    className="w-full h-full rounded border"
-                    title="PDF Preview"
-                    style={{ minHeight: '600px' }}
-                  />
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    PDF preview in embedded frames is blocked by your Content Security Policy.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => window.open(imagePreviewUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open PDF in New Tab
+                    </Button>
+                    <Button type="button" variant="outline" asChild>
+                      <a href={imagePreviewUrl} download target="_blank" rel="noopener noreferrer">
+                        <Download className="h-4 w-4 mr-2" />
+                        Download PDF
+                      </a>
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <img
