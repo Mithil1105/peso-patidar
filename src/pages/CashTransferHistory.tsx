@@ -104,7 +104,8 @@ export default function CashTransferHistory() {
           t.transfer_type.toLowerCase().includes(search) ||
           (t.payment_mode || "").toLowerCase().includes(search) ||
           (t.source_bank_name_snapshot || "").toLowerCase().includes(search) ||
-          (t.source_account_number_masked_snapshot || "").toLowerCase().includes(search)
+          (t.source_account_number_masked_snapshot || "").toLowerCase().includes(search) ||
+          (t.notes || "").toLowerCase().includes(search)
       );
     }
 

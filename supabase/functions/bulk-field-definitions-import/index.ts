@@ -23,6 +23,7 @@ type FieldRow = {
   category_names?: string[];
 };
 type Body = { organization_id?: string; dry_run?: boolean; rows?: FieldRow[] };
+const MAX_ROWS = 500;
 
 function slugifyFieldKey(input: string): string {
   return input
@@ -70,6 +71,7 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as Body;
     const rows = Array.isArray(body.rows) ? body.rows : [];
     if (rows.length === 0) throw new Error("rows[] is required");
+    if (rows.length > MAX_ROWS) throw new Error(`rows[] exceeds max allowed size (${MAX_ROWS})`);
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: authUserData, error: authUserError } = await serviceClient.auth.getUser(jwt);
@@ -80,11 +82,11 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
-      const name = (row.name || "").trim();
+      const name = (row.name || "").trim().slice(0, 120);
       const fieldType = row.field_type || "text";
       const fieldKey = (row.field_key || slugifyFieldKey(name)).trim();
 
-      if (!name || !fieldKey) {
+      if (!name || !fieldKey || !["text", "number", "date", "textarea", "select", "checkbox"].includes(fieldType)) {
         results.push({ index: i, ok: false, error: "name or field_key missing" });
         continue;
       }

@@ -8,6 +8,7 @@ const corsHeaders = {
 
 type CategoryRow = { name?: string; active?: boolean };
 type Body = { organization_id?: string; dry_run?: boolean; rows?: CategoryRow[] };
+const MAX_ROWS = 1000;
 
 async function resolveAdminOrg(client: any, callerId: string, requestedOrgId?: string) {
   const { data, error } = await client
@@ -47,6 +48,7 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as Body;
     const rows = Array.isArray(body.rows) ? body.rows : [];
     if (rows.length === 0) throw new Error("rows[] is required");
+    if (rows.length > MAX_ROWS) throw new Error(`rows[] exceeds max allowed size (${MAX_ROWS})`);
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: authUserData, error: authUserError } = await serviceClient.auth.getUser(jwt);
@@ -58,7 +60,7 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
-      const name = (row.name || "").trim();
+      const name = (row.name || "").trim().slice(0, 100);
       if (!name) {
         results.push({ index: i, ok: false, error: "name is required" });
         continue;

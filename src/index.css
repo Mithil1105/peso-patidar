@@ -61,6 +61,16 @@ All colors MUST be HSL.
     --chart-3: 38 92% 50%;
     --chart-4: 280 80% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Glass UI tokens (light) */
+    --glass-bg: 0 0% 100%;
+    --glass-bg-strong: 0 0% 100%;
+    --glass-border: 220 30% 75%;
+    --glass-shadow: 220 35% 20%;
+    --glass-glow: 217 91% 60%;
+    --glass-noise-opacity: 0.045;
+    --glass-blur: 24px;
+    --glass-blur-strong: 36px;
   }
 
   .dark {
@@ -115,6 +125,16 @@ All colors MUST be HSL.
     --chart-3: 38 92% 50%;
     --chart-4: 280 80% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Glass UI tokens (dark) */
+    --glass-bg: 222 34% 13%;
+    --glass-bg-strong: 221 38% 11%;
+    --glass-border: 218 30% 32%;
+    --glass-shadow: 220 60% 2%;
+    --glass-glow: 217 91% 60%;
+    --glass-noise-opacity: 0.055;
+    --glass-blur: 24px;
+    --glass-blur-strong: 38px;
   }
 }
 
@@ -138,6 +158,223 @@ All colors MUST be HSL.
 
 /* Marketing utility classes */
 @layer utilities {
+  .glass-surface {
+    background:
+      linear-gradient(
+        160deg,
+        hsl(0 0% 100% / 0.52),
+        hsl(var(--glass-bg) / 0.28)
+      );
+    border: 1px solid hsl(0 0% 100% / 0.42);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .glass-surface-strong {
+    background:
+      linear-gradient(
+        160deg,
+        hsl(0 0% 100% / 0.56),
+        hsl(var(--glass-bg-strong) / 0.28)
+      );
+    border: 1px solid hsl(0 0% 100% / 0.46);
+    backdrop-filter: blur(var(--glass-blur-strong));
+    -webkit-backdrop-filter: blur(var(--glass-blur-strong));
+  }
+
+  .glass-stroke {
+    border: 1px solid hsl(var(--glass-border) / 0.32);
+  }
+
+  .glass-elevated {
+    box-shadow:
+      0 12px 34px hsl(var(--glass-shadow) / 0.18),
+      0 1px 0 hsl(0 0% 100% / 0.36) inset;
+  }
+
+  .glass-noise-subtle {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .glass-noise-subtle::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: var(--glass-noise-opacity);
+    background-image:
+      radial-gradient(hsl(0 0% 100% / 0.85) 0.45px, transparent 0.6px),
+      radial-gradient(hsl(0 0% 0% / 0.5) 0.45px, transparent 0.6px);
+    background-position: 0 0, 7px 7px;
+    background-size: 14px 14px;
+    z-index: 1;
+  }
+
+  .glass-shell-bg {
+    background:
+      radial-gradient(circle at 14% 10%, hsl(var(--primary) / 0.22), transparent 34%),
+      radial-gradient(circle at 85% 4%, hsl(var(--chart-4) / 0.2), transparent 28%),
+      radial-gradient(circle at 58% 78%, hsl(var(--chart-2) / 0.16), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+  }
+
+  .dark .glass-shell-bg {
+    background:
+      radial-gradient(circle at 12% 8%, hsl(var(--primary) / 0.2), transparent 34%),
+      radial-gradient(circle at 88% 2%, hsl(var(--chart-4) / 0.18), transparent 28%),
+      radial-gradient(circle at 62% 80%, hsl(var(--chart-2) / 0.12), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+  }
+
+  .glass-page {
+    position: relative;
+  }
+
+  .glass-page::before {
+    content: "";
+    position: absolute;
+    inset: -8px -8px auto -8px;
+    height: 180px;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--glass-glow) / 0.1),
+      transparent 70%
+    );
+    z-index: 0;
+  }
+
+  .glass-page > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .glass-ui .ui-card-surface {
+    background:
+      linear-gradient(
+        165deg,
+        hsl(0 0% 100% / 0.58),
+        hsl(var(--glass-bg) / 0.26)
+      ) !important;
+    border-color: hsl(0 0% 100% / 0.44) !important;
+    backdrop-filter: saturate(180%) blur(var(--glass-blur));
+    -webkit-backdrop-filter: saturate(180%) blur(var(--glass-blur));
+    border-radius: 1rem;
+    box-shadow:
+      0 12px 34px hsl(var(--glass-shadow) / 0.16),
+      0 1px 0 hsl(0 0% 100% / 0.6) inset,
+      0 -1px 0 hsl(0 0% 0% / 0.05) inset;
+  }
+
+  .glass-ui .ui-card-surface:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 18px 44px hsl(var(--glass-shadow) / 0.2),
+      0 1px 0 hsl(0 0% 100% / 0.64) inset;
+  }
+
+  .glass-ui .ui-button-default {
+    background: linear-gradient(
+      140deg,
+      hsl(var(--primary) / 0.95),
+      hsl(var(--primary) / 0.78)
+    ) !important;
+    border: 1px solid hsl(0 0% 100% / 0.34);
+    box-shadow:
+      0 10px 20px hsl(var(--primary) / 0.34),
+      0 0 0 1px hsl(0 0% 100% / 0.28) inset;
+  }
+
+  .glass-ui .ui-button-default:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 14px 28px hsl(var(--primary) / 0.4),
+      0 0 0 1px hsl(0 0% 100% / 0.24) inset;
+  }
+
+  .glass-ui .ui-button-outline,
+  .glass-ui .ui-input-surface,
+  .glass-ui [data-radix-popper-content-wrapper] .ui-select-content {
+    background:
+      linear-gradient(
+        165deg,
+        hsl(0 0% 100% / 0.5),
+        hsl(var(--glass-bg) / 0.24)
+      ) !important;
+    border-color: hsl(0 0% 100% / 0.42) !important;
+    border-radius: 0.8rem;
+    backdrop-filter: saturate(170%) blur(calc(var(--glass-blur) * 0.65));
+    -webkit-backdrop-filter: saturate(170%) blur(calc(var(--glass-blur) * 0.65));
+  }
+
+  .glass-ui .ui-input-surface::placeholder {
+    color: hsl(var(--muted-foreground) / 0.78);
+  }
+
+  .glass-ui .ui-input-surface:focus-visible {
+    border-color: hsl(var(--ring) / 0.75);
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.18);
+  }
+
+  .glass-ui .ui-dialog-content,
+  .glass-ui .ui-sheet-content {
+    background:
+      linear-gradient(
+        165deg,
+        hsl(0 0% 100% / 0.62),
+        hsl(var(--glass-bg-strong) / 0.3)
+      ) !important;
+    border-color: hsl(0 0% 100% / 0.44) !important;
+    backdrop-filter: saturate(190%) blur(var(--glass-blur-strong));
+    -webkit-backdrop-filter: saturate(190%) blur(var(--glass-blur-strong));
+    box-shadow:
+      0 24px 52px hsl(var(--glass-shadow) / 0.24),
+      0 1px 0 hsl(0 0% 100% / 0.54) inset;
+  }
+
+  .glass-ui [data-sidebar="sidebar"] {
+    background:
+      linear-gradient(
+        165deg,
+        hsl(0 0% 100% / 0.48),
+        hsl(var(--glass-bg-strong) / 0.24)
+      ) !important;
+    border-color: hsl(0 0% 100% / 0.36) !important;
+    backdrop-filter: saturate(180%) blur(var(--glass-blur));
+    -webkit-backdrop-filter: saturate(180%) blur(var(--glass-blur));
+    box-shadow:
+      10px 0 28px hsl(var(--glass-shadow) / 0.14),
+      -1px 0 0 hsl(0 0% 100% / 0.28) inset;
+  }
+
+  .glass-orb {
+    position: absolute;
+    border-radius: 9999px;
+    pointer-events: none;
+    filter: blur(28px);
+    opacity: 0.55;
+    z-index: 0;
+    mix-blend-mode: screen;
+  }
+
+  .dark .glass-orb {
+    opacity: 0.4;
+    mix-blend-mode: lighten;
+  }
+
+  .glass-ui [data-sidebar="menu-button"] {
+    border: 1px solid transparent;
+    transition: background-color 0.18s ease, border-color 0.18s ease;
+  }
+
+  .glass-ui [data-sidebar="menu-button"]:hover,
+  .glass-ui [data-sidebar="menu-button"][data-active="true"] {
+    background: hsl(var(--glass-bg) / 0.52);
+    border-color: hsl(var(--glass-border) / 0.28);
+  }
+
   .gradient-text {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-primary to-primary/80;
   }
@@ -217,6 +454,15 @@ All colors MUST be HSL.
   }
   .animate-fade-in {
     animation: fade-in 0.4s ease-out forwards;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-ui *,
+  .card-hover,
+  .btn-glow {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

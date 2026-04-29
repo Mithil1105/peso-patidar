@@ -104,6 +104,8 @@ export default function Auth() {
             <img
               src="/HERO.png"
               alt="PesoWise"
+              decoding="async"
+              fetchPriority="high"
               className="h-16 w-auto object-contain"
             />
           </div>

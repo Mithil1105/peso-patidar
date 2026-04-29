@@ -26,5 +26,17 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: "dist",
     assetsDir: "assets",
+    cssCodeSplit: true,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          supabase: ["@supabase/supabase-js", "@tanstack/react-query"],
+          ui: ["lucide-react", "sonner"],
+          reporting: ["jspdf", "jspdf-autotable", "xlsx"],
+        },
+      },
+    },
   },
 }));

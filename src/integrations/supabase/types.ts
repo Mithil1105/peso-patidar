@@ -605,6 +605,7 @@ export type Database = {
           requester_id: string
           cashier_id: string
           amount: number
+          note: string | null
           status: string
           requested_at: string
           approved_at: string | null
@@ -620,6 +621,7 @@ export type Database = {
           requester_id: string
           cashier_id: string
           amount: number
+          note?: string | null
           status?: string
           requested_at?: string
           approved_at?: string | null
@@ -635,6 +637,7 @@ export type Database = {
           requester_id?: string
           cashier_id?: string
           amount?: number
+          note?: string | null
           status?: string
           requested_at?: string
           approved_at?: string | null

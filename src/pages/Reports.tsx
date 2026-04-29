@@ -123,6 +123,7 @@ interface AllocationRecord {
   transferred_at: string;
   amount: number;
   transfer_type: string;
+  notes: string | null;
   transferrer_id: string;
   transferrer_role: string;
   recipient_id: string;
@@ -431,7 +432,7 @@ export default function Reports() {
     try {
       let query = supabase
         .from("cash_transfer_history")
-        .select("id, transferred_at, amount, transfer_type, transferrer_id, transferrer_role, recipient_id, recipient_role")
+        .select("id, transferred_at, amount, transfer_type, notes, transferrer_id, transferrer_role, recipient_id, recipient_role")
         .or(`recipient_id.eq.${selectedEmployee},transferrer_id.eq.${selectedEmployee}`)
         .order("transferred_at", { ascending: true });
 
@@ -464,6 +465,7 @@ export default function Reports() {
         transferred_at: r.transferred_at,
         amount: Number(r.amount ?? 0),
         transfer_type: r.transfer_type ?? "",
+        notes: r.notes ?? null,
         transferrer_id: r.transferrer_id ?? "",
         transferrer_role: r.transferrer_role ?? "",
         recipient_id: r.recipient_id ?? "",
@@ -964,7 +966,9 @@ export default function Reports() {
           admin_to_admin: "Transfer between Admin accounts",
         };
 
-        const note = transferNoteMap[a.transfer_type] || (isIncoming ? "Account credited" : "Money returned");
+        const note = (a.notes && a.notes.trim())
+          ? a.notes
+          : (transferNoteMap[a.transfer_type] || (isIncoming ? "Account credited" : "Money returned"));
 
         return {
           id: `alloc-${a.id}`,

@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,6 +58,7 @@ export default function Expenses() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [returnMoneyDialogOpen, setReturnMoneyDialogOpen] = useState(false);
   const [returnAmount, setReturnAmount] = useState("");
+  const [returnNote, setReturnNote] = useState("");
   const [returningMoney, setReturningMoney] = useState(false);
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -449,13 +451,14 @@ export default function Expenses() {
       if ((userRole === "engineer" || userRole === "employee") && targetRole === "cashier") {
         // Create a return request (requires cashier approval)
         const { MoneyReturnService } = await import("@/services/MoneyReturnService");
-        await MoneyReturnService.createReturnRequest(user.id, targetUserId, amount);
+        await MoneyReturnService.createReturnRequest(user.id, targetUserId, amount, returnNote);
 
         // Refresh balance (request doesn't change balance yet)
         fetchUserBalance();
 
         // Update local state
         setReturnAmount("");
+        setReturnNote("");
         setReturnMoneyDialogOpen(false);
 
         toast({
@@ -516,7 +519,9 @@ export default function Expenses() {
               amount,
               transfer_type: "cashier_to_admin",
               payment_mode: "cash",
-              notes: "Cashier returned money to admin",
+              notes: returnNote.trim()
+                ? `Cashier returned money to admin: ${returnNote.trim()}`
+                : "Cashier returned money to admin",
             });
           if (historyError) {
             console.error("Failed to log cashier return in transfer history:", historyError);
@@ -527,6 +532,7 @@ export default function Expenses() {
       // Update local state
       setUserBalance(newUserBalance);
       setReturnAmount("");
+      setReturnNote("");
       setReturnMoneyDialogOpen(false);
 
       toast({
@@ -703,6 +709,16 @@ export default function Expenses() {
                       </p>
                     )}
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="return-note">Note (optional)</Label>
+                    <Textarea
+                      id="return-note"
+                      value={returnNote}
+                      onChange={(e) => setReturnNote(e.target.value)}
+                      placeholder="Add reason or context for this return"
+                      rows={3}
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
@@ -710,6 +726,7 @@ export default function Expenses() {
                     onClick={() => {
                       setReturnMoneyDialogOpen(false);
                       setReturnAmount("");
+                      setReturnNote("");
                     }}
                   >
                     Cancel

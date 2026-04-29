@@ -31,6 +31,7 @@ type CompressUploadResponse = {
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/heic", "image/heif", "application/pdf"]);
 const MAX_INPUT_BYTES = 25 * 1024 * 1024;
+const BASE64_REGEX = /^[A-Za-z0-9+/=]+$/;
 
 function json(status: number, body: CompressUploadResponse) {
   return new Response(JSON.stringify(body), {
@@ -40,6 +41,9 @@ function json(status: number, body: CompressUploadResponse) {
 }
 
 function decodeBase64ToBytes(base64: string): Uint8Array {
+  if (!BASE64_REGEX.test(base64)) {
+    throw new Error("Invalid base64 payload");
+  }
   const raw = atob(base64);
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
@@ -82,7 +86,7 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace("Bearer ", "");
 
     const body = (await req.json()) as CompressUploadRequest;
-    const fileName = body.file_name || "upload.bin";
+    const fileName = String(body.file_name || "upload.bin").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 160);
     const mimeType = (body.mime_type || "").toLowerCase();
     const fileBase64 = body.file_base64 || "";
     const targetBytes = Math.max(1, Number(body.target_bytes || 0));

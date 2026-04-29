@@ -51,6 +51,7 @@ export function MarketingFooter({ className }: MarketingFooterProps) {
                 width={140}
                 height={40}
                 decoding="async"
+                loading="lazy"
                 className="h-9 w-auto flex-shrink-0 rounded-lg"
               />
               <span className="text-xl font-bold text-foreground">PesoWise</span>

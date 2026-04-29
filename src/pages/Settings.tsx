@@ -14,6 +14,7 @@ import { formatINR } from "@/lib/format";
 import { DEFAULT_BASE_FIELD_CONFIG, resolveBaseFieldConfig, type BaseExpenseFieldKey, type BaseFieldConfig } from "@/lib/expenseFormConfig";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useUiFlags } from "@/hooks/useUiFlags";
 
 interface NotificationSettings {
   popup_enabled: boolean;
@@ -23,6 +24,7 @@ interface NotificationSettings {
 
 export default function Settings() {
   const { userRole, user, organizationId, organization, refreshOrganization } = useAuth();
+  const { glassUiEnabled, setGlassUiEnabled, resetGlassUiOverride, glassUiOverride } = useUiFlags();
   const { toast } = useToast();
   
   // Admin settings
@@ -826,13 +828,74 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className={`space-y-8 ${glassUiEnabled ? "glass-page" : ""}`}>
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
           Manage your preferences and system configuration
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <SettingsIcon className="h-5 w-5" />
+            Appearance
+          </CardTitle>
+          <CardDescription>
+            Toggle the new Glass-OS interface style for your account on this device.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="glass-ui" className="text-base">
+                Enable Glass UI
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Adds subtle glass surfaces, blur, and elevated depth across core app screens.
+              </p>
+            </div>
+            <Switch
+              id="glass-ui"
+              checked={glassUiEnabled}
+              onCheckedChange={(checked) => {
+                setGlassUiEnabled(checked);
+                toast({
+                  title: checked ? "Glass UI enabled" : "Glass UI disabled",
+                  description: checked
+                    ? "Modern glass styling is now active."
+                    : "Switched back to the default interface.",
+                });
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <p className="text-sm text-muted-foreground">
+              Current mode:{" "}
+              <span className="font-medium text-foreground">
+                {glassUiOverride === null ? "System default (env)" : "Manual override"}
+              </span>
+            </p>
+            {glassUiOverride !== null && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  resetGlassUiOverride();
+                  toast({
+                    title: "Appearance reset",
+                    description: "Now following the environment default setting.",
+                  });
+                }}
+              >
+                Use Default
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Notification Settings - Available for all users */}
       <Card>

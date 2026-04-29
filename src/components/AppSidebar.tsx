@@ -95,6 +95,8 @@ export function AppSidebar() {
             <img
               src="/HERO.png"
               alt="PesoWise"
+              loading="lazy"
+              decoding="async"
               className="h-8 sm:h-10 w-auto flex-shrink-0 object-contain"
             />
           </div>

@@ -3,9 +3,22 @@
  * Override with VITE_* env vars in production without code changes.
  */
 
-export const SITE_ORIGIN = (
+function normalizeSiteOrigin(input: string): string {
+  const trimmed = String(input || "").trim().replace(/\/+$/, "");
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const url = new URL(withScheme);
+  url.protocol = "https:";
+  if (url.hostname.startsWith("www.")) {
+    url.hostname = url.hostname.slice(4);
+  }
+  url.hash = "";
+  url.search = "";
+  return `${url.origin}`;
+}
+
+export const SITE_ORIGIN = normalizeSiteOrigin(
   import.meta.env.VITE_PUBLIC_SITE_URL || "https://pesowise.unimisk.com"
-).replace(/\/$/, "");
+);
 
 /** Default Open Graph / Twitter image (replace with final 1200×630 asset if needed). */
 export const DEFAULT_OG_IMAGE = `${SITE_ORIGIN}/HERO.png`;

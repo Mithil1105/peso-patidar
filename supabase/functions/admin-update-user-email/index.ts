@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -6,10 +7,11 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type ResetBody = {
+type UpdateEmailBody = {
   target_user_id?: string;
-  new_password?: string;
+  new_email?: string;
 };
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -43,25 +45,32 @@ Deno.serve(async (req) => {
     }
 
     const jwt = authHeader.replace("Bearer ", "");
-    const { target_user_id, new_password } = (await req.json()) as ResetBody;
+    const { target_user_id, new_email } = (await req.json()) as UpdateEmailBody;
 
-    if (!target_user_id || !new_password) {
+    if (!target_user_id || !new_email) {
       return new Response(
-        JSON.stringify({ success: false, error: "target_user_id and new_password are required" }),
+        JSON.stringify({ success: false, error: "target_user_id and new_email are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    if (new_password.length < 8) {
+    const normalizedEmail = String(new_email).trim().toLowerCase();
+    if (!UUID_REGEX.test(String(target_user_id))) {
       return new Response(
-        JSON.stringify({ success: false, error: "Password must be at least 8 characters" }),
+        JSON.stringify({ success: false, error: "Invalid target_user_id" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid email address" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Verify caller from JWT
     const { data: authUserData, error: authUserError } = await serviceClient.auth.getUser(jwt);
     if (authUserError || !authUserData.user) {
       return new Response(
@@ -72,24 +81,24 @@ Deno.serve(async (req) => {
 
     const callerId = authUserData.user.id;
 
-    // Ensure caller is an active admin in at least one org.
-    const { data: adminMemberships, error: adminCheckError } = await serviceClient
+    // Ensure caller is an active org admin.
+    const { data: callerAdminMemberships, error: callerAdminError } = await serviceClient
       .from("organization_memberships")
       .select("organization_id")
       .eq("user_id", callerId)
       .eq("role", "admin")
       .eq("is_active", true);
 
-    if (adminCheckError || !adminMemberships?.length) {
+    if (callerAdminError || !callerAdminMemberships?.length) {
       return new Response(
-        JSON.stringify({ success: false, error: "Only administrators can reset passwords" }),
+        JSON.stringify({ success: false, error: "Only administrators can update user email" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const adminOrgIds = new Set(adminMemberships.map((m: { organization_id: string }) => m.organization_id));
+    const adminOrgIds = new Set(callerAdminMemberships.map((m: { organization_id: string }) => m.organization_id));
 
-    // Ensure target user belongs to one of caller admin organizations.
+    // Ensure target belongs to one of caller's admin orgs.
     const { data: targetMemberships, error: targetMembershipError } = await serviceClient
       .from("organization_memberships")
       .select("organization_id")
@@ -106,41 +115,25 @@ Deno.serve(async (req) => {
     const sameOrg = targetMemberships.some((m: { organization_id: string }) => adminOrgIds.has(m.organization_id));
     if (!sameOrg) {
       return new Response(
-        JSON.stringify({ success: false, error: "You can only reset passwords for users in your organization" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    // Optional safety: block resetting admin passwords via this UI path.
-    const { data: targetAdminMembership } = await serviceClient
-      .from("organization_memberships")
-      .select("user_id")
-      .eq("user_id", target_user_id)
-      .eq("role", "admin")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    if (targetAdminMembership) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Admin passwords cannot be reset through this interface" }),
+        JSON.stringify({ success: false, error: "You can only update users in your organization" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const { error: updateError } = await serviceClient.auth.admin.updateUserById(target_user_id, {
-      password: new_password,
+      email: normalizedEmail,
+      email_confirm: true,
     });
 
     if (updateError) {
       return new Response(
-        JSON.stringify({ success: false, error: updateError.message || "Failed to reset password" }),
+        JSON.stringify({ success: false, error: updateError.message || "Failed to update auth email" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: "Password reset successful" }),
+      JSON.stringify({ success: true, message: "User email updated successfully", email: normalizedEmail }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {

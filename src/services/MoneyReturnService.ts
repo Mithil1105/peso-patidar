@@ -7,6 +7,7 @@ export interface MoneyReturnRequest {
   requester_id: string;
   cashier_id: string;
   amount: number;
+  note?: string | null;
   status: "pending" | "approved" | "rejected";
   requested_at: string;
   approved_at?: string;
@@ -19,6 +20,14 @@ export interface MoneyReturnRequest {
 }
 
 export class MoneyReturnService {
+  private static buildTransferHistoryNote(requestId: string, requestNote?: string | null): string {
+    const cleanedNote = requestNote?.trim();
+    if (!cleanedNote) {
+      return `Money return request approved (${requestId})`;
+    }
+    return `Money return request approved (${requestId}): ${cleanedNote}`;
+  }
+
   private static async getOrganizationIdForUser(userId: string): Promise<string | null> {
     const { data, error } = await supabase
       .from("organization_memberships")
@@ -64,9 +73,10 @@ export class MoneyReturnService {
     const transferType = requesterRole === "engineer" ? "engineer_to_cashier" : "employee_to_cashier";
 
     // Avoid duplicate insert when DB trigger already wrote the history row.
+    const desiredNote = this.buildTransferHistoryNote(request.id, request.note);
     const { data: existing } = await supabase
       .from("cash_transfer_history")
-      .select("id")
+      .select("id, notes")
       .eq("organization_id", organizationId)
       .eq("transferrer_id", request.requester_id)
       .eq("recipient_id", cashierId)
@@ -76,7 +86,12 @@ export class MoneyReturnService {
       .limit(1)
       .maybeSingle();
 
-    if (existing?.id) return;
+    if (existing?.id) {
+      if ((existing.notes || "") !== desiredNote) {
+        await supabase.from("cash_transfer_history").update({ notes: desiredNote }).eq("id", existing.id);
+      }
+      return;
+    }
 
     const { error: historyError } = await supabase
       .from("cash_transfer_history")
@@ -90,7 +105,7 @@ export class MoneyReturnService {
         transfer_type: transferType,
         transferred_at: approvedAt,
         payment_mode: "cash",
-        notes: `Money return request approved (${request.id})`,
+        notes: desiredNote,
       });
 
     if (historyError) {
@@ -104,7 +119,8 @@ export class MoneyReturnService {
   static async createReturnRequest(
     requesterId: string,
     cashierId: string,
-    amount: number
+    amount: number,
+    note?: string
   ): Promise<MoneyReturnRequest> {
     // First, verify the requester has sufficient balance
     const { data: requesterProfile, error: profileError } = await supabase
@@ -152,6 +168,7 @@ export class MoneyReturnService {
         cashier_id: cashierId,
         amount: amount,
         organization_id: organizationId,
+        note: note?.trim() || null,
         status: "pending",
       })
       .select()

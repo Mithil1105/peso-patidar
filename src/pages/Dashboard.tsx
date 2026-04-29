@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
 
@@ -68,6 +69,7 @@ export default function Dashboard() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [returnMoneyDialogOpen, setReturnMoneyDialogOpen] = useState(false);
   const [returnAmount, setReturnAmount] = useState("");
+  const [returnNote, setReturnNote] = useState("");
   const [returningMoney, setReturningMoney] = useState(false);
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [returnRequests, setReturnRequests] = useState<any[]>([]);
@@ -804,7 +806,7 @@ export default function Dashboard() {
 
       // Create a return request (requires cashier approval)
       const { MoneyReturnService } = await import("@/services/MoneyReturnService");
-      await MoneyReturnService.createReturnRequest(user.id, targetUserId, amount);
+      await MoneyReturnService.createReturnRequest(user.id, targetUserId, amount, returnNote);
 
       // Refresh balance and stats (request doesn't change balance yet)
       fetchUserBalance();
@@ -812,6 +814,7 @@ export default function Dashboard() {
 
       // Update local state
       setReturnAmount("");
+      setReturnNote("");
       setReturnMoneyDialogOpen(false);
 
       toast({
@@ -1301,6 +1304,11 @@ export default function Dashboard() {
                           <p className="text-xs text-gray-500 mt-1">
                             Requested {format(new Date(request.requested_at), "MMM d, h:mm a")}
                           </p>
+                          {request.note ? (
+                            <p className="text-xs text-gray-700 mt-2 break-words">
+                              Note: {request.note}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           <Button
@@ -1360,6 +1368,17 @@ export default function Dashboard() {
                   disabled={returningMoney}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="returnNote">Note (optional)</Label>
+                <Textarea
+                  id="returnNote"
+                  placeholder="Add reason or context for this return"
+                  value={returnNote}
+                  onChange={(e) => setReturnNote(e.target.value)}
+                  disabled={returningMoney}
+                  rows={3}
+                />
+              </div>
             </div>
             <DialogFooter>
               <Button
@@ -1367,6 +1386,7 @@ export default function Dashboard() {
                 onClick={() => {
                   setReturnMoneyDialogOpen(false);
                   setReturnAmount("");
+                  setReturnNote("");
                 }}
                 disabled={returningMoney}
               >

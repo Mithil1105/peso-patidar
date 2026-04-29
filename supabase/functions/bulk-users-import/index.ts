@@ -17,6 +17,8 @@ type UserRow = {
   location?: string;
 };
 type Body = { organization_id?: string; dry_run?: boolean; rows?: UserRow[] };
+const MAX_ROWS = 500;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function resolveAdminOrg(client: any, callerId: string, requestedOrgId?: string) {
   const { data, error } = await client
@@ -73,6 +75,7 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as Body;
     const rows = Array.isArray(body.rows) ? body.rows : [];
     if (rows.length === 0) throw new Error("rows[] is required");
+    if (rows.length > MAX_ROWS) throw new Error(`rows[] exceeds max allowed size (${MAX_ROWS})`);
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: authUserData, error: authUserError } = await serviceClient.auth.getUser(jwt);
@@ -95,10 +98,10 @@ Deno.serve(async (req) => {
     // Pass 1: validate + create/lookup + assign role
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
-      const name = String(row.name || "").trim();
+      const name = String(row.name || "").trim().slice(0, 120);
       const email = normalize(row.email);
       const role = resolveRole(row);
-      if (!name || !email || !role) {
+      if (!name || !email || !role || !EMAIL_REGEX.test(email)) {
         results.push({ index: i, ok: false, email, error: "name, email, and role/position are required" });
         continue;
       }
@@ -137,7 +140,7 @@ Deno.serve(async (req) => {
         // 2) Create new auth user
         const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
           email,
-          password: row.password || randomPassword(),
+          password: (row.password && String(row.password).length >= 8 ? row.password : randomPassword()),
           email_confirm: true,
           user_metadata: { name, organization_id: organizationId },
         });

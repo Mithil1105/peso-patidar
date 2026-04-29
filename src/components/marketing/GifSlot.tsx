@@ -8,7 +8,7 @@ export function GifSlot({ src, alt = "Demo animation", className = "" }: GifSlot
   if (src) {
     return (
       <div className={`rounded-xl overflow-hidden shadow-xl ${className}`}>
-        <img src={src} alt={alt} className="w-full h-auto" />
+        <img src={src} alt={alt} loading="lazy" decoding="async" className="w-full h-auto" />
       </div>
     );
   }

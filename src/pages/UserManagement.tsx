@@ -952,12 +952,53 @@ export default function UserManagement() {
 
     try {
       setUpdating(true);
+      const normalizedEmail = String(editFormData.email || "").trim().toLowerCase();
+      const previousEmail = String(userToEdit.email || "").trim().toLowerCase();
+      const emailChanged = normalizedEmail !== previousEmail;
+
+      if (!normalizedEmail) {
+        throw new Error("Email is required");
+      }
+
+      if (emailChanged) {
+        const { data: emailUpdateResult, error: emailUpdateError } = await supabase.functions.invoke(
+          "admin-update-user-email",
+          {
+            body: {
+              target_user_id: userToEdit.user_id,
+              new_email: normalizedEmail,
+            },
+          }
+        );
+
+        if (emailUpdateError) {
+          const msg = emailUpdateError.message || "Failed to update authentication email";
+          if (msg.toLowerCase().includes("already")) {
+            throw new Error("An account with this email already exists");
+          }
+          if (msg.toLowerCase().includes("not found")) {
+            throw new Error("Email update service is unavailable. Please deploy edge functions and try again.");
+          }
+          throw new Error(msg);
+        }
+
+        if (!emailUpdateResult?.success) {
+          const msg = String(emailUpdateResult?.error || "Failed to update authentication email");
+          if (msg.toLowerCase().includes("already")) {
+            throw new Error("An account with this email already exists");
+          }
+          if (msg.toLowerCase().includes("invalid email")) {
+            throw new Error("Please enter a valid email address");
+          }
+          throw new Error(msg);
+        }
+      }
 
       // Update profile (name, email, assignments, balance for admin)
       // Clear assignments when role changes - only set if role matches
       const updateData: any = {
         name: editFormData.name,
-        email: editFormData.email,
+        email: normalizedEmail,
       };
       if (userRole === "admin" && typeof editFormData.balance === "number" && !Number.isNaN(editFormData.balance)) {
         updateData.balance = editFormData.balance;

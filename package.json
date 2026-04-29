@@ -12,6 +12,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "security:audit": "npm audit --audit-level=moderate",
+    "security:check": "npm run lint && npm run test -- --run && npm run build && npm run security:audit",
     "db:dump": "supabase db dump -f backup.sql",
     "db:dump:no-docker": "powershell -ExecutionPolicy Bypass -File scripts/db-dump.ps1 -OutFile backup.sql",
     "db:dump:node": "node scripts/db-dump-node.js",
