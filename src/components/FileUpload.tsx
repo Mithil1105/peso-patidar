@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Upload, X, FileText, Image, Download, Camera, ZoomIn, ZoomOut, RotateCcw, Maximize2 } from "lucide-react";
+import { Upload, X, FileText, Image, Download, Camera, ZoomIn, ZoomOut, RotateCcw, Maximize2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -590,9 +590,23 @@ export function FileUpload({
           imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground">
-                PDF preview (browser native controls available inside the frame).
+                Some browsers block embedded PDF previews. Use the action below to open it directly.
               </div>
-              <iframe src={imagePreviewUrl} className="w-full h-[75vh] rounded border" title="PDF Preview" />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={() => window.open(imagePreviewUrl, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open PDF in New Tab
+                </Button>
+                <Button type="button" variant="outline" asChild>
+                  <a href={imagePreviewUrl} download target="_blank" rel="noopener noreferrer">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </a>
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
