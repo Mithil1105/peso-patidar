@@ -119,7 +119,12 @@ export default function AdminPanel() {
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalExpenseCount, setTotalExpenseCount] = useState(0);
+  const [allExpensesLoaded, setAllExpensesLoaded] = useState(false);
+  const [loadingAllExpenses, setLoadingAllExpenses] = useState(false);
+  const [expenseSort, setExpenseSort] = useState<"newest" | "name_asc" | "name_desc">("newest");
   const EXPENSES_PER_PAGE = 15;
+  const EXPENSE_FETCH_PAGE_SIZE = 1000;
 
   useEffect(() => {
     console.log("🔄 [AdminPanel] useEffect triggered");
@@ -385,7 +390,7 @@ export default function AdminPanel() {
     setUsers(usersWithRoles);
   };
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = async (options?: { loadAll?: boolean }) => {
     console.log("🔍 [AdminPanel] fetchExpenses called");
     console.log("🔍 [AdminPanel] organizationId:", organizationId);
     console.log("🔍 [AdminPanel] user:", user?.id);
@@ -416,12 +421,38 @@ export default function AdminPanel() {
     // Draft/"created but not submitted yet" rows can exist while attachments are still being
     // moved from `receipts/temp/...` into the expense folder + `attachments` table,
     // causing the "no attachments yet" experience.
-    const { data: allExpenses, error: expensesError } = await supabase
+    const shouldLoadAll = options?.loadAll ?? allExpensesLoaded;
+    const queryBase = supabase
       .from("expenses")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("organization_id", organizationId)
       .in("status", ["submitted", "verified", "approved", "rejected"])
       .order("created_at", { ascending: false });
+
+    let allExpenses: any[] = [];
+    let expensesError: any = null;
+    let totalCount = 0;
+
+    if (shouldLoadAll) {
+      let offset = 0;
+      while (true) {
+        const { data, error, count } = await queryBase.range(offset, offset + EXPENSE_FETCH_PAGE_SIZE - 1);
+        if (error) {
+          expensesError = error;
+          break;
+        }
+        if (offset === 0) totalCount = count || 0;
+        const chunk = data || [];
+        allExpenses.push(...chunk);
+        if (chunk.length < EXPENSE_FETCH_PAGE_SIZE) break;
+        offset += EXPENSE_FETCH_PAGE_SIZE;
+      }
+    } else {
+      const { data, error, count } = await queryBase.range(0, EXPENSE_FETCH_PAGE_SIZE - 1);
+      allExpenses = data || [];
+      expensesError = error;
+      totalCount = count || 0;
+    }
 
     console.log("🔍 [AdminPanel] Expenses query result (with org filter):");
     console.log("  - Data:", allExpenses);
@@ -445,6 +476,8 @@ export default function AdminPanel() {
     }
 
     const expensesData = allExpenses || [];
+    setTotalExpenseCount(totalCount || expensesData.length);
+    setAllExpensesLoaded(shouldLoadAll && (totalCount === 0 || expensesData.length >= totalCount));
     console.log("✅ [AdminPanel] Expenses data to process:", expensesData.length);
     console.log("✅ [AdminPanel] Raw expenses:", expensesData);
 
@@ -541,6 +574,48 @@ export default function AdminPanel() {
       name: profile.name,
       email: profile.email
     })));
+  };
+
+  const handleLoadAllExpenses = async (options?: { silent?: boolean }) => {
+    try {
+      setLoadingAllExpenses(true);
+      await fetchExpenses({ loadAll: true });
+      setCurrentPage(1);
+      if (!options?.silent) {
+        toast({
+          title: "All expenses loaded",
+          description: "Full expense history is now available in this view.",
+        });
+      }
+    } catch (error) {
+      console.error("❌ [AdminPanel] Failed to load all expenses:", error);
+      if (!options?.silent) {
+        toast({
+          title: "Failed to load all expenses",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+      }
+      throw error;
+    } finally {
+      setLoadingAllExpenses(false);
+    }
+  };
+
+  const handleSortChange = async (value: "newest" | "name_asc" | "name_desc") => {
+    setExpenseSort(value);
+    if ((value === "name_asc" || value === "name_desc") && !allExpensesLoaded) {
+      try {
+        await handleLoadAllExpenses({ silent: true });
+      } catch (error) {
+        console.error("❌ [AdminPanel] Failed auto-load before sorting by name:", error);
+        toast({
+          title: "Could not load full history",
+          description: "Sorting by employee name needs full data. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
   };
 
   const approveExpense = async () => {
@@ -1008,17 +1083,32 @@ export default function AdminPanel() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredExpenses.length / EXPENSES_PER_PAGE));
+  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+    if (expenseSort === "name_asc") {
+      return a.user_name.localeCompare(b.user_name, undefined, { sensitivity: "base" });
+    }
+    if (expenseSort === "name_desc") {
+      return b.user_name.localeCompare(a.user_name, undefined, { sensitivity: "base" });
+    }
+    const aExpenseDate = parseLocalDate(a.trip_start)?.getTime() ?? new Date(a.trip_start).getTime();
+    const bExpenseDate = parseLocalDate(b.trip_start)?.getTime() ?? new Date(b.trip_start).getTime();
+    if (bExpenseDate !== aExpenseDate) {
+      return bExpenseDate - aExpenseDate;
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedExpenses.length / EXPENSES_PER_PAGE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStartIndex = (safeCurrentPage - 1) * EXPENSES_PER_PAGE;
-  const paginatedExpenses = filteredExpenses.slice(
+  const paginatedExpenses = sortedExpenses.slice(
     pageStartIndex,
     pageStartIndex + EXPENSES_PER_PAGE
   );
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm, statusFilter, expenseSort]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -1387,6 +1477,20 @@ export default function AdminPanel() {
               </div>
 
               <div className="space-y-2">
+                <label className="text-xs sm:text-sm font-medium text-gray-700">Sort By</label>
+                <Select value={expenseSort} onValueChange={(v) => void handleSortChange(v as "newest" | "name_asc" | "name_desc")}>
+                  <SelectTrigger className="h-10 sm:h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 text-sm">
+                    <SelectValue placeholder="Sort expenses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest first</SelectItem>
+                    <SelectItem value="name_asc">Employee name (A-Z)</SelectItem>
+                    <SelectItem value="name_desc">Employee name (Z-A)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-xs sm:text-sm font-medium text-gray-700">Actions</label>
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -1427,8 +1531,24 @@ export default function AdminPanel() {
             </div>
 
             <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-600">
-              Showing {filteredExpenses.length === 0 ? 0 : pageStartIndex + 1}-
-              {Math.min(pageStartIndex + EXPENSES_PER_PAGE, filteredExpenses.length)} of {filteredExpenses.length} expenses
+              Showing {sortedExpenses.length === 0 ? 0 : pageStartIndex + 1}-
+              {Math.min(pageStartIndex + EXPENSES_PER_PAGE, sortedExpenses.length)} of {sortedExpenses.length} expenses
+            </div>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm">
+              <p className="text-gray-600">
+                Loaded {expenses.length.toLocaleString()} of {Math.max(totalExpenseCount, expenses.length).toLocaleString()} total organization expenses
+              </p>
+              {!allExpensesLoaded && expenses.length < Math.max(totalExpenseCount, expenses.length) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoadAllExpenses}
+                  disabled={loadingAllExpenses}
+                >
+                  {loadingAllExpenses ? "Loading all..." : "Load all expenses"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
