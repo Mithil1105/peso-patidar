@@ -18,7 +18,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { useUiFlags } from "@/hooks/useUiFlags";
 
 interface ProfileRow {
   user_id: string;
@@ -41,7 +40,6 @@ interface BankAccountRow {
 
 export default function Balances() {
   const { userRole, user, organizationId } = useAuth();
-  const { glassUiEnabled } = useUiFlags();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ProfileRow[]>([]);
@@ -991,7 +989,7 @@ export default function Balances() {
 
   if (!canEdit) {
     return (
-      <div className={`space-y-8 ${glassUiEnabled ? "glass-page" : ""}`}>
+      <div className="space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
           <p className="text-muted-foreground">You don't have permission to access balances.</p>
@@ -1249,7 +1247,7 @@ export default function Balances() {
   };
 
   return (
-    <div className={`space-y-6 ${glassUiEnabled ? "glass-page" : ""}`}>
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Employee Balances</h1>

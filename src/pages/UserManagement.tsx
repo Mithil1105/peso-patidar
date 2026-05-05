@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
@@ -102,6 +102,45 @@ export default function UserManagement() {
   const [bulkUsersDryRun, setBulkUsersDryRun] = useState(true);
   const [bulkUsersLoading, setBulkUsersLoading] = useState(false);
   const [bulkUsersResult, setBulkUsersResult] = useState<any | null>(null);
+  const [orgSeatSummary, setOrgSeatSummary] = useState<{
+    maxUsers: number | null;
+    activeMembers: number;
+  } | null>(null);
+  const [orgSeatSummaryLoading, setOrgSeatSummaryLoading] = useState(false);
+
+  const refreshOrgSeatSummary = useCallback(async () => {
+    if (!organizationId || userRole !== "admin") {
+      setOrgSeatSummary(null);
+      return;
+    }
+    setOrgSeatSummaryLoading(true);
+    try {
+      const [{ data: orgRow, error: orgErr }, { count, error: cntErr }] = await Promise.all([
+        supabase.from("organizations").select("max_users").eq("id", organizationId).maybeSingle(),
+        supabase
+          .from("organization_memberships")
+          .select("user_id", { count: "exact", head: true })
+          .eq("organization_id", organizationId)
+          .eq("is_active", true),
+      ]);
+      if (orgErr || cntErr) {
+        console.error("refreshOrgSeatSummary:", orgErr || cntErr);
+        setOrgSeatSummary(null);
+        return;
+      }
+      const rawMax = orgRow?.max_users;
+      setOrgSeatSummary({
+        maxUsers: rawMax === null || rawMax === undefined ? null : Number(rawMax),
+        activeMembers: count ?? 0,
+      });
+    } finally {
+      setOrgSeatSummaryLoading(false);
+    }
+  }, [organizationId, userRole]);
+
+  useEffect(() => {
+    refreshOrgSeatSummary();
+  }, [refreshOrgSeatSummary]);
 
   useEffect(() => {
     // Load engineers for assignment dropdown
@@ -875,6 +914,7 @@ export default function UserManagement() {
 
       if (error) throw error;
       setBulkUsersResult(data || null);
+      void refreshOrgSeatSummary();
       toast({
         title: bulkUsersDryRun ? "Dry-run complete" : "Bulk upload complete",
         description: `Processed ${data?.total ?? 0}: ${data?.ok ?? 0} success, ${data?.failed ?? 0} failed`,
@@ -2118,6 +2158,30 @@ export default function UserManagement() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
+          {organizationId && userRole === "admin" && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-950">
+              <p className="font-medium">Organization capacity (for this import)</p>
+              <p className="mt-1 break-all font-mono text-xs text-emerald-900/90">{organizationId}</p>
+              {orgSeatSummaryLoading ? (
+                <p className="mt-2 text-muted-foreground">Loading member counts…</p>
+              ) : orgSeatSummary ? (
+                <p className="mt-2">
+                  Active members: <strong>{orgSeatSummary.activeMembers}</strong>
+                  {" · "}
+                  Max users:{" "}
+                  <strong>{orgSeatSummary.maxUsers == null ? "Unlimited" : orgSeatSummary.maxUsers}</strong>
+                  {orgSeatSummary.maxUsers != null && (
+                    <span className="text-emerald-800/80">
+                      {" "}
+                      ({Math.max(0, orgSeatSummary.maxUsers - orgSeatSummary.activeMembers)} seats available)
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-2 text-muted-foreground">Could not load capacity (check permissions or try again).</p>
+              )}
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-[1fr_auto]">
             <div className="space-y-2">
               <Label htmlFor="bulk-users-file">CSV file</Label>

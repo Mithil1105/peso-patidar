@@ -36,6 +36,7 @@ import NotificationSettings from "./pages/NotificationSettings";
 import CashierTransactions from "./pages/CashierTransactions";
 import CashTransferHistory from "./pages/CashTransferHistory";
 import MasterAdminDashboard from "./pages/MasterAdminDashboard";
+import HelpTutorial from "./pages/HelpTutorial";
 
 const queryClient = new QueryClient();
 
@@ -236,6 +237,16 @@ const App = () => (
               <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
                 <Layout>
                   <Notifications />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/help"
+            element={
+              <ProtectedRoute allowedRoles={["employee", "admin", "engineer", "cashier"]}>
+                <Layout>
+                  <HelpTutorial />
                 </Layout>
               </ProtectedRoute>
             }

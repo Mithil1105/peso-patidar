@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatINR } from "@/lib/format";
-import { Wallet, Pencil, Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react";
+import { Wallet, Pencil, Eye, EyeOff, CheckCircle, AlertCircle, CircleHelp } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,10 @@ import { Separator } from "@/components/ui/separator";
 import { useNotificationManager } from "@/hooks/useNotificationManager";
 import { NotificationPopup } from "@/components/NotificationPopup";
 import { Helmet } from "react-helmet-async";
-import { useUiFlags } from "@/hooks/useUiFlags";
+import { Link } from "react-router-dom";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { userProfile, userRole, user, refreshUserProfile, organization, organizationId, refreshOrganization } = useAuth();
-  const { glassUiEnabled } = useUiFlags();
   const { toast } = useToast();
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -205,31 +204,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <Helmet>
         <meta name="robots" content="noindex, nofollow" />
       </Helmet>
-      <div className={`min-h-screen flex w-full ${glassUiEnabled ? "glass-ui glass-shell-bg" : "bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100"}`}>
-        {glassUiEnabled && (
-          <>
-            <div
-              className="glass-orb h-64 w-64"
-              style={{ top: "4rem", left: "14rem", background: "hsl(var(--primary) / 0.32)" }}
-            />
-            <div
-              className="glass-orb h-72 w-72"
-              style={{ top: "22rem", right: "8rem", background: "hsl(var(--chart-4) / 0.26)" }}
-            />
-            <div
-              className="glass-orb h-52 w-52"
-              style={{ bottom: "3rem", left: "42%", background: "hsl(var(--chart-2) / 0.2)" }}
-            />
-          </>
-        )}
+      <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
         <AppSidebar />
         <main className="flex-1 flex flex-col min-w-0 relative">
           {/* Mobile-optimized Header */}
-          <header className={`border-b sticky top-0 z-30 ${glassUiEnabled ? "glass-surface-strong glass-elevated" : "bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60 shadow-sm"}`}>
+          <header className="border-b sticky top-0 z-30 bg-white/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/60 shadow-sm">
             <div className="flex h-14 sm:h-16 items-center gap-2 sm:gap-4 px-3 sm:px-6">
               <SidebarTrigger
-                className={`rounded-lg p-2 transition-colors flex-shrink-0 ${glassUiEnabled ? "glass-surface hover:bg-white/30" : "hover:bg-gray-100"}`}
+                className="rounded-lg p-2 transition-colors flex-shrink-0 hover:bg-gray-100"
               />
+              {(userRole === "admin" || userRole === "engineer" || userRole === "employee" || userRole === "cashier") && (
+                <Button asChild variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0">
+                  <Link to="/help" aria-label="Open tutorial" title="Open tutorial">
+                    <CircleHelp className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Link>
+                </Button>
+              )}
               <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3">
                 <img
                   src="/HERO.png"

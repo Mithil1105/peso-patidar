@@ -116,34 +116,54 @@ export default function Expenses() {
 
   const fetchExpenses = async () => {
     try {
-      const { data, error } = await supabase
-        .from("expenses")
-        .select("*")
-        .eq("user_id", user?.id)
-        .order("created_at", { ascending: false });
+      if (!user?.id) return;
 
-      if (error) throw error;
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+      const allExpenses: Expense[] = [];
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("expenses")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (error) throw error;
+        const page = (data || []) as Expense[];
+        allExpenses.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
       
       // Check which expenses have been resubmitted by checking audit logs
-      const expenseIds = (data || []).map(e => e.id);
+      const expenseIds = allExpenses.map(e => e.id);
       if (expenseIds.length > 0) {
-        const { data: resubmitLogs } = await supabase
-          .from("audit_logs")
-          .select("expense_id")
-          .in("expense_id", expenseIds)
-          .eq("action", "expense_resubmitted");
+        const resubmitLogsAll: Array<{ expense_id: string }> = [];
+        const CHUNK_SIZE = 500;
+        for (let i = 0; i < expenseIds.length; i += CHUNK_SIZE) {
+          const chunk = expenseIds.slice(i, i + CHUNK_SIZE);
+          const { data: resubmitLogs, error: logsError } = await supabase
+            .from("audit_logs")
+            .select("expense_id")
+            .in("expense_id", chunk)
+            .eq("action", "expense_resubmitted");
+          if (logsError) throw logsError;
+          resubmitLogsAll.push(...(resubmitLogs || []));
+        }
         
-        const resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
+        const resubmittedIds = new Set(resubmitLogsAll.map(log => log.expense_id));
         
         // Mark expenses as resubmitted
-        const expensesWithResubmit = (data || []).map(expense => ({
+        const expensesWithResubmit = allExpenses.map(expense => ({
           ...expense,
           isResubmitted: resubmittedIds.has(expense.id)
         }));
         
         setExpenses(expensesWithResubmit);
       } else {
-        setExpenses(data || []);
+        setExpenses(allExpenses);
       }
     } catch (error) {
       console.error("Error fetching expenses:", error);

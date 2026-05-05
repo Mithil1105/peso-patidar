@@ -17,7 +17,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { useUiFlags } from "@/hooks/useUiFlags";
 
 interface Notification {
   id: string;
@@ -33,7 +32,6 @@ interface Notification {
 
 export default function Notifications() {
   const { user, userRole, organizationId } = useAuth();
-  const { glassUiEnabled } = useUiFlags();
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -258,7 +256,7 @@ export default function Notifications() {
   };
 
   return (
-    <div className={`space-y-8 ${glassUiEnabled ? "glass-page" : ""}`}>
+    <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Notifications</h1>

@@ -19,6 +19,8 @@ type UserRow = {
 type Body = { organization_id?: string; dry_run?: boolean; rows?: UserRow[] };
 const MAX_ROWS = 500;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USER_LIMIT_ERROR =
+  "The user limit for this organization has been reached. Please remove some existing users or contact us to upgrade your plan.";
 
 async function resolveAdminOrg(client: any, callerId: string, requestedOrgId?: string) {
   const { data, error } = await client
@@ -82,6 +84,26 @@ Deno.serve(async (req) => {
     if (authUserError || !authUserData.user) throw new Error("Invalid or expired token");
     const organizationId = await resolveAdminOrg(serviceClient, authUserData.user.id, body.organization_id);
     const dryRun = body.dry_run === true;
+    const { data: organizationData, error: organizationError } = await serviceClient
+      .from("organizations")
+      .select("max_users")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if (organizationError) throw new Error(`Failed to read organization limits: ${organizationError.message}`);
+
+    const { count: activeMemberCount, error: activeCountError } = await serviceClient
+      .from("organization_memberships")
+      .select("user_id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .eq("is_active", true);
+    if (activeCountError) throw new Error(`Failed to read active member count: ${activeCountError.message}`);
+
+    const orgMaxUsers =
+      organizationData?.max_users === null || organizationData?.max_users === undefined
+        ? null
+        : Number(organizationData.max_users);
+    const activeMembersBefore = Number(activeMemberCount || 0);
+    let projectedActiveMembers = activeMembersBefore;
 
     type RowResult = {
       index: number;
@@ -127,6 +149,8 @@ Deno.serve(async (req) => {
       }
 
       let userId: string | null = null;
+      let existingMembership = false;
+      let consumesNewSeat = false;
 
       // 1) Check if auth user already exists by profile email
       const { data: existingProfile } = await serviceClient
@@ -136,7 +160,30 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (existingProfile?.user_id) {
         userId = existingProfile.user_id as string;
+
+        const { data: membershipRow, error: membershipError } = await serviceClient
+          .from("organization_memberships")
+          .select("is_active")
+          .eq("organization_id", organizationId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (membershipError) {
+          results.push({ index: i, ok: false, email, user_id: userId, error: membershipError.message });
+          continue;
+        }
+        existingMembership = Boolean(membershipRow);
+        consumesNewSeat = !existingMembership;
       } else {
+        // New auth user always consumes a seat once assigned to this organization.
+        consumesNewSeat = true;
+      }
+
+      if (consumesNewSeat && orgMaxUsers !== null && projectedActiveMembers >= orgMaxUsers) {
+        results.push({ index: i, ok: false, email, error: USER_LIMIT_ERROR });
+        continue;
+      }
+
+      if (!existingProfile?.user_id) {
         // 2) Create new auth user
         const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
           email,
@@ -145,7 +192,18 @@ Deno.serve(async (req) => {
           user_metadata: { name, organization_id: organizationId },
         });
         if (createError || !created.user?.id) {
-          results.push({ index: i, ok: false, email, error: createError?.message || "Failed to create auth user" });
+          const createMessage = createError?.message || "Failed to create auth user";
+          // In some environments, org limit violations happen in DB triggers during auth user creation
+          // and surface as a generic database error from GoTrue.
+          if (
+            createMessage.toLowerCase().includes("database error creating new user") &&
+            orgMaxUsers !== null &&
+            projectedActiveMembers >= orgMaxUsers
+          ) {
+            results.push({ index: i, ok: false, email, error: USER_LIMIT_ERROR });
+          } else {
+            results.push({ index: i, ok: false, email, error: createMessage });
+          }
           continue;
         }
         userId = created.user.id;
@@ -161,6 +219,8 @@ Deno.serve(async (req) => {
         results.push({ index: i, ok: false, email, user_id: userId, error: assignError.message });
         continue;
       }
+
+      if (consumesNewSeat) projectedActiveMembers += 1;
 
       // 4) Best-effort name update
       await serviceClient
@@ -266,6 +326,9 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         organization_id: organizationId,
+        max_users: orgMaxUsers,
+        active_members_before: activeMembersBefore,
+        active_members_after: projectedActiveMembers,
         dry_run: dryRun,
         total: rows.length,
         ok: results.filter((r) => r.ok).length,

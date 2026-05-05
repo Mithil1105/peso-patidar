@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -19,7 +19,8 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Eye
+  Eye,
+  ExternalLink
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAllowCashierExpenseSubmission } from "@/hooks/useAllowCashierExpenseSubmission";
@@ -1012,15 +1013,30 @@ export default function ExpenseDetail() {
           {/* Image/PDF Preview Dialog */}
           <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Attachment preview</DialogTitle>
+                <DialogDescription>
+                  PDFs cannot be embedded here due to security policy. Open in a new tab or download instead.
+                </DialogDescription>
+              </DialogHeader>
               {imagePreviewUrl && (
                 previewContentType === 'application/pdf' || imagePreviewUrl.toLowerCase().endsWith('.pdf') ? (
-                  <div className="w-full" style={{ height: '80vh' }}>
-                    <iframe 
-                      src={imagePreviewUrl} 
-                      className="w-full h-full rounded border" 
-                      title="PDF Preview"
-                      style={{ minHeight: '600px' }}
-                    />
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => window.open(imagePreviewUrl, "_blank", "noopener,noreferrer")}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Open PDF in new tab
+                      </Button>
+                      <Button type="button" variant="outline" asChild>
+                        <a href={imagePreviewUrl} download target="_blank" rel="noopener noreferrer">
+                          <Download className="h-4 w-4 mr-2" />
+                          Download PDF
+                        </a>
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <img 
