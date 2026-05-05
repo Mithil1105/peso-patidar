@@ -12,6 +12,16 @@ interface ExpenseAnalytics {
   totalAmount: number;
   totalCount: number;
   averageAmount: number;
+  medianAmount: number;
+  approvalRate: number;
+  approvedAmount: number;
+  rejectedAmount: number;
+  topCategory: string;
+  statusBreakdown: Array<{
+    status: string;
+    count: number;
+    amount: number;
+  }>;
   categoryBreakdown: Array<{
     category: string;
     amount: number;
@@ -30,6 +40,18 @@ interface ExpenseAnalytics {
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+const STATUS_COLORS: Record<string, string> = {
+  submitted: "#f59e0b",
+  verified: "#3b82f6",
+  approved: "#10b981",
+  rejected: "#ef4444",
+  other: "#6b7280",
+};
+const MAX_CATEGORY_SLICES = 8;
+
+function formatCategoryLabel(category: string): string {
+  return category.length > 20 ? `${category.slice(0, 20)}...` : category;
+}
 
 function getStartDate(range: string): Date {
   const now = new Date();
@@ -93,6 +115,20 @@ export default function Analytics() {
       const totalAmount = expenses.reduce((sum, e) => sum + Number(e.total_amount || 0), 0);
       const totalCount = expenses.length;
       const averageAmount = totalCount > 0 ? totalAmount / totalCount : 0;
+      const sortedAmounts = expenses
+        .map((e) => Number(e.total_amount || 0))
+        .sort((a, b) => a - b);
+      const medianAmount = totalCount === 0
+        ? 0
+        : totalCount % 2 === 1
+          ? sortedAmounts[Math.floor(totalCount / 2)]
+          : (sortedAmounts[totalCount / 2 - 1] + sortedAmounts[totalCount / 2]) / 2;
+
+      const approvedExpenses = expenses.filter((e) => e.status === "approved");
+      const rejectedExpenses = expenses.filter((e) => e.status === "rejected");
+      const approvalRate = totalCount > 0 ? (approvedExpenses.length / totalCount) * 100 : 0;
+      const approvedAmount = approvedExpenses.reduce((sum, e) => sum + Number(e.total_amount || 0), 0);
+      const rejectedAmount = rejectedExpenses.reduce((sum, e) => sum + Number(e.total_amount || 0), 0);
 
       const categoryMap = new Map<string, { amount: number; count: number }>();
       expenses.forEach((expense) => {
@@ -105,10 +141,38 @@ export default function Analytics() {
         });
       });
 
-      const categoryBreakdown = Array.from(categoryMap.entries()).map(([category, data]) => ({
-        category: category.charAt(0).toUpperCase() + category.slice(1),
-        ...data,
-      }));
+      const rawCategoryBreakdown = Array.from(categoryMap.entries())
+        .map(([category, data]) => ({
+          category: category.charAt(0).toUpperCase() + category.slice(1),
+          ...data,
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const topCategories = rawCategoryBreakdown.slice(0, MAX_CATEGORY_SLICES);
+      const remainingCategories = rawCategoryBreakdown.slice(MAX_CATEGORY_SLICES);
+      const othersTotal = remainingCategories.reduce(
+        (acc, item) => ({ amount: acc.amount + item.amount, count: acc.count + item.count }),
+        { amount: 0, count: 0 }
+      );
+
+      const categoryBreakdown = othersTotal.amount > 0
+        ? [...topCategories, { category: "Others", ...othersTotal }]
+        : topCategories;
+      const topCategory = topCategories[0]?.category || "N/A";
+
+      const statusMap = new Map<string, { count: number; amount: number }>();
+      expenses.forEach((expense) => {
+        const status = expense.status || "other";
+        const amount = Number(expense.total_amount || 0);
+        const current = statusMap.get(status) || { count: 0, amount: 0 };
+        statusMap.set(status, {
+          count: current.count + 1,
+          amount: current.amount + amount,
+        });
+      });
+      const statusBreakdown = Array.from(statusMap.entries())
+        .map(([status, data]) => ({ status, ...data }))
+        .sort((a, b) => b.count - a.count);
 
       const monthlyMap = new Map<string, { amount: number; count: number }>();
       expenses.forEach((expense) => {
@@ -150,6 +214,12 @@ export default function Analytics() {
         totalAmount,
         totalCount,
         averageAmount,
+        medianAmount,
+        approvalRate,
+        approvedAmount,
+        rejectedAmount,
+        topCategory,
+        statusBreakdown,
         categoryBreakdown,
         monthlyTrend,
         destinationBreakdown,
@@ -247,6 +317,45 @@ export default function Analytics() {
         </Card>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Median Expense</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold">{formatINR(analytics.medianAmount)}</div>
+            <p className="text-xs text-muted-foreground">Typical expense value</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Approval Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold">{(analytics.approvalRate ?? 0).toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground">Approved out of total expenses</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Approved Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold">{formatINR(analytics.approvedAmount)}</div>
+            <p className="text-xs text-muted-foreground">Total approved spend</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Top Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold truncate">{analytics.topCategory}</div>
+            <p className="text-xs text-muted-foreground">Largest share by amount</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -270,31 +379,78 @@ export default function Analytics() {
         <Card>
           <CardHeader>
             <CardTitle>Category Breakdown</CardTitle>
-            <CardDescription>Expenses by category</CardDescription>
+            <CardDescription>Top categories by amount (remaining grouped as Others)</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
                   data={analytics.categoryBreakdown}
-                  cx="50%"
+                  cx="40%"
                   cy="50%"
-                  labelLine={false}
-                  label={({ category, percent }) => `${category} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
+                  innerRadius={55}
+                  outerRadius={95}
                   fill="#8884d8"
                   dataKey="amount"
+                  nameKey="category"
                 >
                   {analytics.categoryBreakdown.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => formatINR(Number(value))} />
+                <Tooltip
+                  formatter={(value, _name, item) => [
+                    `${formatINR(Number(value))} (${item?.payload?.count ?? 0} expenses)`,
+                    item?.payload?.category ?? "Category",
+                  ]}
+                  labelFormatter={(_, payload) => payload?.[0]?.payload?.category ?? ""}
+                />
+                <Legend
+                  layout="vertical"
+                  align="right"
+                  verticalAlign="middle"
+                  formatter={(value) => formatCategoryLabel(String(value))}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
+
+      {analytics.statusBreakdown.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Status Breakdown</CardTitle>
+            <CardDescription>Expense count and amount by status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={analytics.statusBreakdown}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="status" />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === "amount") return [formatINR(Number(value)), "Amount"];
+                    return [Number(value), "Count"];
+                  }}
+                />
+                <Legend />
+                <Bar yAxisId="left" dataKey="count" name="Count">
+                  {analytics.statusBreakdown.map((entry) => (
+                    <Cell
+                      key={`status-count-${entry.status}`}
+                      fill={STATUS_COLORS[entry.status] || STATUS_COLORS.other}
+                    />
+                  ))}
+                </Bar>
+                <Bar yAxisId="right" dataKey="amount" name="Amount" fill="#6366f1" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {analytics.destinationBreakdown.length > 0 && (
         <Card>
@@ -309,12 +465,31 @@ export default function Analytics() {
                 <XAxis dataKey="destination" />
                 <YAxis />
                 <Tooltip formatter={(value) => [formatINR(Number(value)), "Amount"]} />
+                <Legend />
                 <Bar dataKey="amount" fill="#8884d8" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Insights</CardTitle>
+          <CardDescription>Automatically generated highlights</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            Approval performance: <span className="font-medium text-foreground">{(analytics.approvalRate ?? 0).toFixed(1)}%</span> of submitted expenses are approved.
+          </p>
+          <p>
+            Rejected spend observed: <span className="font-medium text-foreground">{formatINR(analytics.rejectedAmount ?? 0)}</span> in the selected time range.
+          </p>
+          <p>
+            Leading spend category: <span className="font-medium text-foreground">{analytics.topCategory ?? "N/A"}</span>.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

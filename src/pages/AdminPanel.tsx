@@ -511,13 +511,21 @@ export default function AdminPanel() {
     const expenseIds = expensesData.map(e => e.id);
     let resubmittedIds = new Set<string>();
     if (expenseIds.length > 0) {
-      const { data: resubmitLogs } = await supabase
-        .from("audit_logs")
-        .select("expense_id")
-        .in("expense_id", expenseIds)
-        .eq("action", "expense_resubmitted");
-
-      resubmittedIds = new Set(resubmitLogs?.map(log => log.expense_id) || []);
+      const allResubmitIds: string[] = [];
+      for (let i = 0; i < expenseIds.length; i += 300) {
+        const batch = expenseIds.slice(i, i + 300);
+        const { data: resubmitLogs, error: resubmitError } = await supabase
+          .from("audit_logs")
+          .select("expense_id")
+          .in("expense_id", batch)
+          .eq("action", "expense_resubmitted");
+        if (resubmitError) {
+          console.error("❌ [AdminPanel] Error fetching resubmitted audit logs:", resubmitError);
+          continue;
+        }
+        allResubmitIds.push(...(resubmitLogs?.map(log => log.expense_id) || []));
+      }
+      resubmittedIds = new Set(allResubmitIds);
     }
 
     // Combine expenses with profile data
@@ -1070,7 +1078,6 @@ export default function AdminPanel() {
 
   // Filter and search functions
   const filteredExpenses = expenses.filter(expense => {
-    console.log("🔍 [AdminPanel] Filtering expense:", expense.id, expense.title);
     const matchesSearch = searchTerm === "" ||
       expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
